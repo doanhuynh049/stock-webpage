@@ -40,7 +40,8 @@ export default function LoginPage() {
     }
 
     router.push("/");
-    router.refresh();
+    setLoading(false);
+    void router.refresh();
   }
 
   return (

@@ -34,40 +34,53 @@ export function StrategyEditor({
     setOpen(true);
   }
 
-  async function save() {
+  function save() {
+    const savedDraft = draft;
+    setOpen(false);
     setSaving(true);
-    try {
-      const res = await fetch("/api/strategy", {
-        method: "PUT",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          maxPerStock: draft.maxPerStock,
-          maxPerSector: draft.maxPerSector,
-          takeProfitPct: draft.takeProfitPct,
-          stopLossPct: draft.stopLossPct,
-          coreTarget: draft.coreTarget,
-          satelliteTarget: 100 - draft.coreTarget,
-          sectorTargets: draft.sectorTargets,
-          targetReturn: draft.targetReturn,
-        }),
-      });
-      if (!res.ok) throw new Error("Save failed");
-      setOpen(false);
-      router.refresh();
-    } finally {
-      setSaving(false);
-    }
+
+    void (async () => {
+      try {
+        const res = await fetch("/api/strategy", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            maxPerStock: savedDraft.maxPerStock,
+            maxPerSector: savedDraft.maxPerSector,
+            takeProfitPct: savedDraft.takeProfitPct,
+            stopLossPct: savedDraft.stopLossPct,
+            coreTarget: savedDraft.coreTarget,
+            satelliteTarget: 100 - savedDraft.coreTarget,
+            sectorTargets: savedDraft.sectorTargets,
+            targetReturn: savedDraft.targetReturn,
+          }),
+        });
+        if (!res.ok) throw new Error("Save failed");
+        router.refresh();
+      } catch {
+        setDraft(config);
+        setOpen(true);
+      } finally {
+        setSaving(false);
+      }
+    })();
   }
 
-  async function reset() {
+  function reset() {
+    setOpen(false);
     setSaving(true);
-    try {
-      await fetch("/api/strategy", { method: "DELETE" });
-      setOpen(false);
-      router.refresh();
-    } finally {
-      setSaving(false);
-    }
+
+    void (async () => {
+      try {
+        const res = await fetch("/api/strategy", { method: "DELETE" });
+        if (!res.ok) throw new Error("Reset failed");
+        router.refresh();
+      } catch {
+        setOpen(true);
+      } finally {
+        setSaving(false);
+      }
+    })();
   }
 
   if (!open) {

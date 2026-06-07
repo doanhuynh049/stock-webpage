@@ -25,10 +25,11 @@ function getConnectionString(): string {
 }
 
 function getDriver(): DbDriver {
+  const cs = getConnectionString();
+  if (cs.includes("localhost") || cs.includes("127.0.0.1")) return "pg";
   if (process.env.VERCEL === "1") return "http";
   const raw = (process.env.DB_DRIVER ?? "auto").toLowerCase();
   if (raw === "http" || raw === "pg") return raw;
-  // probe-db: Neon HTTP works when node-postgres TCP ETIMEDOUT
   if (isDbCacheFirst()) return "http";
   return "auto";
 }

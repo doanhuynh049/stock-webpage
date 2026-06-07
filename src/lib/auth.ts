@@ -3,8 +3,8 @@ import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { normalizeEmail } from "@/lib/auth-utils";
 import { isPersistenceEnabled } from "@/lib/persistence";
-import { prisma } from "@/lib/prisma";
-import { isConnectivityError, withDbRetry } from "@/lib/prisma-query";
+import { findUserByEmail } from "@/lib/auth/user-store";
+import { isConnectivityError } from "@/lib/prisma-query";
 
 const authSecret = process.env.AUTH_SECRET;
 
@@ -39,11 +39,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             return null;
           }
 
-          const user = await withDbRetry(
-            () => prisma.appUser.findUnique({ where: { email } }),
-            "auth",
-            2,
-          );
+          const user = await findUserByEmail(email);
 
           if (!user || user.status !== "ACTIVE") {
             console.warn("[auth] No active user for email:", email);

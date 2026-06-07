@@ -91,7 +91,7 @@ export function TradingLedger() {
     void load();
   }, [load]);
 
-  async function saveTrade(e: FormEvent) {
+  function saveTrade(e: FormEvent) {
     e.preventDefault();
     const payload = {
       ...form,
@@ -101,22 +101,61 @@ export function TradingLedger() {
     };
     const url = editId ? `/api/trading/${editId}` : "/api/trading";
     const method = editId ? "PUT" : "POST";
-    const res = await fetch(url, {
-      method,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) return;
+
+    const prevTrades = trades;
+    const tempId = editId ?? `temp-${Date.now()}`;
+    const optimistic: TradeRecord = {
+      id: tempId,
+      userId: "",
+      transactionDate: payload.transactionDate,
+      itemName: payload.itemName,
+      quantity: payload.quantity,
+      unitPrice: payload.unitPrice,
+      totalAmount: payload.quantity * payload.unitPrice,
+      fee: payload.fee ?? 0,
+      tax: 0,
+      profit: payload.profit ?? null,
+      transactionType: payload.transactionType,
+      exchange: payload.exchange || null,
+      sector: payload.sector || null,
+    };
+
+    setTrades((current) =>
+      editId
+        ? current.map((t) => (t.id === editId ? optimistic : t))
+        : [...current, optimistic],
+    );
     setForm(emptyForm);
     setEditId(null);
     setFormOpen(false);
-    await load();
+
+    void (async () => {
+      const res = await fetch(url, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        setTrades(prevTrades);
+        return;
+      }
+      void load();
+    })();
   }
 
-  async function remove(id: string) {
+  function remove(id: string) {
     if (!confirm("Delete this trade? Portfolio will rebuild automatically.")) return;
-    await fetch(`/api/trading/${id}`, { method: "DELETE" });
-    await load();
+    const prevTrades = trades;
+    setTrades((current) => current.filter((t) => t.id !== id));
+
+    void (async () => {
+      const res = await fetch(`/api/trading/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        setTrades(prevTrades);
+        return;
+      }
+      void load();
+    })();
   }
 
   return (
@@ -373,7 +412,7 @@ export function TradingLedger() {
                       <button
                         type="button"
                         className="ml-1 rounded p-1 text-danger hover:bg-[var(--bg-secondary)]"
-                        onClick={() => void remove(t.id)}
+                        onClick={() => remove(t.id)}
                       >
                         <Trash2 className="h-3.5 w-3.5" />
                       </button>

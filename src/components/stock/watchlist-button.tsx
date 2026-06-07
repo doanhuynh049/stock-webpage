@@ -15,7 +15,6 @@ export function WatchlistButton({
   isAuthenticated: boolean;
 }) {
   const [inWatchlist, setInWatchlist] = useState(initialInWatchlist);
-  const [loading, setLoading] = useState(false);
 
   if (!isAuthenticated) {
     return (
@@ -31,17 +30,16 @@ export function WatchlistButton({
   }
 
   async function toggle() {
-    setLoading(true);
+    const wasInWatchlist = inWatchlist;
+    setInWatchlist(!wasInWatchlist);
     try {
-      if (inWatchlist) {
+      if (wasInWatchlist) {
         await removeFromWatchlist(symbol);
-        setInWatchlist(false);
       } else {
         await addToWatchlist(symbol);
-        setInWatchlist(true);
       }
-    } finally {
-      setLoading(false);
+    } catch {
+      setInWatchlist(wasInWatchlist);
     }
   }
 
@@ -50,7 +48,6 @@ export function WatchlistButton({
       variant={inWatchlist ? "primary" : "secondary"}
       size="sm"
       onClick={toggle}
-      disabled={loading}
     >
       <Star className={`h-4 w-4 ${inWatchlist ? "fill-current" : ""}`} />
       {inWatchlist ? "Watching" : "Add to Watchlist"}

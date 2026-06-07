@@ -36,7 +36,7 @@ export function isRetryableDbError(error: unknown): boolean {
 }
 
 export function connectivityErrorMessage(): string {
-  return "Cannot reach Neon (ETIMEDOUT). Check network or try DB_DRIVER=http in .env. Local fallback: USE_LOCAL_DB=1 ./start.sh dev";
+  return "Cannot sign in: Node cannot reach Neon from this network (psql may still work). Run: npm run sync:users:cache then retry, or USE_LOCAL_DB=1 ./start.sh dev with Docker running.";
 }
 
 /** Fast-fail reads (stock-service avoids blocking UI on Neon RTT). */

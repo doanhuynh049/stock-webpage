@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { AuthError } from "next-auth";
 import { auth, signIn } from "@/lib/auth";
 import { normalizeEmail } from "@/lib/auth-utils";
+import { findUserByEmail } from "@/lib/auth/user-store";
 import { isPersistenceEnabled } from "@/lib/persistence";
 import { prisma } from "@/lib/prisma";
 import {
@@ -106,11 +107,7 @@ export async function loginUser(formData: FormData): Promise<AuthResult> {
   }
 
   try {
-    const user = await withDbRetry(
-      () => prisma.appUser.findUnique({ where: { email } }),
-      "login",
-      2,
-    );
+    const user = await findUserByEmail(email);
 
     if (!user || user.status !== "ACTIVE") {
       return { error: "Invalid email or password" };

@@ -35,6 +35,31 @@ function toDraft(h: EnrichedHolding): Draft {
   };
 }
 
+function draftToEnriched(d: Draft, existing?: EnrichedHolding): EnrichedHolding {
+  const sym = d.symbol.toUpperCase();
+  const costBasis = d.shares * d.avgBuyPrice;
+  return {
+    id: existing?.id ?? `temp-${sym}`,
+    symbol: sym,
+    name: d.name || null,
+    exchange: d.exchange || null,
+    sector: d.sector || null,
+    industry: existing?.industry ?? null,
+    shares: d.shares,
+    avgBuyPrice: d.avgBuyPrice,
+    costBasis,
+    target3Month: d.target3Month || null,
+    targetLongTerm: d.targetLongTerm || null,
+    targetSetDate: existing?.targetSetDate ?? null,
+    platform: existing?.platform ?? null,
+    currentPriceK: existing?.currentPriceK ?? null,
+    currentValueK: existing?.currentValueK ?? null,
+    gainLossK: existing?.gainLossK ?? null,
+    gainPct: existing?.gainPct ?? null,
+    toTargetPct: existing?.toTargetPct ?? null,
+  };
+}
+
 function emptyDraft(): Draft {
   return {
     symbol: "",
@@ -46,6 +71,13 @@ function emptyDraft(): Draft {
     target3Month: 0,
     targetLongTerm: 0,
   };
+}
+
+function draftsToEnriched(rows: Draft[], prev: EnrichedHolding[]): EnrichedHolding[] {
+  const prevBySym = new Map(prev.map((h) => [h.symbol.toUpperCase(), h]));
+  return rows
+    .map((r) => draftToEnriched(r, prevBySym.get(r.symbol.toUpperCase())))
+    .sort((a, b) => a.symbol.localeCompare(b.symbol));
 }
 
 async function syncHoldings(
@@ -196,39 +228,40 @@ export function HoldingsLedger({
 
   const [modal, setModal] = useState<"add" | "edit" | null>(null);
   const [draft, setDraft] = useState<Draft>(emptyDraft());
-  const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
   const rows = holdings.map(toDraft);
 
   const persist = useCallback(
-    async (next: Draft[]) => {
-      setBusy(true);
+    (next: Draft[], prevHoldings: EnrichedHolding[]) => {
+      setHoldings(draftsToEnriched(next, prevHoldings));
       setMessage(null);
-      const result = await syncHoldings(next);
-      setBusy(false);
-      if (!result.ok) {
-        setMessage(result.error ?? "Save failed");
-        return false;
-      }
-      router.refresh();
+
+      void (async () => {
+        const result = await syncHoldings(next);
+        if (!result.ok) {
+          setHoldings(prevHoldings);
+          setMessage(result.error ?? "Save failed");
+          return;
+        }
+        router.refresh();
+      })();
+
       return true;
     },
     [router],
   );
 
-  async function deleteModal() {
+  function deleteModal() {
     const sym = draft.symbol.toUpperCase().trim();
     if (!sym) return;
     const next = rows.filter((r) => r.symbol.toUpperCase() !== sym);
-    const ok = await persist(next);
-    if (ok) {
-      setModal(null);
-      setDraft(emptyDraft());
-    }
+    persist(next, holdings);
+    setModal(null);
+    setDraft(emptyDraft());
   }
 
-  async function saveModal() {
+  function saveModal() {
     const sym = draft.symbol.toUpperCase().trim();
     if (!sym || draft.shares <= 0 || draft.avgBuyPrice <= 0) {
       setMessage("Symbol, shares, and avg price are required");
@@ -237,11 +270,9 @@ export function HoldingsLedger({
     const next = rows.filter((r) => r.symbol.toUpperCase() !== sym);
     next.push({ ...draft, symbol: sym });
     next.sort((a, b) => a.symbol.localeCompare(b.symbol));
-    const ok = await persist(next);
-    if (ok) {
-      setModal(null);
-      setDraft(emptyDraft());
-    }
+    persist(next, holdings);
+    setModal(null);
+    setDraft(emptyDraft());
   }
 
   const totalCurrent = holdings.reduce((s, h) => s + (h.currentValueK ?? 0), 0);
@@ -253,12 +284,11 @@ export function HoldingsLedger({
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
-          disabled={busy}
           onClick={() => {
             setDraft(emptyDraft());
             setModal("add");
           }}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white"
         >
           <Plus className="h-3.5 w-3.5" /> Add holding
         </button>
@@ -270,7 +300,7 @@ export function HoldingsLedger({
         <EditModal
           mode={modal}
           draft={draft}
-          busy={busy}
+          busy={false}
           onChange={setDraft}
           onClose={() => setModal(null)}
           onSave={() => void saveModal()}

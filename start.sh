@@ -151,8 +151,26 @@ probe_runtime_db() {
   if grep -qE '^PERSISTENCE_ENABLED=false' .env 2>/dev/null; then
     return
   fi
-  if [[ "${DB_CACHE_FIRST:-}" == "1" ]]; then
-    log "DB_CACHE_FIRST=1 — skip Neon TCP probe (reads use cache, writes use Neon HTTP)."
+  if [[ "${DB_CACHE_FIRST:-}" == "1" ]] && [[ -z "${RUNTIME_DATABASE_URL:-}" ]]; then
+    log "DB_CACHE_FIRST=1 — probing DB for login (reads still use JSON cache)..."
+    if npx tsx scripts/probe-db.ts 2>/dev/null; then
+      log "Neon runtime probe: OK"
+      return
+    fi
+    if command -v docker >/dev/null 2>&1 \
+      && docker compose exec -T db pg_isready -U vnstocks -d vnstocks >/dev/null 2>&1; then
+      warn "Node cannot reach Neon — using local Docker Postgres for login/writes."
+      export RUNTIME_DATABASE_URL="$LOCAL_RUNTIME_URL"
+      export DB_DRIVER="pg"
+      bash scripts/sync-users-from-neon.sh 2>/dev/null \
+        || warn "User sync to Docker skipped."
+      return
+    fi
+    if command -v psql >/dev/null 2>&1; then
+      npx tsx scripts/sync-users-cache.ts 2>/dev/null \
+        && log "User cache for offline login: OK" \
+        || warn "User cache sync failed — login may not work until Neon is reachable."
+    fi
     return
   fi
   if ! command -v npx >/dev/null 2>&1; then
@@ -190,6 +208,8 @@ run_dev() {
   export PORT
   export DB_CACHE_FIRST="${DB_CACHE_FIRST:-}"
   export CACHE_USER_ID="${CACHE_USER_ID:-}"
+  export RUNTIME_DATABASE_URL="${RUNTIME_DATABASE_URL:-}"
+  export DB_DRIVER="${DB_DRIVER:-}"
   exec npm run dev
 }
 

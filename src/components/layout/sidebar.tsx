@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
 import {
   ArrowLeftRight,
   BarChart3,
@@ -13,9 +12,9 @@ import {
   Wallet,
 } from "lucide-react";
 import { BrandLogo } from "@/components/ui/brand-logo";
+import { NavLink } from "@/components/layout/nav-link";
 import { SignOutButton } from "@/components/layout/sign-out-button";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
-import { cn } from "@/lib/utils";
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, desc: "Market overview" },
@@ -33,11 +32,6 @@ export function Sidebar({
 }: {
   user?: { name?: string | null; email?: string | null } | null;
 }) {
-  const pathname = usePathname();
-  const isLogin = pathname === "/login";
-
-  if (isLogin) return null;
-
   return (
     <aside className="flex h-full w-[248px] shrink-0 flex-col border-r border-[var(--border)] bg-[var(--sidebar)] backdrop-blur-xl">
       <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-5">
@@ -54,33 +48,15 @@ export function Sidebar({
       </div>
 
       <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto p-3">
-        {navItems.map((item) => {
-          const active =
-            item.href === "/"
-              ? pathname === "/"
-              : pathname.startsWith(item.href);
-          const Icon = item.icon;
-          return (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={cn(
-                "group flex items-center gap-3 rounded-xl px-3 py-2.5 transition-all duration-200",
-                active
-                  ? "bg-[var(--accent-bg)] text-[var(--accent)] ring-1 ring-[var(--accent)]/25"
-                  : "text-[var(--fg-muted)] hover:bg-[var(--bg-secondary)] hover:text-[var(--fg)]",
-              )}
-            >
-              <Icon className={cn("h-4 w-4 shrink-0", active && "text-[var(--accent)]")} />
-              <div className="min-w-0">
-                <div className="text-sm font-medium">{item.label}</div>
-                <div className="text-[10px] text-[var(--fg-subtle)] group-hover:text-[var(--fg-muted)]">
-                  {item.desc}
-                </div>
-              </div>
-            </Link>
-          );
-        })}
+        {navItems.map((item) => (
+          <NavLink
+            key={item.href}
+            href={item.href}
+            label={item.label}
+            desc={item.desc}
+            icon={item.icon}
+          />
+        ))}
       </nav>
 
       <div className="shrink-0 border-t border-[var(--border)] p-4">

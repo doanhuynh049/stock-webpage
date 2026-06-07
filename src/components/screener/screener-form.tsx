@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { useTransition } from "react";
 import { Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input, Select, Label } from "@/components/ui/input";
@@ -13,6 +14,7 @@ export function ScreenerForm({
   defaults: Record<string, string | undefined>;
 }) {
   const router = useRouter();
+  const [pending, startTransition] = useTransition();
 
   function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -21,7 +23,9 @@ export function ScreenerForm({
     for (const [key, value] of form.entries()) {
       if (value) params.set(key, value as string);
     }
-    router.push(`/screener?${params.toString()}`);
+    startTransition(() => {
+      router.push(`/screener?${params.toString()}`);
+    });
   }
 
   return (
@@ -59,7 +63,7 @@ export function ScreenerForm({
         </Select>
       </div>
       <div className="flex items-end">
-        <Button type="submit" className="w-full">
+        <Button type="submit" className="w-full" disabled={pending}>
           <Search className="h-4 w-4" />
           Run Screen
         </Button>

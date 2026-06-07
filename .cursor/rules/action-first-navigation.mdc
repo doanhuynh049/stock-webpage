@@ -1,0 +1,45 @@
+---
+description: Action-first navigation and optimistic mutations — UI responds immediately, DB syncs in background
+globs: src/components/**/*.tsx,src/app/**/page.tsx
+alwaysApply: false
+---
+
+# Action-first navigation
+
+User actions and route changes must feel instant. Never block UI on DB/API when an optimistic path exists.
+
+## Navigation
+
+- Sidebar links use `NavLink` (`src/components/layout/nav-link.tsx`) with `useTransition`.
+- Global `src/app/loading.tsx` shows skeleton while server pages load.
+- Screener form uses `startTransition` + `router.push` — navigate first, server re-renders after.
+
+## Mutations (optimistic pattern)
+
+```tsx
+// 1. Apply local state change immediately
+setItems(next);
+setModalOpen(false);
+
+// 2. Sync in background
+void syncToServer(next).then((ok) => {
+  if (!ok) {
+    setItems(prev); // rollback
+    setError("Save failed");
+    return;
+  }
+  router.refresh(); // optional background reconcile
+});
+```
+
+Apply to: watchlist toggles, holdings ledger, trading ledger, strategy save, sign-out.
+
+## Do not
+
+- `await` DB/server action before updating visible UI state on toggles and saves
+- Disable nav links while a page is loading (show pending indicator instead)
+- Block `router.push` until `router.refresh` completes
+
+## Server pages
+
+Server pages may still fetch DB on first paint — that is fine. The shell (sidebar + loading skeleton) must appear immediately on navigation.

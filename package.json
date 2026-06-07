@@ -16,6 +16,7 @@
     "seed:trades": "tsx scripts/seed-trades-from-portfolio.ts",
     "import:trades": "tsx scripts/import-trading-json.ts",
     "import:trades:service": "tsx scripts/import-trading-json.ts ../stock-service/cache/trading-records.json --all",
+    "sync:users:cache": "tsx scripts/sync-users-cache.ts",
     "db:up": "docker compose up -d db",
     "db:down": "docker compose down"
   },

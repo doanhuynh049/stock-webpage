@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ChangeBadge } from "@/components/stock/change-badge";
 import { StockAvatar } from "@/components/ui/stock-avatar";
-import { RemoveWatchlistButton } from "@/components/watchlist/remove-watchlist-button";
+import { WatchlistGrid } from "@/components/watchlist/watchlist-grid";
 import { getWatchlistWithStocks } from "@/lib/user-data";
 import { getAllStocks } from "@/lib/stocks";
 
@@ -43,47 +43,7 @@ export default async function WatchlistPage() {
       />
 
       {watchlist.items.length > 0 ? (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {watchlist.items.map((item) =>
-            item.stock ? (
-              <Card
-                key={item.symbol}
-                className="glass-card-hover group relative overflow-hidden transition-all"
-              >
-                <div className="flex items-start justify-between">
-                  <Link
-                    href={`/stocks/${item.symbol}`}
-                    className="flex items-center gap-3"
-                  >
-                    <StockAvatar
-                      symbol={item.symbol}
-                      sector={item.stock.sector}
-                    />
-                    <div>
-                      <div className="font-bold text-[var(--fg)] group-hover:text-accent">
-                        {item.symbol}
-                      </div>
-                      <div className="text-xs text-muted">{item.stock.name}</div>
-                    </div>
-                  </Link>
-                  <RemoveWatchlistButton symbol={item.symbol} />
-                </div>
-                <div className="mt-4 flex items-end justify-between">
-                  <div>
-                    <p className="font-mono text-2xl font-bold text-[var(--fg)]">
-                      {item.stock.price.toLocaleString()}
-                    </p>
-                    <p className="text-[10px] text-subtle">₫</p>
-                  </div>
-                  <ChangeBadge value={item.stock.changePercent} />
-                </div>
-                <div className="mt-3 text-[10px] text-subtle">
-                  {item.stock.sector} · {item.stock.exchange}
-                </div>
-              </Card>
-            ) : null,
-          )}
-        </div>
+        <WatchlistGrid items={watchlist.items} />
       ) : (
         <Card>
           <div className="py-16 text-center">
