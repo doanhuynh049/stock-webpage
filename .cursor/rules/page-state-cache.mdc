@@ -1,0 +1,52 @@
+---
+description: Page-level server cache pattern for faster repeat loads
+globs: src/app/**/page.tsx
+alwaysApply: false
+---
+
+# Page state & cache
+
+Use `src/lib/page-cache.ts` for server-rendered pages so repeat visits skip redundant DB/API work.
+
+## When to cache
+
+| Data | TTL (`CACHE_TTL`) | Tag |
+|------|-------------------|-----|
+| Portfolio holdings | `portfolio` (90s) | `portfolio-{userId}` |
+| Enriched holdings | `portfolio` (90s) | `portfolio-{userId}` |
+| Trading list | `trading` (60s) | `trading-{userId}` |
+| Analysis bundles | `analysis` (300s) | `analysis-{userId}` |
+| Market snapshot | `market` (300s) | `market` |
+
+## Server page pattern
+
+```tsx
+import { CACHE_TTL, pageCache } from "@/lib/page-cache";
+
+export const revalidate = CACHE_TTL.portfolio; // route-level hint
+
+const data = await pageCache(
+  ["my-page", userId],
+  () => loadExpensiveData(userId),
+  { revalidate: CACHE_TTL.portfolio, tags: [`my-page-${userId}`] },
+);
+```
+
+Rules:
+- **Always include `userId` in cache keys** for per-user data.
+- Prefer **one batched fetch** (e.g. `getQuotesForSymbols`) over N per-row calls.
+- Set `export const revalidate = N` on pages that can be slightly stale.
+- Invalidate with `revalidateTag('portfolio-{userId}')` after mutations (POST handlers).
+
+## Client pages (ledger UIs)
+
+- First paint: server passes `initial*` props when possible.
+- Client refetch: `fetch('/api/...')` with local `useState`; optional SWR later.
+- Do **not** duplicate server cache on the client; API routes stay the source of truth for edits.
+
+## New pages checklist
+
+1. Identify the slowest loader (DB, Entrade, analysis).
+2. Wrap it in `pageCache` with a stable key + tag.
+3. Batch external calls; avoid `getStock` in a loop — use `getQuotesForSymbols`.
+4. Document TTL in `CACHE_TTL` if introducing a new category.

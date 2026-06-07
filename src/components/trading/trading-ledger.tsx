@@ -278,7 +278,7 @@ export function TradingLedger() {
             )}
           </div>
           <p className="mt-2 text-[10px] text-subtle">
-            Saves to Neon (per-user) and rebuilds portfolio_holding automatically.
+            Saves to ledger and rebuilds portfolio holdings (shares = ΣBUY − ΣSELL).
           </p>
           <button type="submit" className="mt-2 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white">
             Save trade
@@ -286,10 +286,17 @@ export function TradingLedger() {
         </form>
       )}
 
-      <div className="overflow-x-auto rounded-xl ring-1 ring-[var(--border)]">
+      {!loading && trades.length > 0 && (
+        <p className="text-xs text-muted">
+          Showing <span className="font-mono font-semibold text-[var(--fg)]">{trades.length}</span>{" "}
+          trades{summary ? ` · ${summary.buys} buys · ${summary.sells} sells` : ""}
+        </p>
+      )}
+
+      <div className="max-h-[70vh] overflow-auto rounded-xl ring-1 ring-[var(--border)]">
         <table className="w-full min-w-[960px] text-sm">
           <thead>
-            <tr className="border-b border-[var(--border)] bg-[var(--bg-secondary)] text-left text-[10px] uppercase text-subtle">
+            <tr className="sticky top-0 z-10 border-b border-[var(--border)] bg-[var(--bg-secondary)] text-left text-[10px] uppercase text-subtle">
               <th className="px-2 py-2">Date</th>
               <th className="px-2 py-2">Type</th>
               <th className="px-2 py-2">Symbol</th>

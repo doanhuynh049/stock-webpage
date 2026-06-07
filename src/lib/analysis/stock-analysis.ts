@@ -1,7 +1,5 @@
-import {
-  calculateFundamentalScore,
-  type FundamentalInputs,
-} from "@/lib/analysis/fundamental-scoring";
+import type { FundamentalInputs } from "@/lib/analysis/fundamental-scoring";
+import { calculateSectorFundamentalScore } from "@/lib/analysis/sector-fundamental-scoring";
 import {
   calculateTechnicalScore,
   combinedScore,
@@ -231,39 +229,51 @@ async function loadSnapshots(symbol: string): Promise<{
   }
 }
 
+/** Snapshots use price in thousands (K); live quotes may be full VND. */
+function priceInThousands(stock: Stock, tech: TechnicalIndicators | null): number {
+  if (tech?.sma20 != null && tech.sma20 < 500 && stock.price >= 1000) {
+    return stock.price / 1000;
+  }
+  if (stock.price >= 10000) return stock.price / 1000;
+  return stock.price;
+}
+
 export async function analyzeStock(stock: Stock): Promise<StockAnalysisResult> {
   const { tech, fund, source } = await loadSnapshots(stock.symbol);
-  const currentPrice = stock.price;
+  const currentPriceK = priceInThousands(stock, tech);
 
   const fundamentalInputs: FundamentalInputs = {
     ...stockToFundamentals(stock),
     ...(fund ?? {}),
   };
 
-  const fundamentalScore = calculateFundamentalScore(fundamentalInputs);
-  const technicalScore = calculateTechnicalScore(tech, currentPrice);
+  const fundamentalScore = calculateSectorFundamentalScore(
+    fundamentalInputs,
+    stock.sector,
+  );
+  const technicalScore = calculateTechnicalScore(tech, currentPriceK);
   const combined = combinedScore(technicalScore, fundamentalScore);
   const recommendation = getRecommendationFromScore(
     combined,
     technicalScore,
     fundamentalScore,
     tech,
-    currentPrice,
+    currentPriceK,
   );
 
   return {
     symbol: stock.symbol,
-    currentPrice,
+    currentPrice: stock.price,
     technicalScore,
     fundamentalScore,
     combinedScore: combined,
     recommendation,
     technicalRating: scoreRating(technicalScore),
     fundamentalRating: scoreRating(fundamentalScore),
-    maTrend: tech ? describeMaTrend(tech, currentPrice) : "N/A",
+    maTrend: tech ? describeMaTrend(tech, currentPriceK) : "N/A",
     momentum: tech ? describeMomentum(tech) : "N/A",
     supportResistance: tech
-      ? describeSupportResistance(tech, currentPrice)
+      ? describeSupportResistance(tech, currentPriceK)
       : "N/A",
     source,
   };

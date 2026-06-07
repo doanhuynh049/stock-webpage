@@ -17,8 +17,15 @@ import {
   type PortfolioHoldingInput,
 } from "@/lib/db/portfolio-sync";
 import { canUseLocalDataFiles } from "@/lib/serverless";
+import {
+  loadStockServiceTrades,
+  stockServiceLedgerKey,
+  stockServiceTradesPath,
+} from "@/lib/db/trading-import";
 
 const TRADES_DIR = join(process.cwd(), "data", "user-trades");
+
+let dbSyncBlockedUntil = 0;
 
 function tradeId(userId: string, id?: string): string {
   const raw = id ?? randomUUID();
@@ -28,6 +35,27 @@ function tradeId(userId: string, id?: string): string {
 function stripUserPrefix(userId: string, id: string): string {
   const prefix = `${userId}__`;
   return id.startsWith(prefix) ? id.slice(prefix.length) : id;
+}
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** stock-service rows use plain UUID ids in Neon (no user prefix). */
+function neonTradeId(userId: string, trade: TradeRecord): string {
+  if (UUID_RE.test(trade.id)) return trade.id;
+  return tradeId(userId, trade.id);
+}
+
+function looksLikePortfolioBootstrap(trades: TradeRecord[]): boolean {
+  if (!trades.length || trades.length > 40) return false;
+  return (
+    trades.every((t) => t.transactionType === "BUY") &&
+    trades.every((t) => t.transactionDate === "2025-01-01")
+  );
+}
+
+export function clearTradingDbSyncCooldown(): void {
+  dbSyncBlockedUntil = 0;
 }
 
 function filePath(userId: string): string {
@@ -85,11 +113,31 @@ function toRecord(userId: string, row: {
   };
 }
 
+function toLegacyRecord(row: Parameters<typeof toRecord>[1]): TradeRecord {
+  const unit = row.unitPrice?.toNumber() ?? 0;
+  const qty = row.quantity ?? 0;
+  return {
+    id: row.id,
+    userId: "",
+    transactionDate: row.transactionDate.toISOString().slice(0, 10),
+    itemName: (row.itemName ?? "").toUpperCase(),
+    quantity: qty,
+    unitPrice: unit,
+    totalAmount: row.totalAmount?.toNumber() ?? unit * qty,
+    fee: row.fee?.toNumber() ?? 0,
+    tax: row.tax?.toNumber() ?? 0,
+    profit: row.profit?.toNumber() ?? null,
+    transactionType: (row.transactionType?.toUpperCase() === "SELL" ? "SELL" : "BUY") as TradeType,
+    exchange: row.exchange,
+    sector: row.sector,
+  };
+}
+
 async function readDbTrades(userId: string): Promise<TradeRecord[]> {
   if (!isPersistenceEnabled()) return [];
   const prefix = `${userId}__`;
   try {
-    const rows = await withDbRetry(
+    const prefixed = await withDbRetry(
       () =>
         prisma.tradingTransaction.findMany({
           where: { id: { startsWith: prefix } },
@@ -98,22 +146,41 @@ async function readDbTrades(userId: string): Promise<TradeRecord[]> {
       "trading-list",
       0,
     );
-    return rows.map((r) => toRecord(userId, r));
+    if (prefixed.length) {
+      return prefixed.map((r) => toRecord(userId, r));
+    }
+
+    // stock-service stores plain UUID ids (no user prefix) — single-user legacy mirror
+    const legacy = await withDbRetry(
+      () =>
+        prisma.tradingTransaction.findMany({
+          where: { NOT: { id: { contains: "__" } } },
+          orderBy: { transactionDate: "desc" },
+        }),
+      "trading-list-legacy",
+      0,
+    );
+    return legacy.map((r) => ({ ...toLegacyRecord(r), userId }));
   } catch (err) {
     console.warn("[trading] DB read failed:", (err as Error).message);
     return [];
   }
 }
 
-async function persistTradeNeon(userId: string, trade: TradeRecord) {
+async function persistTradeNeon(
+  userId: string,
+  trade: TradeRecord,
+  retries = 0,
+) {
   if (!isPersistenceEnabled()) return;
 
+  const id = neonTradeId(userId, trade);
   await withDbRetry(
     () =>
       prisma.tradingTransaction.upsert({
-        where: { id: tradeId(userId, trade.id) },
+        where: { id },
         create: {
-          id: tradeId(userId, trade.id),
+          id,
           transactionDate: new Date(trade.transactionDate),
           itemName: trade.itemName,
           quantity: trade.quantity,
@@ -141,16 +208,17 @@ async function persistTradeNeon(userId: string, trade: TradeRecord) {
         },
       }),
     "trading-upsert",
-    0,
+    retries,
   );
 }
 
 async function deleteTradeDb(userId: string, id: string) {
   if (!isPersistenceEnabled()) return;
+  const prefixed = tradeId(userId, id);
   await withDbRetry(
     () =>
       prisma.tradingTransaction.deleteMany({
-        where: { id: tradeId(userId, id) },
+        where: { OR: [{ id: prefixed }, { id }] },
       }),
     "trading-delete",
     0,
@@ -191,18 +259,127 @@ export function summarizeTrades(trades: TradeRecord[]): TradeSummary {
   };
 }
 
-/** Push JSON ledger → Neon (JSON is source of truth). */
-export async function syncUserTradesJsonToDb(userId: string): Promise<number> {
-  const trades = readFileTrades(userId);
-  if (!trades.length || !isPersistenceEnabled()) return 0;
+/** Bootstrap ledger from portfolio holdings when no trades exist (one BUY per position). */
+export async function seedTradesFromPortfolioHoldings(
+  userId: string,
+  holdings: Array<{
+    symbol: string;
+    shares: number;
+    avgBuyPrice: number;
+    exchange?: string | null;
+    sector?: string | null;
+    targetSetDate?: string | null;
+  }>,
+): Promise<number> {
+  if (!holdings.length) return 0;
+
+  const trades: TradeRecord[] = holdings.map((h) => {
+    const sym = h.symbol.toUpperCase();
+    const qty = h.shares;
+    const unit = h.avgBuyPrice;
+    return {
+      id: randomUUID(),
+      userId,
+      transactionDate: h.targetSetDate?.slice(0, 10) ?? "2025-01-01",
+      itemName: sym,
+      quantity: qty,
+      unitPrice: unit,
+      totalAmount: unit * qty,
+      fee: 0,
+      tax: 0,
+      profit: null,
+      transactionType: "BUY" as TradeType,
+      exchange: h.exchange ?? null,
+      sector: h.sector ?? null,
+    };
+  });
+
+  writeFileTrades(userId, trades);
   let synced = 0;
   for (const trade of trades) {
     try {
       await persistTradeNeon(userId, trade);
       synced++;
     } catch (err) {
-      console.warn(`[trading] sync ${trade.id} failed:`, (err as Error).message);
+      console.warn(`[trading] seed ${trade.itemName} failed:`, (err as Error).message);
     }
+  }
+  console.info(`[trading] Seeded ${synced} BUY trades from portfolio for ${userId}`);
+  return synced;
+}
+
+/** Import stock-service cache/trading-records.json → data/user-trades/{userId}.json */
+export function importTradesFromStockService(
+  userId: string,
+  ledgerKey?: string,
+  opts?: { force?: boolean },
+): number {
+  const key = ledgerKey ?? stockServiceLedgerKey();
+  const source = loadStockServiceTrades(key).map((t) => ({ ...t, userId }));
+  if (!source.length) {
+    console.warn(
+      `[trading] No trades at ${stockServiceTradesPath()} for key ${key}`,
+    );
+    return 0;
+  }
+
+  const existing = readFileTrades(userId);
+  const shouldImport =
+    opts?.force ||
+    !existing.length ||
+    source.length > existing.length ||
+    looksLikePortfolioBootstrap(existing);
+
+  if (!shouldImport) return existing.length;
+
+  writeFileTrades(userId, source);
+  console.info(
+    `[trading] Imported ${source.length} trades from stock-service (${key}) → ${userId}`,
+  );
+  return source.length;
+}
+
+function ensureTradesFromStockService(
+  userId: string,
+  email?: string | null,
+): void {
+  const key = stockServiceLedgerKey(email);
+  importTradesFromStockService(userId, key);
+}
+
+/** Push JSON ledger → Neon (legacy UUID ids match stock-service rows). */
+export async function syncUserTradesJsonToDb(
+  userId: string,
+  opts?: { force?: boolean; retries?: number },
+): Promise<number> {
+  const trades = readFileTrades(userId);
+  if (!trades.length || !isPersistenceEnabled()) return 0;
+  if (!opts?.force && Date.now() < dbSyncBlockedUntil) return 0;
+
+  const retries = opts?.retries ?? 0;
+  let synced = 0;
+  let failed = 0;
+  let lastError = "";
+
+  for (const trade of trades) {
+    try {
+      await persistTradeNeon(userId, trade, retries);
+      synced++;
+    } catch (err) {
+      failed++;
+      lastError = (err as Error).message;
+      if (!opts?.force && failed >= 3) {
+        dbSyncBlockedUntil = Date.now() + 5 * 60_000;
+        console.warn(
+          `[trading] DB sync paused 5m after ${failed} failures — using local JSON. Last: ${lastError}`,
+        );
+        break;
+      }
+    }
+  }
+
+  if (opts?.force && failed > 0) {
+    console.warn(`[trading] ${failed}/${trades.length} failed. Last: ${lastError}`);
   }
   return synced;
 }
@@ -222,15 +399,17 @@ export async function syncAllJsonTradesToDb(): Promise<number> {
 export async function listTrades(
   userId: string,
   filters?: { year?: string; month?: string; type?: string; symbol?: string },
+  opts?: { email?: string | null },
 ): Promise<TradeRecord[]> {
   let trades: TradeRecord[] = [];
 
   if (canUseLocalDataFiles()) {
+    ensureTradesFromStockService(userId, opts?.email);
     const fileTrades = readFileTrades(userId);
-    if (fileTrades.length) {
+    trades = fileTrades;
+    if (fileTrades.length && process.env.SYNC_TRADES_ON_READ === "1") {
       await syncUserTradesJsonToDb(userId);
     }
-    trades = fileTrades;
   }
 
   if (!trades.length && isPersistenceEnabled()) {
@@ -238,7 +417,7 @@ export async function listTrades(
     if (trades.length) writeFileTrades(userId, trades);
   }
 
-  return trades.filter((t) => {
+  return trades.map((t) => ({ ...t, userId: t.userId || userId })).filter((t) => {
     if (filters?.type && t.transactionType !== filters.type.toUpperCase()) return false;
     if (filters?.symbol && t.itemName !== filters.symbol.toUpperCase()) return false;
     if (filters?.year && !t.transactionDate.startsWith(`${filters.year}-`)) return false;

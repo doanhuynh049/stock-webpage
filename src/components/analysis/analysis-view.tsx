@@ -4,6 +4,10 @@ import { useState } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardTitle } from "@/components/ui/card";
+import {
+  AnalysisDetailPanel,
+  type Selection,
+} from "@/components/analysis/analysis-detail-panel";
 import type { FundamentalAnalysisRow } from "@/lib/analysis/fundamental-analysis";
 import type {
   CombinedAnalysisRow,
@@ -11,6 +15,7 @@ import type {
   UniverseAnalysisBundle,
 } from "@/lib/analysis/combined-analysis";
 import { FUNDAMENTAL_RULES, INDEX_RULES, TECHNICAL_RULES } from "@/lib/analysis/scoring-rules";
+
 type MainTab = "portfolio" | "vn30" | "vn100" | "rules";
 type SubTab = "fundamental" | "technical" | "combined";
 
@@ -43,12 +48,45 @@ function scoreVariant(score: number) {
   return "danger" as const;
 }
 
+function SymbolCell({
+  symbol,
+  name,
+  owned,
+}: {
+  symbol: string;
+  name?: string;
+  owned?: Set<string>;
+}) {
+  const sym = symbol.toUpperCase();
+  return (
+    <>
+      <Link
+        href={`/stocks/${sym}`}
+        className="font-semibold text-accent hover:underline"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {sym}
+      </Link>
+      {owned?.has(sym) && (
+        <Badge variant="info" className="ml-1 text-[9px]">
+          owned
+        </Badge>
+      )}
+      {name && <div className="text-[10px] text-muted">{name}</div>}
+    </>
+  );
+}
+
 function FundamentalTable({
   rows,
   owned,
+  selectedSymbol,
+  onSelect,
 }: {
   rows: FundamentalAnalysisRow[];
   owned?: Set<string>;
+  selectedSymbol: string | null;
+  onSelect: (row: FundamentalAnalysisRow) => void;
 }) {
   if (!rows?.length) return <Empty />;
   return (
@@ -70,12 +108,18 @@ function FundamentalTable({
       </thead>
       <tbody>
         {rows.map((r, i) => (
-          <tr key={`${r.symbol}-${i}`} className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--card-hover)]">
+          <tr
+            key={`${r.symbol}-${i}`}
+            onClick={() => onSelect(r)}
+            className={`cursor-pointer border-b border-[var(--border)] last:border-0 hover:bg-[var(--card-hover)] ${
+              selectedSymbol === r.symbol.toUpperCase()
+                ? "bg-[var(--accent-bg)]"
+                : ""
+            }`}
+          >
             <td className="px-2 py-1.5 text-subtle">{i + 1}</td>
             <td className="px-2 py-1.5">
-              <Link href={`/stocks/${r.symbol}`} className="font-semibold text-accent">{r.symbol}</Link>
-              {owned?.has(r.symbol) && <Badge variant="info" className="ml-1 text-[9px]">owned</Badge>}
-              <div className="text-[10px] text-muted">{r.name}</div>
+              <SymbolCell symbol={r.symbol} name={r.name} owned={owned} />
             </td>
             <td className="px-2 py-1.5 text-xs text-muted">{r.sector}</td>
             <td className="px-2 py-1.5 text-center">
@@ -95,7 +139,17 @@ function FundamentalTable({
   );
 }
 
-function TechnicalTable({ rows, owned }: { rows: TechnicalAnalysisRow[]; owned?: Set<string> }) {
+function TechnicalTable({
+  rows,
+  owned,
+  selectedSymbol,
+  onSelect,
+}: {
+  rows: TechnicalAnalysisRow[];
+  owned?: Set<string>;
+  selectedSymbol: string | null;
+  onSelect: (row: TechnicalAnalysisRow) => void;
+}) {
   if (!rows?.length) return <Empty />;
   return (
     <table className="w-full min-w-[900px] text-sm">
@@ -112,11 +166,18 @@ function TechnicalTable({ rows, owned }: { rows: TechnicalAnalysisRow[]; owned?:
       </thead>
       <tbody>
         {rows.map((r, i) => (
-          <tr key={`${r.symbol}-${i}`} className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--card-hover)]">
+          <tr
+            key={`${r.symbol}-${i}`}
+            onClick={() => onSelect(r)}
+            className={`cursor-pointer border-b border-[var(--border)] last:border-0 hover:bg-[var(--card-hover)] ${
+              selectedSymbol === r.symbol.toUpperCase()
+                ? "bg-[var(--accent-bg)]"
+                : ""
+            }`}
+          >
             <td className="px-2 py-1.5 text-subtle">{i + 1}</td>
             <td className="px-2 py-1.5">
-              <Link href={`/stocks/${r.symbol}`} className="font-semibold text-accent">{r.symbol}</Link>
-              {owned?.has(r.symbol) && <Badge variant="info" className="ml-1 text-[9px]">owned</Badge>}
+              <SymbolCell symbol={r.symbol} name={r.name} owned={owned} />
             </td>
             <td className="px-2 py-1.5 text-center font-mono font-semibold">{r.technicalScore}</td>
             <td className="px-2 py-1.5 text-xs text-muted">{r.technicalRating}</td>
@@ -130,7 +191,17 @@ function TechnicalTable({ rows, owned }: { rows: TechnicalAnalysisRow[]; owned?:
   );
 }
 
-function CombinedTable({ rows, owned }: { rows: CombinedAnalysisRow[]; owned?: Set<string> }) {
+function CombinedTable({
+  rows,
+  owned,
+  selectedSymbol,
+  onSelect,
+}: {
+  rows: CombinedAnalysisRow[];
+  owned?: Set<string>;
+  selectedSymbol: string | null;
+  onSelect: (row: CombinedAnalysisRow) => void;
+}) {
   if (!rows?.length) return <Empty />;
   return (
     <table className="w-full min-w-[720px] text-sm">
@@ -146,11 +217,18 @@ function CombinedTable({ rows, owned }: { rows: CombinedAnalysisRow[]; owned?: S
       </thead>
       <tbody>
         {rows.map((r, i) => (
-          <tr key={`${r.symbol}-${i}`} className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--card-hover)]">
+          <tr
+            key={`${r.symbol}-${i}`}
+            onClick={() => onSelect(r)}
+            className={`cursor-pointer border-b border-[var(--border)] last:border-0 hover:bg-[var(--card-hover)] ${
+              selectedSymbol === r.symbol.toUpperCase()
+                ? "bg-[var(--accent-bg)]"
+                : ""
+            }`}
+          >
             <td className="px-2 py-1.5 text-subtle">{i + 1}</td>
             <td className="px-2 py-1.5">
-              <Link href={`/stocks/${r.symbol}`} className="font-semibold text-accent">{r.symbol}</Link>
-              {owned?.has(r.symbol) && <Badge variant="info" className="ml-1 text-[9px]">owned</Badge>}
+              <SymbolCell symbol={r.symbol} owned={owned} />
             </td>
             <td className="px-2 py-1.5 text-center font-mono">{r.technicalScore}</td>
             <td className="px-2 py-1.5 text-center font-mono">{r.fundamentalScore}</td>
@@ -216,6 +294,7 @@ export function AnalysisView({
 }) {
   const [mainTab, setMainTab] = useState<MainTab>("portfolio");
   const [subTab, setSubTab] = useState<SubTab>("fundamental");
+  const [selection, setSelection] = useState<Selection | null>(null);
   const owned = new Set((ownedSymbols ?? []).map((s) => s.toUpperCase()));
 
   const bundle =
@@ -226,6 +305,8 @@ export function AnalysisView({
       : mainTab === "vn30" ? INDEX_RULES.vn30
         : mainTab === "vn100" ? INDEX_RULES.vn100 : "";
 
+  const selectedSymbol = selection?.row.symbol.toUpperCase() ?? null;
+
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap gap-1 rounded-lg bg-[var(--bg-secondary)] p-1 ring-1 ring-[var(--border)]">
@@ -233,7 +314,10 @@ export function AnalysisView({
           <button
             key={t.id}
             type="button"
-            onClick={() => setMainTab(t.id)}
+            onClick={() => {
+              setMainTab(t.id);
+              setSelection(null);
+            }}
             className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
               mainTab === t.id ? "bg-accent text-white" : "text-muted hover:text-[var(--fg)]"
             }`}
@@ -249,7 +333,10 @@ export function AnalysisView({
             <button
               key={t.id}
               type="button"
-              onClick={() => setSubTab(t.id)}
+              onClick={() => {
+                setSubTab(t.id);
+                setSelection(null);
+              }}
               className={`rounded-md px-2.5 py-1 text-[11px] font-medium ring-1 ring-[var(--border)] ${
                 subTab === t.id ? "bg-[var(--accent-bg)] text-accent" : "text-muted"
               }`}
@@ -260,23 +347,47 @@ export function AnalysisView({
         </div>
       )}
 
+      {selection && (
+        <AnalysisDetailPanel
+          selection={selection}
+          onClose={() => setSelection(null)}
+        />
+      )}
+
       <Card className="!p-4">
         <CardTitle className="!mb-1 !text-base">
           {MAIN_TABS.find((t) => t.id === mainTab)?.label}
           {mainTab !== "rules" && ` — ${SUB_TABS.find((t) => t.id === subTab)?.label}`}
         </CardTitle>
         {mainTab !== "rules" && bundle && (
-          <p className="mb-3 text-xs text-muted">{description}</p>
+          <p className="mb-3 text-xs text-muted">
+            {description} · Click a row for analysis detail · Click symbol for stock page
+          </p>
         )}
         <div className="overflow-x-auto rounded-lg ring-1 ring-[var(--border)]">
           {mainTab === "rules" ? (
             <div className="p-2"><RulesPanel /></div>
           ) : subTab === "fundamental" ? (
-            <FundamentalTable rows={bundle?.fundamental ?? []} owned={owned} />
+            <FundamentalTable
+              rows={bundle?.fundamental ?? []}
+              owned={owned}
+              selectedSymbol={selectedSymbol}
+              onSelect={(row) => setSelection({ kind: "fundamental", row })}
+            />
           ) : subTab === "technical" ? (
-            <TechnicalTable rows={bundle?.technical ?? []} owned={owned} />
+            <TechnicalTable
+              rows={bundle?.technical ?? []}
+              owned={owned}
+              selectedSymbol={selectedSymbol}
+              onSelect={(row) => setSelection({ kind: "technical", row })}
+            />
           ) : (
-            <CombinedTable rows={bundle?.combined ?? []} owned={owned} />
+            <CombinedTable
+              rows={bundle?.combined ?? []}
+              owned={owned}
+              selectedSymbol={selectedSymbol}
+              onSelect={(row) => setSelection({ kind: "combined", row })}
+            />
           )}
         </div>
       </Card>

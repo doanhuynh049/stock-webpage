@@ -5,11 +5,17 @@
  */
 import { readdirSync, readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { syncUserTradesJsonToDb } from "../src/lib/db/trading-store";
+import {
+  clearTradingDbSyncCooldown,
+  syncUserTradesJsonToDb,
+} from "../src/lib/db/trading-store";
+
+import "dotenv/config";
 
 const DIR = join(process.cwd(), "data", "user-trades");
 
 async function main() {
+  clearTradingDbSyncCooldown();
   if (!existsSync(DIR)) {
     console.log("[sync-trades] No data/user-trades directory — nothing to sync.");
     return;
@@ -18,7 +24,7 @@ async function main() {
   let total = 0;
   for (const file of files) {
     const userId = file.replace(/\.json$/, "");
-    const n = await syncUserTradesJsonToDb(userId);
+    const n = await syncUserTradesJsonToDb(userId, { force: true, retries: 2 });
     total += n;
     console.log(`[sync-trades] ${userId}: ${n} trades`);
   }

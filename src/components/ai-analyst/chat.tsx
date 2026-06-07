@@ -18,7 +18,7 @@ const SUGGESTIONS = [
   "Find undervalued stocks",
 ];
 
-export function AiAnalystChat() {
+export function AiAnalystChat({ initialSymbol }: { initialSymbol?: string }) {
   const [messages, setMessages] = useState<Message[]>([
     {
       role: "assistant",
@@ -30,6 +30,7 @@ export function AiAnalystChat() {
   const [loading, setLoading] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const autoSentRef = useRef(false);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -76,6 +77,14 @@ export function AiAnalystChat() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    if (!initialSymbol || autoSentRef.current) return;
+    autoSentRef.current = true;
+    const q = `Analyze ${initialSymbol} — should I buy, hold, or sell based on the latest price, fundamentals, and technical indicators?`;
+    void sendMessage(q);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot prompt when opened from stock page
+  }, [initialSymbol]);
 
   return (
     <div className="flex h-full min-h-[500px] flex-col">

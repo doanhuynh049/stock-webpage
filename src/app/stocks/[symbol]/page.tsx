@@ -231,7 +231,7 @@ export default async function StockDetailPage({
           </CardTitle>
           <p className="text-sm leading-relaxed text-muted">{aiSummary}</p>
           <Link
-            href="/ai-analyst"
+            href={`/ai-analyst?symbol=${stock.symbol}`}
             className="link-accent mt-4 inline-block text-sm"
           >
             Ask AI Analyst →

@@ -8,8 +8,9 @@ import { getVN100Universe, getVN30Universe } from "@/lib/analysis/index-universe
 import { auth } from "@/lib/auth";
 import { getDbRecommendations } from "@/lib/db/recommendations";
 import { getPortfolioWithStocks } from "@/lib/db/advisory-portfolio";
+import { CACHE_TTL, pageCache } from "@/lib/page-cache";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 300;
 
 export default async function AnalysisPage() {
   const session = await auth();
@@ -23,7 +24,12 @@ export default async function AnalysisPage() {
     );
   }
 
-  const portfolio = await getPortfolioWithStocks(session.user.id);
+  const userId = session.user.id;
+  const portfolio = await pageCache(
+    ["analysis-portfolio", userId],
+    () => getPortfolioWithStocks(userId),
+    { revalidate: CACHE_TTL.analysis, tags: [`portfolio-${userId}`] },
+  );
   const vn30 = getVN30Universe();
   const vn100 = getVN100Universe();
 
@@ -34,16 +40,33 @@ export default async function AnalysisPage() {
   }));
 
   const [portfolioBundle, vn30Bundle, vn100Bundle, picks] = await Promise.all([
-    analyzeUniverseBundle(
-      portfolioMeta.map((h) => ({
-        symbol: h.symbol,
-        name: h.name ?? h.symbol,
-        sector: h.sector ?? "Unknown",
-      })),
+    pageCache(
+      ["analysis-bundle-portfolio", userId, String(portfolioMeta.length)],
+      () =>
+        analyzeUniverseBundle(
+          portfolioMeta.map((h) => ({
+            symbol: h.symbol,
+            name: h.name ?? h.symbol,
+            sector: h.sector ?? "Unknown",
+          })),
+        ),
+      { revalidate: CACHE_TTL.analysis, tags: [`analysis-${userId}`] },
     ),
-    analyzeUniverseBundle(vn30),
-    analyzeUniverseBundle(vn100, 30),
-    getDbRecommendations(15),
+    pageCache(
+      ["analysis-bundle-vn30"],
+      () => analyzeUniverseBundle(vn30),
+      { revalidate: CACHE_TTL.analysis, tags: ["analysis-vn30"] },
+    ),
+    pageCache(
+      ["analysis-bundle-vn100"],
+      () => analyzeUniverseBundle(vn100, 30),
+      { revalidate: CACHE_TTL.analysis, tags: ["analysis-vn100"] },
+    ),
+    pageCache(
+      ["analysis-picks"],
+      () => getDbRecommendations(15),
+      { revalidate: CACHE_TTL.analysis, tags: ["analysis-picks"] },
+    ),
   ]);
 
   return (

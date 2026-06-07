@@ -1,8 +1,5 @@
-import {
-  calculateFundamentalBreakdown,
-  type FundamentalBreakdown,
-  type FundamentalInputs,
-} from "@/lib/analysis/fundamental-scoring";
+import type { FundamentalBreakdown, FundamentalInputs } from "@/lib/analysis/fundamental-scoring";
+import { calculateSectorFundamentalBreakdown } from "@/lib/analysis/sector-fundamental-scoring";
 import type { IndexStock } from "@/lib/analysis/index-universe";
 import {
   readCachedFundamentalSnapshot,
@@ -119,8 +116,9 @@ export async function analyzeFundamentalRow(
   meta: IndexStock | { symbol: string; name?: string | null; sector?: string | null },
 ): Promise<FundamentalAnalysisRow> {
   const sym = meta.symbol.toUpperCase();
+  const sector = ("sector" in meta && meta.sector) || "Unknown";
   const { inputs, source } = await loadFundInputs(sym);
-  const breakdown = calculateFundamentalBreakdown(inputs);
+  const breakdown = calculateSectorFundamentalBreakdown(inputs, sector);
 
   let price = 0;
   const techCache = readCachedTechnicalSnapshot(sym);
@@ -133,7 +131,7 @@ export async function analyzeFundamentalRow(
   return {
     symbol: sym,
     name: ("name" in meta && meta.name) || sym,
-    sector: ("sector" in meta && meta.sector) || "Unknown",
+    sector,
     currentPrice: price,
     pe: inputs.peRatio ?? null,
     pb: inputs.pbRatio ?? null,

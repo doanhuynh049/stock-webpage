@@ -1,8 +1,15 @@
 {
+  "framework": "nextjs",
+  "buildCommand": "prisma generate && next build",
+  "installCommand": "npm install",
+  "env": {
+    "DB_DRIVER": "http",
+    "PERSISTENCE_ENABLED": "true"
+  },
   "crons": [
     {
       "path": "/api/data/sync",
-      "schedule": "0 2,7 * * 1-5"
+      "schedule": "0 7 * * 1-5"
     }
   ]
 }

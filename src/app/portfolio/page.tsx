@@ -9,9 +9,10 @@ import { DbUnavailableBanner } from "@/components/ui/db-unavailable-banner";
 import { auth } from "@/lib/auth";
 import { getPortfolioWithStocks } from "@/lib/db/advisory-portfolio";
 import { enrichHoldings } from "@/lib/portfolio/holdings-enrichment";
+import { CACHE_TTL, pageCache } from "@/lib/page-cache";
 import { formatPortfolioAmount } from "@/lib/utils";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 90;
 
 export default async function PortfolioPage() {
   const session = await auth();
@@ -25,21 +26,42 @@ export default async function PortfolioPage() {
     );
   }
 
-  const portfolio = await getPortfolioWithStocks(session.user.id);
+  const userId = session.user.id;
+  const portfolio = await pageCache(
+    ["portfolio", userId],
+    () => getPortfolioWithStocks(userId),
+    { revalidate: CACHE_TTL.portfolio, tags: [`portfolio-${userId}`] },
+  );
   const { summary } = portfolio;
-  const holdings = await enrichHoldings(portfolio.holdings);
+  const holdings = await pageCache(
+    ["portfolio-enriched", userId, String(portfolio.holdings.length)],
+    () => enrichHoldings(portfolio.holdings),
+    { revalidate: CACHE_TTL.portfolio, tags: [`portfolio-${userId}`] },
+  );
   const dbUnavailable = portfolio.dbUnavailable && !portfolio.fromCache;
   const sectorCount = Object.keys(summary.sectorAllocation).length;
 
-  const allocationData = Object.entries(summary.sectorAllocation)
-    .map(([sector, value]) => ({ name: sector, value: Math.round(value) }))
+  const hasLiveValue = holdings.some((h) => h.currentValueK != null);
+  const totalMarketValue = holdings.reduce(
+    (s, h) => s + (h.currentValueK ?? h.costBasis),
+    0,
+  );
+
+  const sectorMap = new Map<string, number>();
+  for (const h of holdings) {
+    const sector = h.sector ?? "Unknown";
+    const val = h.currentValueK ?? h.costBasis;
+    sectorMap.set(sector, (sectorMap.get(sector) ?? 0) + val);
+  }
+  const allocationData = [...sectorMap.entries()]
+    .map(([name, value]) => ({ name, value: Math.round(value) }))
     .sort((a, b) => b.value - a.value);
 
   return (
     <div className="space-y-4">
       {dbUnavailable && <DbUnavailableBanner />}
       {portfolio.fromCache && portfolio.cacheSyncedAt && (
-        <p className="rounded-md border border-cyan-500/20 bg-cyan-500/10 px-3 py-1.5 text-xs text-cyan-100/90">
+        <p className="rounded-md border border-cyan-500/30 bg-cyan-500/10 px-3 py-1.5 text-xs text-cyan-800 dark:text-cyan-100/90">
           Cached snapshot ({new Date(portfolio.cacheSyncedAt).toLocaleString()})
         </p>
       )}
@@ -81,8 +103,9 @@ export default async function PortfolioPage() {
       {holdings.length > 0 && (
         <PortfolioCharts
           allocationData={allocationData}
-          totalValue={summary.totalCostBasis}
-          valueLabel="Cost basis"
+          totalValue={hasLiveValue ? totalMarketValue : summary.totalCostBasis}
+          valueLabel={hasLiveValue ? "Market value" : "Cost basis"}
+          useMarketValue={hasLiveValue}
         />
       )}
 

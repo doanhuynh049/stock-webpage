@@ -1,6 +1,7 @@
+import { revalidatePath, revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { getStock } from "@/lib/market-service";
+import { getQuotesForSymbols } from "@/lib/market-service";
 import {
   addTrade,
   listTrades,
@@ -16,25 +17,24 @@ export async function GET(request: Request) {
 
   try {
     const { searchParams } = new URL(request.url);
-    const trades = await listTrades(session.user.id, {
-      year: searchParams.get("year") ?? undefined,
-      month: searchParams.get("month") ?? undefined,
-      type: searchParams.get("type") ?? undefined,
-      symbol: searchParams.get("symbol") ?? undefined,
-    });
+    const userId = session.user.id;
+    const trades = await listTrades(
+      userId,
+      {
+        year: searchParams.get("year") ?? undefined,
+        month: searchParams.get("month") ?? undefined,
+        type: searchParams.get("type") ?? undefined,
+        symbol: searchParams.get("symbol") ?? undefined,
+      },
+      { email: session.user.email },
+    );
 
     const symbols = [...new Set(trades.map((t) => t.itemName))];
+    const quotes = await getQuotesForSymbols(symbols);
     const currentPrices: Record<string, number> = {};
-    await Promise.all(
-      symbols.map(async (sym) => {
-        try {
-          const stock = await getStock(sym);
-          if (stock?.price) currentPrices[sym] = stock.price / 1000;
-        } catch {
-          /* skip symbol */
-        }
-      }),
-    );
+    for (const [sym, price] of Object.entries(quotes)) {
+      if (price > 0) currentPrices[sym] = price / 1000;
+    }
 
     return NextResponse.json({
       success: true,
@@ -78,7 +78,9 @@ export async function POST(request: Request) {
 
   try {
     const trade = await addTrade(session.user.id, body);
-    return NextResponse.json({ success: true, trade });
+    revalidatePath("/portfolio");
+    revalidateTag(`portfolio-${session.user.id}`);
+    return NextResponse.json({ success: true, trade, portfolioSynced: true });
   } catch (error) {
     return NextResponse.json(
       { success: false, error: (error as Error).message },

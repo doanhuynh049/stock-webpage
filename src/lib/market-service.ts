@@ -8,8 +8,14 @@ import {
   fetchIndexQuote,
   fetchStockHistory,
   fetchStockQuote,
+  type EntradeQuote,
 } from "@/lib/providers/entrade";
 import { fetchYahooHistory, fetchYahooQuote } from "@/lib/providers/yahoo";
+import {
+  readCachedFundamentalSnapshot,
+  readCachedTechnicalSnapshot,
+} from "@/lib/db/neon-cache";
+import { lookupIndexStock } from "@/lib/stock-metadata";
 import type {
   MarketSnapshot,
   NewsItem,
@@ -246,9 +252,151 @@ export async function getAllStocks(): Promise<Stock[]> {
   return seedStockList.map((s) => mergeStockWithQuote(s, quotes[s.symbol]));
 }
 
+function priceKToVnd(k: number): number {
+  return k > 0 && k < 500 ? Math.round(k * 1000) : k;
+}
+
+async function enrichStockDetails(stock: Stock): Promise<Stock> {
+  const meta = lookupIndexStock(stock.symbol);
+  let s = { ...stock };
+
+  if (meta) {
+    s.name = meta.name;
+    s.sector = meta.sector;
+    if (meta.exchange) s.exchange = meta.exchange;
+    if (!s.profile) {
+      s.profile = `${meta.name} (${meta.symbol}) operates in the ${meta.sector} sector on ${s.exchange}.`;
+    }
+  }
+
+  const fund = readCachedFundamentalSnapshot(stock.symbol);
+  const tech = readCachedTechnicalSnapshot(stock.symbol);
+
+  if (fund) {
+    if (fund.pe_ratio != null && fund.pe_ratio > 0) s.pe = fund.pe_ratio;
+    if (fund.pb_ratio != null && fund.pb_ratio > 0) s.pb = fund.pb_ratio;
+    if (fund.roe != null) s.roe = Math.round(fund.roe * 1000) / 10;
+    if (fund.revenue_growth != null) {
+      s.revenueGrowth = Math.round(fund.revenue_growth * 1000) / 10;
+    }
+  }
+
+  if (tech) {
+    if (tech.rsi != null) s.rsi = Math.round(tech.rsi * 10) / 10;
+    if (tech.volume != null) s.volume = tech.volume;
+    const px = tech.price ?? 0;
+    if (tech.support_level != null) {
+      s.low52w = priceKToVnd(
+        Math.min(tech.support_level, px || tech.support_level),
+      );
+    }
+    if (tech.resistance_level != null) {
+      s.high52w = priceKToVnd(
+        Math.max(tech.resistance_level, px || tech.resistance_level),
+      );
+      if (s.analystTarget === 0) {
+        s.analystTarget = priceKToVnd(tech.resistance_level);
+        s.analystRating = s.pe > 0 && s.pe < 20 ? "Buy" : "Hold";
+      }
+    }
+  }
+
+  if (!s.high52w || !s.low52w || s.high52w <= s.low52w) {
+    const hist = await fetchStockHistory(stock.symbol, 252);
+    if (hist.length >= 10) {
+      const closes = hist.map((h) => h.close);
+      s.high52w = Math.max(...closes);
+      s.low52w = Math.min(...closes);
+    }
+  }
+
+  return s;
+}
+
+function minimalStockFromQuote(sym: string, quote: EntradeQuote): Stock {
+  return {
+    symbol: sym,
+    name: sym,
+    sector: "Unknown",
+    exchange: "HOSE",
+    price: quote.price,
+    change: quote.change,
+    changePercent: quote.changePercent,
+    volume: quote.volume,
+    marketCap: 0,
+    pe: 0,
+    pb: 0,
+    roe: 0,
+    revenueGrowth: 0,
+    rsi: 50,
+    dividendYield: 0,
+    high52w: quote.high,
+    low52w: quote.low,
+    analystRating: "Hold",
+    analystTarget: 0,
+    profile: "",
+    financials: { years: [], revenue: [], netProfit: [], totalDebt: [] },
+  };
+}
+
+/** Batch price lookup — seed cache first, then Entrade for missing symbols (ETFs, portfolio tickers). */
+export async function getQuotesForSymbols(
+  symbols: string[],
+): Promise<Record<string, number>> {
+  const unique = [...new Set(symbols.map((s) => s.toUpperCase()).filter(Boolean))];
+  if (!unique.length) return {};
+
+  const quotes = await getQuotes();
+  const out: Record<string, number> = {};
+  const missing: string[] = [];
+
+  for (const sym of unique) {
+    const q = quotes[sym];
+    if (q?.price > 0) out[sym] = q.price;
+    else missing.push(sym);
+  }
+
+  if (missing.length) {
+    const fetched = await Promise.all(
+      missing.map(async (sym) => {
+        const quote = await fetchStockQuote(sym);
+        return quote && quote.price > 0 ? ([sym, quote.price] as const) : null;
+      }),
+    );
+    for (const row of fetched) {
+      if (row) out[row[0]] = row[1];
+    }
+  }
+
+  return out;
+}
+
 export async function getStock(symbol: string): Promise<Stock | undefined> {
-  const stocks = await getAllStocks();
-  return stocks.find((s) => s.symbol.toUpperCase() === symbol.toUpperCase());
+  const sym = symbol.toUpperCase();
+  const seed = seedStockList.find((s) => s.symbol === sym);
+  const quotes = await getQuotes();
+  const cached = quotes[sym];
+  if (seed) return enrichStockDetails(mergeStockWithQuote(seed, cached));
+
+  if (cached?.price > 0) {
+    return enrichStockDetails(
+      minimalStockFromQuote(sym, {
+        symbol: sym,
+        price: cached.price,
+        change: cached.change,
+        changePercent: cached.changePercent,
+        volume: cached.volume,
+        open: cached.price,
+        high: cached.high ?? cached.price,
+        low: cached.low ?? cached.price,
+        date: new Date().toISOString().slice(0, 10),
+      }),
+    );
+  }
+
+  const live = await fetchStockQuote(sym);
+  if (!live?.price) return undefined;
+  return enrichStockDetails(minimalStockFromQuote(sym, live));
 }
 
 export async function getTopMovers(limit = 5) {
@@ -386,6 +534,7 @@ export async function buildAiContext(question: string): Promise<string> {
   ctx += `Foreign net buy: ${market.stats.foreignNetBuy} tỷ VND\n\n`;
 
   if (mentioned.length) {
+    const { analyzeStock } = await import("@/lib/analysis/stock-analysis");
     for (const s of mentioned) {
       ctx += `--- ${s.symbol} (${s.name}) ---\n`;
       ctx += `Price: ${s.price.toLocaleString()} VND (${s.changePercent}%)\n`;
@@ -393,7 +542,17 @@ export async function buildAiContext(question: string): Promise<string> {
       ctx += `PE: ${s.pe || "N/A"} | PB: ${s.pb} | ROE: ${s.roe}% | RSI: ${s.rsi}\n`;
       ctx += `Revenue Growth: ${s.revenueGrowth}% | Div Yield: ${s.dividendYield}%\n`;
       ctx += `Analyst: ${s.analystRating} | Target: ${s.analystTarget.toLocaleString()} VND\n`;
-      ctx += `Profile: ${s.profile}\n\n`;
+      ctx += `Profile: ${s.profile}\n`;
+      try {
+        const a = await analyzeStock(s);
+        ctx += `Technical: ${a.technicalScore} (${a.technicalRating}) | Fundamental: ${a.fundamentalScore}\n`;
+        ctx += `Combined: ${a.combinedScore} — ${a.recommendation}\n`;
+        ctx += `Trend: ${a.maTrend} | Momentum: ${a.momentum}\n`;
+        ctx += `Levels: ${a.supportResistance}\n`;
+      } catch {
+        /* analysis optional */
+      }
+      ctx += "\n";
     }
   } else {
     const top = [...stocks]

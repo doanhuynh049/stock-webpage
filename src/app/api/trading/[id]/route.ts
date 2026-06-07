@@ -1,3 +1,4 @@
+import { revalidatePath, revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { removeTrade, updateTrade } from "@/lib/db/trading-store";
@@ -21,7 +22,9 @@ export async function PUT(request: Request, { params }: Params) {
 
   try {
     const trade = await updateTrade(session.user.id, id, body);
-    return NextResponse.json({ success: true, trade });
+    revalidatePath("/portfolio");
+    revalidateTag(`portfolio-${session.user.id}`);
+    return NextResponse.json({ success: true, trade, portfolioSynced: true });
   } catch (error) {
     return NextResponse.json(
       { success: false, error: (error as Error).message },
@@ -39,7 +42,9 @@ export async function DELETE(_request: Request, { params }: Params) {
   const { id } = await params;
   try {
     await removeTrade(session.user.id, id);
-    return NextResponse.json({ success: true });
+    revalidatePath("/portfolio");
+    revalidateTag(`portfolio-${session.user.id}`);
+    return NextResponse.json({ success: true, portfolioSynced: true });
   } catch (error) {
     return NextResponse.json(
       { success: false, error: (error as Error).message },

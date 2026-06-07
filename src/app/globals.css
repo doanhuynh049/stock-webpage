@@ -2,15 +2,15 @@
 
 /* ── Light theme (default) ── */
 :root {
-  --bg: #f8fafc;
-  --bg-secondary: #f1f5f9;
+  --bg: #f1f5f9;
+  --bg-secondary: #e2e8f0;
   --fg: #0f172a;
-  --fg-muted: #64748b;
-  --fg-subtle: #94a3b8;
-  --card: rgba(255, 255, 255, 0.85);
-  --card-hover: rgba(255, 255, 255, 0.95);
-  --border: rgba(15, 23, 42, 0.08);
-  --border-strong: rgba(15, 23, 42, 0.14);
+  --fg-muted: #475569;
+  --fg-subtle: #64748b;
+  --card: #ffffff;
+  --card-hover: #f8fafc;
+  --border: rgba(15, 23, 42, 0.12);
+  --border-strong: rgba(15, 23, 42, 0.2);
   --accent: #059669;
   --accent-light: #10b981;
   --accent-bg: rgba(5, 150, 105, 0.08);
@@ -20,9 +20,13 @@
   --mesh-1: rgba(5, 150, 105, 0.06);
   --mesh-2: rgba(6, 182, 212, 0.05);
   --mesh-3: rgba(99, 102, 241, 0.04);
-  --input-bg: rgba(255, 255, 255, 0.9);
-  --sidebar: rgba(255, 255, 255, 0.92);
-  --ticker-bg: rgba(255, 255, 255, 0.9);
+  --input-bg: #ffffff;
+  --sidebar: #ffffff;
+  --ticker-bg: #ffffff;
+}
+
+:root .glass-card {
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);
 }
 
 /* ── Dark theme ── */

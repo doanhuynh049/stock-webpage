@@ -6,7 +6,12 @@ import { Badge } from "@/components/ui/badge";
 import { AiAnalystChat } from "@/components/ai-analyst/chat";
 import { auth } from "@/lib/auth";
 
-export default async function AiAnalystPage() {
+export default async function AiAnalystPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ symbol?: string }>;
+}) {
+  const { symbol } = await searchParams;
   const session = await auth();
 
   if (!session?.user) {
@@ -34,7 +39,7 @@ export default async function AiAnalystPage() {
       />
 
       <Card glow className="flex min-h-0 flex-1 flex-col !p-0">
-        <AiAnalystChat />
+        <AiAnalystChat initialSymbol={symbol?.toUpperCase()} />
       </Card>
     </div>
   );

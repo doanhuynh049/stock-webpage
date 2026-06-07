@@ -12,6 +12,10 @@
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
     "sync:market": "tsx scripts/sync-market.ts",
+    "sync:trades": "tsx scripts/sync-trades-to-db.ts",
+    "seed:trades": "tsx scripts/seed-trades-from-portfolio.ts",
+    "import:trades": "tsx scripts/import-trading-json.ts",
+    "import:trades:service": "tsx scripts/import-trading-json.ts ../stock-service/cache/trading-records.json --all",
     "db:up": "docker compose up -d db",
     "db:down": "docker compose down"
   },
