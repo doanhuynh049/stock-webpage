@@ -6,7 +6,6 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { ChangeBadge } from "@/components/stock/change-badge";
 import { StockAvatar } from "@/components/ui/stock-avatar";
 import { RemoveWatchlistButton } from "@/components/watchlist/remove-watchlist-button";
-import { DbUnavailableBanner } from "@/components/ui/db-unavailable-banner";
 import { getWatchlistWithStocks } from "@/lib/user-data";
 import { getAllStocks } from "@/lib/stocks";
 
@@ -30,15 +29,8 @@ export default async function WatchlistPage() {
     (s) => !watchlist.items.some((w) => w.symbol === s.symbol),
   );
 
-  const dbUnavailable = Boolean(
-    "dbUnavailable" in watchlist
-      ? (watchlist as { dbUnavailable?: boolean }).dbUnavailable
-      : false,
-  );
-
   return (
     <div className="space-y-8">
-      {dbUnavailable && <DbUnavailableBanner />}
       <PageHeader
         title="Watchlist"
         description="Track your favorite Vietnamese stocks with session-based alerts"

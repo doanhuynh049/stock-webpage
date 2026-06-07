@@ -84,5 +84,16 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       }
       return session;
     },
+    async redirect({ url, baseUrl }) {
+      if (url.startsWith("/")) {
+        return `${baseUrl.replace(/\/$/, "")}${url}`;
+      }
+      try {
+        if (new URL(url).origin === new URL(baseUrl).origin) return url;
+      } catch {
+        /* ignore malformed url */
+      }
+      return baseUrl;
+    },
   },
 });

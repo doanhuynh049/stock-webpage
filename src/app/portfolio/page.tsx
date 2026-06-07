@@ -5,7 +5,6 @@ import { StatCard } from "@/components/ui/stat-card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { HoldingsLedger } from "@/components/portfolio/holdings-ledger";
 import { PortfolioCharts } from "@/components/portfolio/portfolio-charts";
-import { DbUnavailableBanner } from "@/components/ui/db-unavailable-banner";
 import { auth } from "@/lib/auth";
 import { getPortfolioWithStocks } from "@/lib/db/advisory-portfolio";
 import { enrichHoldings } from "@/lib/portfolio/holdings-enrichment";
@@ -38,7 +37,6 @@ export default async function PortfolioPage() {
     () => enrichHoldings(portfolio.holdings),
     { revalidate: CACHE_TTL.portfolio, tags: [`portfolio-${userId}`] },
   );
-  const dbUnavailable = portfolio.dbUnavailable && !portfolio.fromCache;
   const sectorCount = Object.keys(summary.sectorAllocation).length;
 
   const hasLiveValue = holdings.some((h) => h.currentValueK != null);
@@ -59,7 +57,6 @@ export default async function PortfolioPage() {
 
   return (
     <div className="space-y-4">
-      {dbUnavailable && <DbUnavailableBanner />}
       {portfolio.fromCache && portfolio.cacheSyncedAt && (
         <p className="rounded-md border border-cyan-500/30 bg-cyan-500/10 px-3 py-1.5 text-xs text-cyan-800 dark:text-cyan-100/90">
           Cached snapshot ({new Date(portfolio.cacheSyncedAt).toLocaleString()})
@@ -119,18 +116,11 @@ export default async function PortfolioPage() {
           )}
         </div>
 
-        {holdings.length > 0 || !dbUnavailable ? (
-          <HoldingsLedger
-            userId={session.user.id}
-            initialHoldings={holdings}
-            totalCostBasis={summary.totalCostBasis}
-          />
-        ) : (
-          <div className="rounded-lg border border-dashed border-[var(--border)] py-10 text-center">
-            <Wallet className="mx-auto h-7 w-7 text-subtle" />
-            <p className="mt-2 text-sm text-muted">Cannot load portfolio from Neon</p>
-          </div>
-        )}
+        <HoldingsLedger
+          userId={session.user.id}
+          initialHoldings={holdings}
+          totalCostBasis={summary.totalCostBasis}
+        />
       </Card>
     </div>
   );

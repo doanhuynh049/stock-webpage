@@ -1,15 +1,9 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import type { EnrichedHolding } from "@/lib/portfolio/holdings-enrichment";
 import { getVN30Universe } from "@/lib/analysis/index-universe";
-
-const MAX_PER_STOCK = 15;
-const MAX_PER_SECTOR = 35;
-const TAKE_PROFIT_PCT = 25;
-const STOP_LOSS_PCT = -10;
-const NEAR_LIMIT_BUF = 2;
-const CORE_TARGET = 60;
-const SATELLITE_TARGET = 40;
+import {
+  loadDefaultStrategyConfig,
+  type StrategyConfig,
+} from "@/lib/strategy/strategy-config";
 
 export type AllocStatus = "OK" | "NEAR_LIMIT" | "OVER";
 export type ExitTrigger = "NONE" | "STOP_LOSS" | "TAKE_PROFIT" | "TARGET_REACHED";
@@ -86,30 +80,6 @@ export type StrategyReview = {
 const vn30Set = new Set(
   getVN30Universe().map((s) => s.symbol.toUpperCase()),
 );
-
-function loadStrategyConfig() {
-  try {
-    const raw = JSON.parse(
-      readFileSync(join(process.cwd(), "data", "investment-strategy.json"), "utf-8"),
-    ) as {
-      investment_framework?: {
-        strategy_and_rules?: {
-          objectives?: { target_return?: string };
-          golden_rules?: string[];
-          rules?: {
-            risk_management?: {
-              position_sizing?: { max_per_stock?: string; max_per_sector?: string };
-            };
-          };
-          sector_targets?: Record<string, number>;
-        };
-      };
-    };
-    return raw.investment_framework?.strategy_and_rules ?? null;
-  } catch {
-    return null;
-  }
-}
 
 function isEtfSymbol(symbol: string, sector?: string | null): boolean {
   const upper = symbol.toUpperCase();
@@ -188,6 +158,7 @@ function displaySectorToTargetKey(displaySector: string): string | null {
 }
 
 function deriveActions(
+  cfg: StrategyConfig,
   allocPct: number,
   plPct: number,
   exitTrigger: ExitTrigger,
@@ -197,20 +168,20 @@ function deriveActions(
 ): PrimaryAction[] {
   if (exitTrigger === "STOP_LOSS") return ["STOP_LOSS"];
   if (exitTrigger === "TARGET_REACHED") {
-    return allocPct > MAX_PER_STOCK ? ["TARGET_REACHED", "TRIM"] : ["TARGET_REACHED"];
+    return allocPct > cfg.maxPerStock ? ["TARGET_REACHED", "TRIM"] : ["TARGET_REACHED"];
   }
   const actions: PrimaryAction[] = [];
   if (exitTrigger === "TAKE_PROFIT") actions.push("TAKE_PROFIT");
-  if (allocPct > MAX_PER_STOCK) {
+  if (allocPct > cfg.maxPerStock) {
     if (!actions.includes("TAKE_PROFIT")) actions.push("TRIM");
     return [...actions, "REBALANCE_POSITION"];
   }
-  if (sectorAllocPct > MAX_PER_SECTOR) return ["SECTOR_CAP"];
-  if (allocPct > MAX_PER_STOCK - NEAR_LIMIT_BUF) return ["MONITOR_POSITION"];
+  if (sectorAllocPct > cfg.maxPerSector) return ["SECTOR_CAP"];
+  if (allocPct > cfg.maxPerStock - cfg.nearLimitBuf) return ["MONITOR_POSITION"];
   if (
     bucket === "Core" &&
-    allocPct < MAX_PER_STOCK * 0.5 &&
-    plPct > STOP_LOSS_PCT &&
+    allocPct < cfg.maxPerStock * 0.5 &&
+    plPct > cfg.stopLossPct &&
     !isEtfSymbol(h.symbol, h.sector)
   ) {
     const t3 = h.target3Month ?? 0;
@@ -222,6 +193,7 @@ function deriveActions(
 }
 
 function actionReason(
+  cfg: StrategyConfig,
   action: PrimaryAction,
   allocPct: number,
   plPct: number,
@@ -231,9 +203,9 @@ function actionReason(
     case "BUY_MORE":
       return `Core under-weight (${allocPct.toFixed(1)}%)`;
     case "SECTOR_CAP":
-      return `Sector ${sectorAllocPct.toFixed(1)}% > ${MAX_PER_SECTOR}% cap`;
+      return `Sector ${sectorAllocPct.toFixed(1)}% > ${cfg.maxPerSector}% cap`;
     case "TRIM":
-      return `Alloc ${allocPct.toFixed(1)}% > ${MAX_PER_STOCK}% max`;
+      return `Alloc ${allocPct.toFixed(1)}% > ${cfg.maxPerStock}% max`;
     case "MONITOR_POSITION":
       return "Near allocation limit";
     case "STOP_LOSS":
@@ -247,9 +219,12 @@ function actionReason(
   }
 }
 
-export function getStrategyReview(holdings: EnrichedHolding[]): StrategyReview {
-  const rules = loadStrategyConfig();
-  const sectorTargets = rules?.sector_targets ?? {};
+export function getStrategyReview(
+  holdings: EnrichedHolding[],
+  config?: StrategyConfig,
+): StrategyReview {
+  const cfg = config ?? loadDefaultStrategyConfig();
+  const sectorTargets = cfg.sectorTargets;
 
   const totalCost = holdings.reduce((s, h) => s + h.costBasis, 0);
   const totalValue = holdings.reduce(
@@ -276,8 +251,8 @@ export function getStrategyReview(holdings: EnrichedHolding[]): StrategyReview {
     const allocPct = totalCost > 0 ? (h.costBasis / totalCost) * 100 : 0;
 
     let allocStatus: AllocStatus = "OK";
-    if (allocPct > MAX_PER_STOCK) allocStatus = "OVER";
-    else if (allocPct > MAX_PER_STOCK - NEAR_LIMIT_BUF) allocStatus = "NEAR_LIMIT";
+    if (allocPct > cfg.maxPerStock) allocStatus = "OVER";
+    else if (allocPct > cfg.maxPerStock - cfg.nearLimitBuf) allocStatus = "NEAR_LIMIT";
 
     const bucket = classifyBucket(h.sector, h.symbol);
     const bucketCategory = describeBucketCategory(h.sector, h.symbol);
@@ -291,14 +266,14 @@ export function getStrategyReview(holdings: EnrichedHolding[]): StrategyReview {
       t3Pct > 0.01 ? Math.min(100, Math.max(0, (plPct / t3Pct) * 100)) : 0;
 
     let exitTrigger: ExitTrigger = "NONE";
-    if (plPct <= STOP_LOSS_PCT) exitTrigger = "STOP_LOSS";
-    else if (plPct >= TAKE_PROFIT_PCT) exitTrigger = "TAKE_PROFIT";
+    if (plPct <= cfg.stopLossPct) exitTrigger = "STOP_LOSS";
+    else if (plPct >= cfg.takeProfitPct) exitTrigger = "TAKE_PROFIT";
     if (currentPrice != null && target3 > 0 && currentPrice >= target3) {
       exitTrigger = "TARGET_REACHED";
     }
 
     const sectorAllocPct = sectorAllocMap.get(displaySector(h)) ?? 0;
-    const actions = deriveActions(allocPct, plPct, exitTrigger, bucket, sectorAllocPct, h);
+    const actions = deriveActions(cfg, allocPct, plPct, exitTrigger, bucket, sectorAllocPct, h);
     const primaryAction = actions[0];
 
     return {
@@ -319,7 +294,7 @@ export function getStrategyReview(holdings: EnrichedHolding[]): StrategyReview {
       progress3M,
       exitTrigger,
       primaryAction,
-      actionReason: actionReason(primaryAction, allocPct, plPct, sectorAllocPct),
+      actionReason: actionReason(cfg, primaryAction, allocPct, plPct, sectorAllocPct),
     };
   });
 
@@ -333,8 +308,8 @@ export function getStrategyReview(holdings: EnrichedHolding[]): StrategyReview {
     .map(([sector, cost]) => {
       const pct = totalCost > 0 ? (cost / totalCost) * 100 : 0;
       let status: AllocStatus = "OK";
-      if (pct > MAX_PER_SECTOR) status = "OVER";
-      else if (pct > MAX_PER_SECTOR - NEAR_LIMIT_BUF) status = "NEAR_LIMIT";
+      if (pct > cfg.maxPerSector) status = "OVER";
+      else if (pct > cfg.maxPerSector - cfg.nearLimitBuf) status = "NEAR_LIMIT";
 
       const targetKey = displaySectorToTargetKey(sector);
       const target =
@@ -345,7 +320,7 @@ export function getStrategyReview(holdings: EnrichedHolding[]): StrategyReview {
       let targetStatus: SectorRow["targetStatus"] = "NO_TARGET";
       if (target != null) {
         drift = pct - target;
-        if (Math.abs(drift) <= NEAR_LIMIT_BUF) targetStatus = "IN_BAND";
+        if (Math.abs(drift) <= cfg.nearLimitBuf) targetStatus = "IN_BAND";
         else if (drift > 0) targetStatus = "OVER_TARGET";
         else targetStatus = "UNDER_TARGET";
       }
@@ -381,19 +356,19 @@ export function getStrategyReview(holdings: EnrichedHolding[]): StrategyReview {
     totalValue,
     totalPL,
     totalPLPct,
-    maxPerStock: MAX_PER_STOCK,
-    maxPerSector: MAX_PER_SECTOR,
-    takeProfitThreshold: TAKE_PROFIT_PCT,
-    stopLossThreshold: STOP_LOSS_PCT,
+    maxPerStock: cfg.maxPerStock,
+    maxPerSector: cfg.maxPerSector,
+    takeProfitThreshold: cfg.takeProfitPct,
+    stopLossThreshold: cfg.stopLossPct,
     holdingMappings,
     sectorRows,
     coreVsSatellite: {
       coreActual,
-      coreTarget: CORE_TARGET,
+      coreTarget: cfg.coreTarget,
       satelliteActual,
-      satelliteTarget: SATELLITE_TARGET,
-      coreDrift: coreActual - CORE_TARGET,
-      satelliteDrift: satelliteActual - SATELLITE_TARGET,
+      satelliteTarget: cfg.satelliteTarget,
+      coreDrift: coreActual - cfg.coreTarget,
+      satelliteDrift: satelliteActual - cfg.satelliteTarget,
     },
     trimCandidates,
     stopLossCandidates,
@@ -401,7 +376,7 @@ export function getStrategyReview(holdings: EnrichedHolding[]): StrategyReview {
     sectorViolations,
     urgentActionCount,
     overallCompliant: urgentActionCount === 0,
-    targetReturn: rules?.objectives?.target_return ?? "15–25% over 1–3 years",
-    goldenRules: rules?.golden_rules ?? [],
+    targetReturn: cfg.targetReturn,
+    goldenRules: cfg.goldenRules,
   };
 }

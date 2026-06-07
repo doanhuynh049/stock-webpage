@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { analyzeQuestion } from "@/lib/ai-analyst";
 import { auth } from "@/lib/auth";
-import { saveAiMessage } from "@/lib/actions";
+import { appendAiChatMessages } from "@/lib/db/ai-chat-store";
 import { buildAiContext } from "@/lib/market-service";
 import { callLlm } from "@/lib/providers/llm";
 
@@ -36,20 +36,16 @@ export async function POST(request: Request) {
     model = "rule-based";
   }
 
-  try {
-    const result = await saveAiMessage(sessionId ?? null, question, answer);
-    return NextResponse.json({
-      answer,
-      sessionId: result.sessionId,
-      provider,
-      model,
-    });
-  } catch {
-    return NextResponse.json({
-      answer,
-      sessionId: sessionId ?? null,
-      provider,
-      model,
-    });
-  }
+  const result = await appendAiChatMessages(
+    session.user.id,
+    sessionId ?? null,
+    question,
+    answer,
+  );
+  return NextResponse.json({
+    answer,
+    sessionId: result.sessionId,
+    provider,
+    model,
+  });
 }

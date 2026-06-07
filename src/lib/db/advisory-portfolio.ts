@@ -151,13 +151,13 @@ export async function getPortfolioWithStocks(userId: string): Promise<{
   if (shouldSkipDbReads()) {
     const cached = fromCacheRows(userId);
     if (cached) return cached;
-    return { holdings: [], summary: emptySummary, dbUnavailable: true };
+    return { holdings: [], summary: emptySummary };
   }
 
   if (!isPersistenceEnabled()) {
     const cached = fromCacheRows(userId);
     if (cached) return cached;
-    return { holdings: [], summary: emptySummary, dbUnavailable: true };
+    return { holdings: [], summary: emptySummary };
   }
 
   try {
@@ -200,6 +200,6 @@ export async function getPortfolioWithStocks(userId: string): Promise<{
       "[getPortfolioWithStocks] DB unavailable:",
       (error as Error).message,
     );
-    return { holdings: [], summary: emptySummary, dbUnavailable: true };
+    return { holdings: [], summary: emptySummary };
   }
 }

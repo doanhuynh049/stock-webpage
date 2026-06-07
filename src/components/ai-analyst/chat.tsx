@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-import { Send, Bot, User, Sparkles } from "lucide-react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { Send, Bot, User, Sparkles, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { MarkdownLite } from "@/components/ui/markdown-lite";
@@ -19,29 +19,89 @@ const SUGGESTIONS = [
   "Find undervalued stocks",
 ];
 
+const WELCOME: Message = {
+  role: "assistant",
+  content:
+    "## Xin chào!\n\nI'm your **Vietnam Stock AI Analyst**. Ask about any ticker, compare stocks, or get market insights.\n\nData refreshes at **morning** and **afternoon** sessions.",
+};
+
+const STORAGE_KEY = "vnstocks-ai-chat";
+
 export function AiAnalystChat({ initialSymbol }: { initialSymbol?: string }) {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      role: "assistant",
-      content:
-        "## Xin chào!\n\nI'm your **Vietnam Stock AI Analyst**. Ask about any ticker, compare stocks, or get market insights.\n\nData refreshes at **morning** and **afternoon** sessions.",
-    },
-  ]);
+  const [messages, setMessages] = useState<Message[]>([WELCOME]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [hydrated, setHydrated] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const autoSentRef = useRef(false);
+
+  const persistLocal = useCallback(
+    (sid: string | null, msgs: Message[]) => {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ sessionId: sid, messages: msgs }));
+      } catch {
+        /* ignore quota */
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
+  useEffect(() => {
+    let cancelled = false;
+
+    async function hydrate() {
+      try {
+        const res = await fetch("/api/ai/session");
+        if (res.ok) {
+          const data = (await res.json()) as {
+            sessionId: string;
+            messages: Message[];
+          };
+          if (!cancelled && data.messages?.length) {
+            setSessionId(data.sessionId);
+            setMessages(data.messages);
+            persistLocal(data.sessionId, data.messages);
+            setHydrated(true);
+            return;
+          }
+        }
+      } catch {
+        /* fall through to localStorage */
+      }
+
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const data = JSON.parse(raw) as { sessionId: string; messages: Message[] };
+          if (!cancelled && data.messages?.length) {
+            setSessionId(data.sessionId ?? null);
+            setMessages(data.messages);
+          }
+        }
+      } catch {
+        /* ignore */
+      }
+
+      if (!cancelled) setHydrated(true);
+    }
+
+    void hydrate();
+    return () => {
+      cancelled = true;
+    };
+  }, [persistLocal]);
+
   async function sendMessage(question: string) {
     if (!question.trim() || loading) return;
 
     setInput("");
-    setMessages((prev) => [...prev, { role: "user", content: question }]);
+    const nextMessages = [...messages, { role: "user" as const, content: question }];
+    setMessages(nextMessages);
     setLoading(true);
 
     try {
@@ -52,23 +112,27 @@ export function AiAnalystChat({ initialSymbol }: { initialSymbol?: string }) {
       });
 
       if (res.status === 401) {
-        setMessages((prev) => [
-          ...prev,
-          { role: "assistant", content: "Please sign in to use the AI Analyst." },
-        ]);
+        const errMsgs = [
+          ...nextMessages,
+          { role: "assistant" as const, content: "Please sign in to use the AI Analyst." },
+        ];
+        setMessages(errMsgs);
         return;
       }
 
       const data = await res.json();
-      if (data.sessionId) setSessionId(data.sessionId);
+      const sid = data.sessionId ?? sessionId;
+      if (sid) setSessionId(sid);
       const providerNote =
         data.provider && data.provider !== "fallback"
           ? `\n\n*— ${data.provider}/${data.model}*`
           : "";
-      setMessages((prev) => [
-        ...prev,
-        { role: "assistant", content: data.answer + providerNote },
-      ]);
+      const finalMsgs = [
+        ...nextMessages,
+        { role: "assistant" as const, content: data.answer + providerNote },
+      ];
+      setMessages(finalMsgs);
+      persistLocal(sid ?? null, finalMsgs);
     } catch {
       setMessages((prev) => [
         ...prev,
@@ -79,17 +143,37 @@ export function AiAnalystChat({ initialSymbol }: { initialSymbol?: string }) {
     }
   }
 
+  async function clearChat() {
+    if (loading) return;
+    try {
+      const res = await fetch("/api/ai/session", { method: "DELETE" });
+      const data = res.ok
+        ? ((await res.json()) as { sessionId: string; messages: Message[] })
+        : null;
+      const sid = data?.sessionId ?? null;
+      const msgs = data?.messages?.length ? data.messages : [WELCOME];
+      setSessionId(sid);
+      setMessages(msgs);
+      persistLocal(sid, msgs);
+      autoSentRef.current = false;
+    } catch {
+      setSessionId(null);
+      setMessages([WELCOME]);
+      localStorage.removeItem(STORAGE_KEY);
+    }
+  }
+
   useEffect(() => {
-    if (!initialSymbol || autoSentRef.current) return;
+    if (!hydrated || !initialSymbol || autoSentRef.current) return;
     autoSentRef.current = true;
     const q = `Analyze ${initialSymbol} — should I buy, hold, or sell based on the latest price, fundamentals, and technical indicators?`;
     void sendMessage(q);
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot prompt when opened from stock page
-  }, [initialSymbol]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- one-shot after session hydrate
+  }, [hydrated, initialSymbol]);
 
   return (
     <div className="flex h-full min-h-[500px] flex-col">
-      <div className="border-b border-[var(--border)] px-6 py-4">
+      <div className="flex items-center justify-between border-b border-[var(--border)] px-6 py-4">
         <div className="flex items-center gap-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[var(--accent)]">
             <Sparkles className="h-4 w-4 text-white" />
@@ -99,6 +183,16 @@ export function AiAnalystChat({ initialSymbol }: { initialSymbol?: string }) {
             <p className="text-[10px] text-subtle">Powered by market data · Updated 2× daily</p>
           </div>
         </div>
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={clearChat}
+          disabled={loading}
+          className="text-xs text-muted"
+        >
+          <Trash2 className="mr-1 h-3.5 w-3.5" />
+          Clear chat
+        </Button>
       </div>
 
       <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
