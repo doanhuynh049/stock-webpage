@@ -3,7 +3,9 @@ import { PrismaNeonHttp } from "@prisma/adapter-neon";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool as PgPool } from "pg";
 import { PrismaClient } from "@/generated/prisma/client";
+import { isDbCacheFirst } from "@/lib/db/cache-first";
 import {
+  isNeonDatabase,
   normalizeDatabaseUrl,
   resolveRuntimeDatabaseUrl,
 } from "@/lib/database-url";
@@ -23,8 +25,11 @@ function getConnectionString(): string {
 }
 
 function getDriver(): DbDriver {
+  if (process.env.VERCEL === "1") return "http";
   const raw = (process.env.DB_DRIVER ?? "auto").toLowerCase();
   if (raw === "http" || raw === "pg") return raw;
+  // probe-db: Neon HTTP works when node-postgres TCP ETIMEDOUT
+  if (isDbCacheFirst()) return "http";
   return "auto";
 }
 
@@ -54,8 +59,11 @@ function getPgPool(): PgPool {
 function createPrismaClient(): PrismaClient {
   const connectionString = getConnectionString();
   const driver = getDriver();
-  // auto = TCP/pg (Next.js Node server). Use DB_DRIVER=http only for edge/serverless.
-  const useHttp = driver === "http";
+  const useHttp =
+    driver === "http" ||
+    (driver === "auto" &&
+      isNeonDatabase(connectionString) &&
+      isDbCacheFirst());
 
   const adapter = useHttp
     ? new PrismaNeonHttp(connectionString, {})

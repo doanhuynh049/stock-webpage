@@ -32,9 +32,19 @@ export function formatCurrency(value: number): string {
   return `${formatNumber(value, 0)} ₫`;
 }
 
-/** Vietnam portfolio prices in stock-service are stored in thousands VND (K). */
+/** Portfolio DB values are in thousands VND — display without a K suffix (stock-service style). */
+export function formatPortfolioAmount(value: number, decimals = 2): string {
+  return formatNumber(value, decimals);
+}
+
+/** @deprecated Use formatPortfolioAmount — kept for gradual migration */
 export function formatPriceK(value: number, decimals = 2): string {
-  return `${formatNumber(value, decimals)} K`;
+  return formatPortfolioAmount(value, decimals);
+}
+
+export function formatPortfolioPercent(value: number, decimals = 1): string {
+  const sign = value > 0 ? "+" : "";
+  return `${sign}${value.toFixed(decimals)}%`;
 }
 
 export function changeColor(value: number): string {

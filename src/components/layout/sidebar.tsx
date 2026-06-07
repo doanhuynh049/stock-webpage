@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  ArrowLeftRight,
+  BarChart3,
   Bot,
   Filter,
   LayoutDashboard,
@@ -18,6 +20,8 @@ const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, desc: "Market overview" },
   { href: "/screener", label: "Screener", icon: Filter, desc: "Find stocks" },
   { href: "/portfolio", label: "Portfolio", icon: Wallet, desc: "Your holdings" },
+  { href: "/trading", label: "Trading", icon: ArrowLeftRight, desc: "BUY/SELL ledger" },
+  { href: "/analysis", label: "Analysis", icon: BarChart3, desc: "Scores & picks" },
   { href: "/watchlist", label: "Watchlist", icon: Star, desc: "Favorites" },
   { href: "/ai-analyst", label: "AI Analyst", icon: Bot, desc: "Ask anything" },
 ];

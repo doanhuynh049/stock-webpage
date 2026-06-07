@@ -3,12 +3,13 @@ import { Card, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
 import { EmptyState } from "@/components/ui/empty-state";
-import { HoldingsList } from "@/components/portfolio/holdings-list";
+import { HoldingsLedger } from "@/components/portfolio/holdings-ledger";
 import { PortfolioCharts } from "@/components/portfolio/portfolio-charts";
 import { DbUnavailableBanner } from "@/components/ui/db-unavailable-banner";
 import { auth } from "@/lib/auth";
 import { getPortfolioWithStocks } from "@/lib/db/advisory-portfolio";
-import { formatPriceK } from "@/lib/utils";
+import { enrichHoldings } from "@/lib/portfolio/holdings-enrichment";
+import { formatPortfolioAmount } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -25,7 +26,8 @@ export default async function PortfolioPage() {
   }
 
   const portfolio = await getPortfolioWithStocks(session.user.id);
-  const { holdings, summary } = portfolio;
+  const { summary } = portfolio;
+  const holdings = await enrichHoldings(portfolio.holdings);
   const dbUnavailable = portfolio.dbUnavailable && !portfolio.fromCache;
   const sectorCount = Object.keys(summary.sectorAllocation).length;
 
@@ -44,7 +46,7 @@ export default async function PortfolioPage() {
 
       <PageHeader
         title="Portfolio"
-        description="Holding ledger from Neon — prices in thousands VND (K), same as stock-service"
+        description="Holdings ledger — edit inline, auto-saves to Neon. Or add trades on Trading page."
         badge={
           <span className="rounded-md bg-[var(--bg-secondary)] px-2.5 py-1 text-xs font-medium text-muted ring-1 ring-[var(--border)]">
             {summary.positionCount} positions
@@ -55,8 +57,8 @@ export default async function PortfolioPage() {
       <div className="grid gap-3 sm:grid-cols-3">
         <StatCard
           label="Cost Basis"
-          value={formatPriceK(summary.totalCostBasis, 0)}
-          subValue="Total portfolio cost (K)"
+          value={formatPortfolioAmount(summary.totalCostBasis, 0)}
+          subValue="Total cost basis"
           icon={Wallet}
           accent="emerald"
         />
@@ -80,36 +82,30 @@ export default async function PortfolioPage() {
         <PortfolioCharts
           allocationData={allocationData}
           totalValue={summary.totalCostBasis}
-          valueLabel="Cost (K)"
+          valueLabel="Cost basis"
         />
       )}
 
       <Card className="!p-4">
         <div className="mb-3 flex items-center justify-between gap-2">
-          <CardTitle className="!text-base">Holdings</CardTitle>
+          <CardTitle className="!text-base">Holdings ledger</CardTitle>
           {holdings.length > 0 && (
             <span className="font-mono text-xs text-subtle">
-              {formatPriceK(summary.totalCostBasis, 0)} total
+              {formatPortfolioAmount(summary.totalCostBasis, 0)} total
             </span>
           )}
         </div>
 
-        {holdings.length > 0 ? (
-          <HoldingsList
-            holdings={holdings}
+        {holdings.length > 0 || !dbUnavailable ? (
+          <HoldingsLedger
+            userId={session.user.id}
+            initialHoldings={holdings}
             totalCostBasis={summary.totalCostBasis}
           />
         ) : (
           <div className="rounded-lg border border-dashed border-[var(--border)] py-10 text-center">
             <Wallet className="mx-auto h-7 w-7 text-subtle" />
-            <p className="mt-2 text-sm text-muted">
-              {dbUnavailable
-                ? "Cannot load portfolio from Neon"
-                : "No positions yet"}
-            </p>
-            <p className="mt-1 text-xs text-subtle">
-              Edit in stock-service Portfolio Manager → localStorage → Neon sync
-            </p>
+            <p className="mt-2 text-sm text-muted">Cannot load portfolio from Neon</p>
           </div>
         )}
       </Card>

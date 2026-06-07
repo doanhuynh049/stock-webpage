@@ -1,13 +1,37 @@
+import { shouldSkipDbReads } from "@/lib/db/cache-first";
+import { readCachedPriceDaily } from "@/lib/db/neon-cache";
+import { isPersistenceEnabled } from "@/lib/persistence";
 import { prisma } from "@/lib/prisma";
 import { withDbRetry } from "@/lib/prisma-query";
-import { isPersistenceEnabled } from "@/lib/persistence";
 import type { PricePoint } from "@/types/stock";
+
+function fromCacheRows(
+  symbol: string,
+  days: number,
+): PricePoint[] | null {
+  const rows = readCachedPriceDaily(symbol, days);
+  if (!rows || rows.length < 2) return null;
+  return rows.map((r) => ({
+    date: r.trade_date,
+    open: r.open_px ?? r.close_px ?? 0,
+    high: r.high_px ?? r.close_px ?? 0,
+    low: r.low_px ?? r.close_px ?? 0,
+    close: r.close_px ?? 0,
+    volume: Number(r.volume ?? 0),
+  }));
+}
 
 export async function getDbPriceHistory(
   symbol: string,
   days = 90,
 ): Promise<PricePoint[]> {
-  if (!isPersistenceEnabled()) return [];
+  if (shouldSkipDbReads()) {
+    return fromCacheRows(symbol, days) ?? [];
+  }
+
+  if (!isPersistenceEnabled()) {
+    return fromCacheRows(symbol, days) ?? [];
+  }
 
   try {
     const sym = symbol.toUpperCase();
@@ -24,10 +48,12 @@ export async function getDbPriceHistory(
           orderBy: { tradeDate: "asc" },
         }),
       "price-daily",
-      1,
+      0,
     );
 
-    if (rows.length < 2) return [];
+    if (rows.length < 2) {
+      return fromCacheRows(symbol, days) ?? [];
+    }
 
     return rows.map((r) => ({
       date: r.tradeDate.toISOString().slice(0, 10),
@@ -37,8 +63,7 @@ export async function getDbPriceHistory(
       close: r.closePx ?? 0,
       volume: Number(r.volume ?? 0),
     }));
-  } catch (error) {
-    console.error("[getDbPriceHistory]", error);
-    return [];
+  } catch {
+    return fromCacheRows(symbol, days) ?? [];
   }
 }

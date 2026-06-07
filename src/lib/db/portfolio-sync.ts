@@ -23,7 +23,7 @@ export async function listPortfolioHoldings(userId: string) {
         orderBy: { symbol: "asc" },
       }),
     "portfolio-list",
-    1,
+    0,
   );
 }
 
@@ -87,7 +87,7 @@ export async function syncPortfolioHoldings(
       });
     },
     "portfolio-sync",
-    1,
+    0,
   );
 
   return symbols.length;

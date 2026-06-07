@@ -1,10 +1,21 @@
-import { isDbCacheFirst } from "@/lib/db/cache-first";
+import { shouldSkipDbReads } from "@/lib/db/cache-first";
 import { readCachedRecommendations } from "@/lib/db/neon-cache";
 import { prisma } from "@/lib/prisma";
 import { withDbRetry } from "@/lib/prisma-query";
 import { isPersistenceEnabled } from "@/lib/persistence";
 import { getStock } from "@/lib/market-service";
 import type { StockPick, PickHorizon } from "@/lib/stock-picks";
+import type { Stock } from "@/types/stock";
+
+function dedupePicks(picks: StockPick[]): StockPick[] {
+  const bySymbol = new Map<string, StockPick>();
+  for (const pick of picks) {
+    const sym = pick.stock.symbol.toUpperCase();
+    const prev = bySymbol.get(sym);
+    if (!prev || pick.score > prev.score) bySymbol.set(sym, pick);
+  }
+  return Array.from(bySymbol.values());
+}
 
 function mapRecommendation(rec: string): PickHorizon {
   const upper = rec.toUpperCase();
@@ -12,13 +23,42 @@ function mapRecommendation(rec: string): PickHorizon {
   return "medium";
 }
 
+function minimalStock(row: {
+  symbol: string;
+  name: string | null;
+  price_at_recommendation: number;
+}): Stock {
+  return {
+    symbol: row.symbol,
+    name: row.name ?? row.symbol,
+    exchange: "HOSE",
+    sector: "Unknown",
+    price: row.price_at_recommendation,
+    change: 0,
+    changePercent: 0,
+    volume: 0,
+    marketCap: 0,
+    pe: 0,
+    pb: 0,
+    roe: 0,
+    dividendYield: 0,
+    revenueGrowth: 0,
+    rsi: 50,
+    high52w: row.price_at_recommendation,
+    low52w: row.price_at_recommendation,
+    analystRating: "Hold",
+    analystTarget: row.price_at_recommendation,
+    profile: "",
+    financials: { years: [], revenue: [], netProfit: [], totalDebt: [] },
+  };
+}
+
 async function picksFromCache(limit: number): Promise<StockPick[] | null> {
   const cached = readCachedRecommendations();
   if (!cached?.length) return null;
   const picks: StockPick[] = [];
   for (const row of cached.slice(0, limit)) {
-    const stock = await getStock(row.symbol);
-    if (!stock) continue;
+    const stock = (await getStock(row.symbol)) ?? minimalStock(row);
     const upsidePercent =
       row.price_at_recommendation > 0
         ? ((stock.price - row.price_at_recommendation) /
@@ -37,7 +77,7 @@ async function picksFromCache(limit: number): Promise<StockPick[] | null> {
       upsidePercent,
     });
   }
-  return picks.length ? picks : null;
+  return picks.length ? dedupePicks(picks) : null;
 }
 
 export async function getDbRecommendations(
@@ -45,9 +85,8 @@ export async function getDbRecommendations(
 ): Promise<StockPick[] | null> {
   if (!isPersistenceEnabled()) return null;
 
-  if (isDbCacheFirst()) {
-    const cached = await picksFromCache(limit);
-    if (cached) return cached;
+  if (shouldSkipDbReads()) {
+    return picksFromCache(limit);
   }
 
   try {
@@ -60,7 +99,7 @@ export async function getDbRecommendations(
       "recommendation-latest",
       0,
     );
-    if (!latest) return null;
+    if (!latest) return picksFromCache(limit);
 
     const rows = await withDbRetry(
       () =>
@@ -73,7 +112,7 @@ export async function getDbRecommendations(
       0,
     );
 
-    if (!rows.length) return null;
+    if (!rows.length) return picksFromCache(limit);
 
     const picks: StockPick[] = [];
     for (const row of rows) {
@@ -101,14 +140,8 @@ export async function getDbRecommendations(
       });
     }
 
-    return picks.length ? picks : null;
-  } catch (error) {
-    const cached = await picksFromCache(limit);
-    if (cached) {
-      console.info("[getDbRecommendations] Using JSON cache");
-      return cached;
-    }
-    console.warn("[getDbRecommendations]", (error as Error).message);
-    return null;
+    return picks.length ? dedupePicks(picks) : picksFromCache(limit);
+  } catch {
+    return picksFromCache(limit);
   }
 }

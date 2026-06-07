@@ -1,0 +1,91 @@
+{
+  "vn100_stocks": [
+    {"symbol": "VCB", "name": "Vietcombank", "sector": "Banking"},
+    {"symbol": "BID", "name": "BIDV", "sector": "Banking"},
+    {"symbol": "CTG", "name": "VietinBank", "sector": "Banking"},
+    {"symbol": "MBB", "name": "Military Bank", "sector": "Banking"},
+    {"symbol": "TCB", "name": "Techcombank", "sector": "Banking"},
+    {"symbol": "VPB", "name": "VP Bank", "sector": "Banking"},
+    {"symbol": "ACB", "name": "Asia Commercial Bank", "sector": "Banking"},
+    {"symbol": "HDB", "name": "HDBank", "sector": "Banking"},
+    {"symbol": "STB", "name": "Sacombank", "sector": "Banking"},
+    {"symbol": "VIB", "name": "Vietnam International Bank", "sector": "Banking"},
+    {"symbol": "TPB", "name": "TPBank", "sector": "Banking"},
+    {"symbol": "LPB", "name": "LienViet Post Bank", "sector": "Banking"},
+    {"symbol": "SHB", "name": "Saigon – Hanoi Bank", "sector": "Banking"},
+    {"symbol": "SSB", "name": "SeABank", "sector": "Banking"},
+
+    {"symbol": "SSI", "name": "SSI Securities", "sector": "Securities"},
+    {"symbol": "VCI", "name": "Vietcap Securities", "sector": "Securities"},
+    {"symbol": "VND", "name": "VNDirect Securities", "sector": "Securities"},
+    {"symbol": "HCM", "name": "Ho Chi Minh City Securities", "sector": "Securities"},
+
+    {"symbol": "VIC", "name": "Vingroup", "sector": "Conglomerate"},
+    {"symbol": "VHM", "name": "Vinhomes", "sector": "Real Estate"},
+    {"symbol": "VRE", "name": "Vincom Retail", "sector": "Retail"},
+    {"symbol": "BCM", "name": "Becamex IDC", "sector": "Industrial Parks"},
+    {"symbol": "KDH", "name": "Khang Dien House", "sector": "Real Estate"},
+    {"symbol": "NLG", "name": "Nam Long Group", "sector": "Real Estate"},
+    {"symbol": "DXG", "name": "Dat Xanh Group", "sector": "Real Estate"},
+    {"symbol": "DIG", "name": "DIC Corp", "sector": "Real Estate"},
+    {"symbol": "SZC", "name": "Sonadezi Chau Duc", "sector": "Industrial Parks"},
+    {"symbol": "KBC", "name": "Kinh Bac City", "sector": "Industrial Parks"},
+    {"symbol": "IJC", "name": "Becamex IJC", "sector": "Real Estate"},
+
+    {"symbol": "FPT", "name": "FPT Corporation", "sector": "Technology"},
+    {"symbol": "CMG", "name": "CMC Corporation", "sector": "Technology"},
+    {"symbol": "CTR", "name": "Viettel Construction", "sector": "Construction"},
+
+    {"symbol": "GAS", "name": "PetroVietnam Gas", "sector": "Energy"},
+    {"symbol": "POW", "name": "PetroVietnam Power", "sector": "Energy"},
+    {"symbol": "PVD", "name": "PetroVietnam Drilling", "sector": "Energy"},
+    {"symbol": "PVS", "name": "PetroVietnam Technical Services", "sector": "Energy"},
+    {"symbol": "PLX", "name": "Petrolimex", "sector": "Energy"},
+    {"symbol": "REE", "name": "Refrigeration Electrical Engineering", "sector": "Utilities"},
+    {"symbol": "PC1", "name": "Power Construction No.1", "sector": "Energy Construction"},
+    {"symbol": "VSH", "name": "Vinh Son – Song Hinh Hydropower", "sector": "Energy"},
+    {"symbol": "PPC", "name": "Pha Lai Thermal Power", "sector": "Energy"},
+
+    {"symbol": "HPG", "name": "Hoa Phat Group", "sector": "Steel"},
+    {"symbol": "HSG", "name": "Hoa Sen Group", "sector": "Steel"},
+    {"symbol": "NKG", "name": "Nam Kim Steel", "sector": "Steel"},
+
+    {"symbol": "MSN", "name": "Masan Group", "sector": "Consumer"},
+    {"symbol": "MWG", "name": "Mobile World", "sector": "Retail"},
+    {"symbol": "FRT", "name": "FPT Retail", "sector": "Retail"},
+    {"symbol": "PNJ", "name": "Phu Nhuan Jewelry", "sector": "Retail"},
+    {"symbol": "DGW", "name": "Digiworld", "sector": "Retail"},
+    {"symbol": "VNM", "name": "Vinamilk", "sector": "Food & Beverage"},
+    {"symbol": "SAB", "name": "Sabeco", "sector": "Food & Beverage"},
+    {"symbol": "QNS", "name": "Quang Ngai Sugar", "sector": "Food"},
+    {"symbol": "MCH", "name": "Masan Consumer Holdings", "sector": "Consumer"},
+
+    {"symbol": "DPM", "name": "PetroVietnam Fertilizer", "sector": "Chemicals"},
+    {"symbol": "DGC", "name": "Duc Giang Chemicals", "sector": "Chemicals"},
+    {"symbol": "DCM", "name": "Ca Mau Fertilizer", "sector": "Chemicals"},
+
+    {"symbol": "VHC", "name": "Vinh Hoan Corporation", "sector": "Seafood"},
+    {"symbol": "PAN", "name": "PAN Group", "sector": "Agriculture & Food"},
+
+    {"symbol": "GMD", "name": "Gemadept Corporation", "sector": "Logistics"},
+    {"symbol": "HAH", "name": "Hai An Transport", "sector": "Logistics"},
+    {"symbol": "SCS", "name": "Saigon Cargo Service", "sector": "Logistics"},
+    {"symbol": "VTO", "name": "Vitranschart", "sector": "Logistics"},
+
+    {"symbol": "VJC", "name": "VietJet Air", "sector": "Aviation"},
+    {"symbol": "ACV", "name": "Airports Corporation of Vietnam", "sector": "Aviation"},
+
+    {"symbol": "DHG", "name": "Hau Giang Pharmaceutical", "sector": "Pharmaceuticals"},
+    {"symbol": "TRA", "name": "Traphaco", "sector": "Pharmaceuticals"},
+    {"symbol": "IMP", "name": "Imexpharm", "sector": "Pharmaceuticals"},
+
+    {"symbol": "BMP", "name": "Binh Minh Plastics", "sector": "Plastics"},
+    {"symbol": "NTP", "name": "Tien Phong Plastics", "sector": "Plastics"},
+
+    {"symbol": "BVH", "name": "Bao Viet Holdings", "sector": "Insurance"},
+    {"symbol": "BMI", "name": "Bao Minh Insurance", "sector": "Insurance"},
+
+    {"symbol": "CII", "name": "Infrastructure Investment", "sector": "Infrastructure"},
+    {"symbol": "VCG", "name": "Vinaconex", "sector": "Construction"}
+  ]
+}

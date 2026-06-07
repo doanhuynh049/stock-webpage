@@ -306,8 +306,15 @@ export async function getPriceHistory(
   days = 90,
 ): Promise<PricePoint[]> {
   const { getDbPriceHistory } = await import("@/lib/db/price-history");
-  const dbHistory = await getDbPriceHistory(symbol, days);
-  if (dbHistory.length >= 5) return dbHistory;
+  const { shouldSkipDbReads } = await import("@/lib/db/cache-first");
+
+  if (!shouldSkipDbReads()) {
+    const dbHistory = await getDbPriceHistory(symbol, days);
+    if (dbHistory.length >= 5) return dbHistory;
+  } else {
+    const cached = await getDbPriceHistory(symbol, days);
+    if (cached.length >= 5) return cached;
+  }
 
   let history = await fetchStockHistory(symbol, days);
   if (history.length < 5) {

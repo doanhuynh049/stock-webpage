@@ -2,7 +2,7 @@ import {
   cacheSyncedAt,
   readCachedPortfolioHoldings,
 } from "@/lib/db/neon-cache";
-import { isDbCacheFirst } from "@/lib/db/cache-first";
+import { shouldSkipDbReads } from "@/lib/db/cache-first";
 import { isPersistenceEnabled } from "@/lib/persistence";
 import { prisma } from "@/lib/prisma";
 import { withDbRetry } from "@/lib/prisma-query";
@@ -148,9 +148,10 @@ export async function getPortfolioWithStocks(userId: string): Promise<{
     return { holdings: [], summary: emptySummary };
   }
 
-  if (isDbCacheFirst()) {
+  if (shouldSkipDbReads()) {
     const cached = fromCacheRows(userId);
     if (cached) return cached;
+    return { holdings: [], summary: emptySummary, dbUnavailable: true };
   }
 
   if (!isPersistenceEnabled()) {

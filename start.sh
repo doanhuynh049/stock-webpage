@@ -15,6 +15,13 @@ require_cmd() {
   command -v "$1" >/dev/null 2>&1 || die "'$1' is required but not installed."
 }
 
+load_env_flags() {
+  if [[ -f .env ]]; then
+    grep -qE '^DB_CACHE_FIRST=1' .env && export DB_CACHE_FIRST=1
+    grep -qE '^CACHE_USER_ID=' .env && export CACHE_USER_ID="$(grep '^CACHE_USER_ID=' .env | cut -d= -f2- | tr -d '"')"
+  fi
+}
+
 setup_env() {
   if [[ ! -f .env ]]; then
     if [[ -f .env.example ]]; then
@@ -38,6 +45,8 @@ setup_env() {
   if ! grep -q '^PORT=.\+' .env 2>/dev/null; then
     echo "PORT=${PORT}" >> .env
   fi
+
+  load_env_flags
 }
 
 start_database() {
@@ -75,6 +84,10 @@ install_deps() {
 }
 
 prisma_prepare() {
+  if [[ -d src/generated/prisma ]] && [[ "${FORCE_PRISMA_GENERATE:-}" != "1" ]]; then
+    log "Prisma client present — skip generate (set FORCE_PRISMA_GENERATE=1 to refresh)."
+    return
+  fi
   log "Generating Prisma client..."
   npx prisma generate
 }
@@ -82,6 +95,10 @@ prisma_prepare() {
 db_push() {
   if grep -qE '^PERSISTENCE_ENABLED=false' .env 2>/dev/null; then
     log "PERSISTENCE_ENABLED=false — skipping db:push."
+    return
+  fi
+  if [[ "${DB_CACHE_FIRST:-}" == "1" ]] && [[ "${FORCE_DB_PUSH:-}" != "1" ]]; then
+    log "DB_CACHE_FIRST=1 — skipping db:push (schema assumed synced)."
     return
   fi
   log "Pushing database schema..."
@@ -114,14 +131,28 @@ sync_neon_cache() {
     warn "psql not found — skipping Neon cache sync."
     return
   fi
-  log "Syncing Neon → JSON cache (psql, for when Node runtime is blocked)..."
+
+  local cache_file="data/neon-cache/recommendations.json"
+  if [[ -f "$cache_file" ]] && [[ "${FORCE_CACHE_SYNC:-}" != "1" ]]; then
+    local age=$(( $(date +%s) - $(stat -c %Y "$cache_file" 2>/dev/null || echo 0) ))
+    if (( age < 1800 )); then
+      log "Neon cache fresh (${age}s) — skip sync (FORCE_CACHE_SYNC=1 to refresh)."
+      return
+    fi
+  fi
+
+  log "Syncing Neon → JSON cache (psql)..."
   npx tsx scripts/sync-neon-cache.ts 2>/dev/null \
     && log "Neon cache sync: OK" \
-    || warn "Neon cache sync failed — portfolio may be empty if Node cannot reach Neon."
+    || warn "Neon cache sync failed."
 }
 
 probe_runtime_db() {
   if grep -qE '^PERSISTENCE_ENABLED=false' .env 2>/dev/null; then
+    return
+  fi
+  if [[ "${DB_CACHE_FIRST:-}" == "1" ]]; then
+    log "DB_CACHE_FIRST=1 — skip Neon TCP probe (reads use cache, writes use Neon HTTP)."
     return
   fi
   if ! command -v npx >/dev/null 2>&1; then
@@ -140,8 +171,7 @@ probe_runtime_db() {
     return
   fi
   export DB_CACHE_FIRST=1
-  warn "Neon unreachable from Node (ETIMEDOUT) — using JSON cache first (DB_CACHE_FIRST=1)."
-  warn "  Optional local fallback: USE_LOCAL_DB=1 ./start.sh dev"
+  warn "Neon TCP unreachable — enabling DB_CACHE_FIRST=1 for this session."
 }
 
 check_api_keys() {
@@ -151,16 +181,15 @@ check_api_keys() {
 
   if ! $has_groq && ! $has_gemini; then
     warn "No AI API key — AI Analyst uses rule-based fallback."
-    warn "  Groq (free):   https://console.groq.com"
-    warn "  Gemini (free): https://aistudio.google.com/apikey"
   fi
 }
 
 run_dev() {
   log "Starting → http://localhost:${PORT}"
-  log "If you see JWT errors, clear browser cookies for localhost."
+  load_env_flags
   export PORT
   export DB_CACHE_FIRST="${DB_CACHE_FIRST:-}"
+  export CACHE_USER_ID="${CACHE_USER_ID:-}"
   exec npm run dev
 }
 
@@ -176,19 +205,30 @@ run_setup() {
   setup_env
   install_deps
   start_database
-  prisma_prepare
-  db_push
+  FORCE_PRISMA_GENERATE=1 prisma_prepare
+  FORCE_DB_PUSH=1 db_push
   check_api_keys
   log ""
   log "Setup complete!"
   log "  ./start.sh dev     → http://localhost:${PORT}"
-  log "  ./start.sh sync    → refresh stock data"
-  log ""
-  log "For Neon: set DATABASE_URL in .env (see .env.example)"
+}
+
+sync_trades_db() {
+  if grep -qE '^PERSISTENCE_ENABLED=false' .env 2>/dev/null; then
+    return
+  fi
+  if [[ -d data/user-trades ]] && [[ -n "$(ls -A data/user-trades 2>/dev/null)" ]]; then
+    log "Syncing JSON trading records → Neon..."
+    npx tsx scripts/sync-trades-to-db.ts 2>/dev/null \
+      && log "Trading JSON→DB sync: OK" \
+      || warn "Trading JSON→DB sync failed."
+  fi
 }
 
 run_sync() {
   setup_env
+  FORCE_CACHE_SYNC=1 sync_neon_cache
+  sync_trades_db
   npx tsx scripts/sync-market.ts
 }
 
@@ -204,6 +244,7 @@ case "$MODE" in
     prisma_prepare
     db_push
     sync_neon_cache
+    sync_trades_db
     probe_runtime_db
     check_api_keys
     run_dev
@@ -220,12 +261,17 @@ case "$MODE" in
   sync)
     run_sync
     ;;
+  cache)
+    setup_env
+    FORCE_CACHE_SYNC=1 sync_neon_cache
+    sync_trades_db
+    ;;
+  trades)
+    setup_env
+    sync_trades_db
+    ;;
   *)
-    echo "Usage: ./start.sh [dev|prod|setup|sync]"
-    echo ""
-    echo "  dev    Start on port ${PORT} (default)"
-    echo "  setup  Docker Postgres + Prisma + schema"
-    echo "  sync   Refresh live stock data"
+    echo "Usage: ./start.sh [dev|prod|setup|sync|cache|trades]"
     exit 1
     ;;
 esac

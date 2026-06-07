@@ -30,7 +30,11 @@ export default async function WatchlistPage() {
     (s) => !watchlist.items.some((w) => w.symbol === s.symbol),
   );
 
-  const dbUnavailable = "dbUnavailable" in watchlist && watchlist.dbUnavailable;
+  const dbUnavailable = Boolean(
+    "dbUnavailable" in watchlist
+      ? (watchlist as { dbUnavailable?: boolean }).dbUnavailable
+      : false,
+  );
 
   return (
     <div className="space-y-8">

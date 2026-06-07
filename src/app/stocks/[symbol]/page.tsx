@@ -9,6 +9,7 @@ import { PriceChartPanel } from "@/components/stock/price-chart-panel";
 import { WatchlistButton } from "@/components/stock/watchlist-button";
 import { NewsFeed } from "@/components/stock/news-feed";
 import { StockAvatar } from "@/components/ui/stock-avatar";
+import { analyzeStock } from "@/lib/analysis/stock-analysis";
 import {
   generateAiSummary,
   getNews,
@@ -16,6 +17,7 @@ import {
   getStock,
   getTechnicalSignals,
 } from "@/lib/stocks";
+import { StockAnalysisPanel } from "@/components/stock/stock-analysis-panel";
 import { auth } from "@/lib/auth";
 import { isInWatchlist } from "@/lib/user-data";
 import { formatMarketCap, formatVolume } from "@/lib/utils";
@@ -30,9 +32,12 @@ export default async function StockDetailPage({
   const stock = await getStock(symbol);
   if (!stock) notFound();
 
-  const priceHistory = await getPriceHistory(symbol, 90);
+  const [priceHistory, technicals, analysis] = await Promise.all([
+    getPriceHistory(symbol, 90),
+    getTechnicalSignals(stock),
+    analyzeStock(stock),
+  ]);
   const news = getNews(symbol);
-  const technicals = await getTechnicalSignals(stock);
   const aiSummary = generateAiSummary(stock);
   const session = await auth();
   const inWatchlist = session?.user?.id ? await isInWatchlist(symbol) : false;
@@ -48,7 +53,7 @@ export default async function StockDetailPage({
     ((stock.price - stock.low52w) / (stock.high52w - stock.low52w)) * 100;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex items-start gap-4">
           <StockAvatar symbol={stock.symbol} sector={stock.sector} size="lg" />
@@ -102,13 +107,15 @@ export default async function StockDetailPage({
         </div>
       </Card>
 
+      <StockAnalysisPanel analysis={analysis} />
+
       <PriceChartPanel
         symbol={stock.symbol}
         initialData={priceHistory}
         initialDays={90}
       />
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {[
           { label: "P/E", value: stock.pe > 0 ? stock.pe : "N/A" },
           { label: "P/B", value: stock.pb },
