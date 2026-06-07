@@ -1,0 +1,866 @@
+[
+  {
+    "symbol": "FPT",
+    "name": "FPT Corporation",
+    "sector": "Technology",
+    "exchange": "HOSE",
+    "price": 125.2,
+    "change": 4.7,
+    "changePercent": 3.9,
+    "volume": 5200000,
+    "marketCap": 185000,
+    "pe": 18.2,
+    "pb": 4.1,
+    "roe": 24.5,
+    "revenueGrowth": 24,
+    "rsi": 62,
+    "dividendYield": 1.2,
+    "high52w": 135,
+    "low52w": 78,
+    "profile": "FPT is Vietnam's leading IT services and telecommunications company, providing software development, cloud services, and digital transformation solutions across Asia-Pacific.",
+    "financials": {
+      "years": [
+        "2022",
+        "2023",
+        "2024",
+        "2025E"
+      ],
+      "revenue": [
+        38500,
+        45200,
+        52100,
+        59800
+      ],
+      "netProfit": [
+        5200,
+        6100,
+        7200,
+        8500
+      ],
+      "totalDebt": [
+        8200,
+        7500,
+        6800,
+        6200
+      ]
+    },
+    "analystRating": "Buy",
+    "analystTarget": 135
+  },
+  {
+    "symbol": "MWG",
+    "name": "Mobile World Investment Corp",
+    "sector": "Consumer",
+    "exchange": "HOSE",
+    "price": 67.6,
+    "change": 2.4,
+    "changePercent": 3.7,
+    "volume": 3100000,
+    "marketCap": 98000,
+    "pe": 14.5,
+    "pb": 2.8,
+    "roe": 18.2,
+    "revenueGrowth": 15.5,
+    "rsi": 58,
+    "dividendYield": 2.1,
+    "high52w": 72,
+    "low52w": 42,
+    "profile": "MWG operates Vietnam's largest retail chain for mobile phones, electronics, and groceries through The Gioi Di Dong, Dien May Xanh, and Bach Hoa Xanh brands.",
+    "financials": {
+      "years": [
+        "2022",
+        "2023",
+        "2024",
+        "2025E"
+      ],
+      "revenue": [
+        125000,
+        132000,
+        145000,
+        158000
+      ],
+      "netProfit": [
+        4200,
+        5100,
+        5800,
+        6500
+      ],
+      "totalDebt": [
+        15000,
+        14200,
+        13500,
+        12800
+      ]
+    },
+    "analystRating": "Buy",
+    "analystTarget": 72
+  },
+  {
+    "symbol": "VCB",
+    "name": "Vietcombank",
+    "sector": "Banking",
+    "exchange": "HOSE",
+    "price": 96.6,
+    "change": 3.8,
+    "changePercent": 4.1,
+    "volume": 2800000,
+    "marketCap": 420000,
+    "pe": 12.8,
+    "pb": 2.1,
+    "roe": 16.5,
+    "revenueGrowth": 12,
+    "rsi": 45,
+    "dividendYield": 3.5,
+    "high52w": 105,
+    "low52w": 68,
+    "profile": "Joint Stock Commercial Bank for Foreign Trade of Vietnam (Vietcombank) is one of the largest state-owned commercial banks in Vietnam.",
+    "financials": {
+      "years": [
+        "2022",
+        "2023",
+        "2024",
+        "2025E"
+      ],
+      "revenue": [
+        52000,
+        58000,
+        65000,
+        72000
+      ],
+      "netProfit": [
+        28000,
+        31000,
+        34500,
+        38000
+      ],
+      "totalDebt": [
+        850000,
+        920000,
+        980000,
+        1050000
+      ]
+    },
+    "analystRating": "Hold",
+    "analystTarget": 95
+  },
+  {
+    "symbol": "HPG",
+    "name": "Hoa Phat Group",
+    "sector": "Materials",
+    "exchange": "HOSE",
+    "price": 29.7,
+    "change": 1.2,
+    "changePercent": 4.2,
+    "volume": 8500000,
+    "marketCap": 165000,
+    "pe": 11.2,
+    "pb": 1.5,
+    "roe": 14.8,
+    "revenueGrowth": 18,
+    "rsi": 55,
+    "dividendYield": 2.8,
+    "high52w": 32,
+    "low52w": 18.5,
+    "profile": "Hoa Phat Group is Vietnam's largest steel producer, also engaged in agriculture, real estate, and home appliance manufacturing.",
+    "financials": {
+      "years": [
+        "2022",
+        "2023",
+        "2024",
+        "2025E"
+      ],
+      "revenue": [
+        145000,
+        158000,
+        172000,
+        185000
+      ],
+      "netProfit": [
+        12000,
+        14500,
+        16800,
+        19000
+      ],
+      "totalDebt": [
+        42000,
+        38000,
+        35000,
+        32000
+      ]
+    },
+    "analystRating": "Buy",
+    "analystTarget": 32
+  },
+  {
+    "symbol": "VHM",
+    "name": "Vinhomes",
+    "sector": "Real Estate",
+    "exchange": "HOSE",
+    "price": 49.4,
+    "change": 1.2,
+    "changePercent": 2.5,
+    "volume": 4200000,
+    "marketCap": 185000,
+    "pe": 15.8,
+    "pb": 2.4,
+    "roe": 15.2,
+    "revenueGrowth": 22,
+    "rsi": 52,
+    "dividendYield": 1.5,
+    "high52w": 55,
+    "low52w": 32,
+    "profile": "Vinhomes is Vietnam's leading real estate developer, focusing on large-scale urban township projects in Hanoi and Ho Chi Minh City.",
+    "financials": {
+      "years": [
+        "2022",
+        "2023",
+        "2024",
+        "2025E"
+      ],
+      "revenue": [
+        85000,
+        98000,
+        115000,
+        132000
+      ],
+      "netProfit": [
+        15000,
+        18500,
+        22000,
+        25500
+      ],
+      "totalDebt": [
+        65000,
+        58000,
+        52000,
+        48000
+      ]
+    },
+    "analystRating": "Buy",
+    "analystTarget": 55
+  },
+  {
+    "symbol": "TCB",
+    "name": "Techcombank",
+    "sector": "Banking",
+    "exchange": "HOSE",
+    "price": 36,
+    "change": 1.5,
+    "changePercent": 4.3,
+    "volume": 3800000,
+    "marketCap": 155000,
+    "pe": 10.5,
+    "pb": 1.8,
+    "roe": 17.8,
+    "revenueGrowth": 14,
+    "rsi": 42,
+    "dividendYield": 4.2,
+    "high52w": 38,
+    "low52w": 22,
+    "profile": "Vietnam Technological and Commercial Joint Stock Bank (Techcombank) is a leading private commercial bank known for digital banking innovation.",
+    "financials": {
+      "years": [
+        "2022",
+        "2023",
+        "2024",
+        "2025E"
+      ],
+      "revenue": [
+        38000,
+        42000,
+        48000,
+        54000
+      ],
+      "netProfit": [
+        18500,
+        21000,
+        24500,
+        28000
+      ],
+      "totalDebt": [
+        420000,
+        480000,
+        520000,
+        560000
+      ]
+    },
+    "analystRating": "Buy",
+    "analystTarget": 38
+  },
+  {
+    "symbol": "VIC",
+    "name": "Vingroup",
+    "sector": "Real Estate",
+    "exchange": "HOSE",
+    "price": 43.9,
+    "change": 1.1,
+    "changePercent": 2.6,
+    "volume": 2900000,
+    "marketCap": 165000,
+    "pe": 0,
+    "pb": 1.2,
+    "roe": -2.5,
+    "revenueGrowth": 8,
+    "rsi": 48,
+    "dividendYield": 0,
+    "high52w": 52,
+    "low52w": 28,
+    "profile": "Vingroup is Vietnam's largest conglomerate spanning real estate, retail, hospitality, healthcare, education, and automotive (VinFast).",
+    "financials": {
+      "years": [
+        "2022",
+        "2023",
+        "2024",
+        "2025E"
+      ],
+      "revenue": [
+        120000,
+        135000,
+        148000,
+        162000
+      ],
+      "netProfit": [
+        -8500,
+        -5200,
+        -2100,
+        1500
+      ],
+      "totalDebt": [
+        180000,
+        165000,
+        150000,
+        140000
+      ]
+    },
+    "analystRating": "Hold",
+    "analystTarget": 45
+  },
+  {
+    "symbol": "CMG",
+    "name": "CMC Corporation",
+    "sector": "Technology",
+    "exchange": "HOSE",
+    "price": 43,
+    "change": 1,
+    "changePercent": 2.4,
+    "volume": 1200000,
+    "marketCap": 12500,
+    "pe": 14,
+    "pb": 2.5,
+    "roe": 16,
+    "revenueGrowth": 12,
+    "rsi": 55,
+    "dividendYield": 2.5,
+    "high52w": 48,
+    "low52w": 28,
+    "profile": "CMC Corporation provides IT solutions, system integration, and software services primarily for government and enterprise clients in Vietnam.",
+    "financials": {
+      "years": [
+        "2022",
+        "2023",
+        "2024",
+        "2025E"
+      ],
+      "revenue": [
+        5200,
+        5800,
+        6500,
+        7200
+      ],
+      "netProfit": [
+        680,
+        780,
+        890,
+        1020
+      ],
+      "totalDebt": [
+        1200,
+        1100,
+        950,
+        850
+      ]
+    },
+    "analystRating": "Hold",
+    "analystTarget": 45
+  },
+  {
+    "symbol": "SSI",
+    "name": "SSI Securities Corporation",
+    "sector": "Financial Services",
+    "exchange": "HOSE",
+    "price": 33.7,
+    "change": 1.2,
+    "changePercent": 3.7,
+    "volume": 4500000,
+    "marketCap": 42000,
+    "pe": 16.5,
+    "pb": 2.8,
+    "roe": 17.5,
+    "revenueGrowth": 28,
+    "rsi": 60,
+    "dividendYield": 1.8,
+    "high52w": 38,
+    "low52w": 18,
+    "profile": "SSI is one of Vietnam's leading securities companies, offering brokerage, investment banking, and asset management services.",
+    "financials": {
+      "years": [
+        "2022",
+        "2023",
+        "2024",
+        "2025E"
+      ],
+      "revenue": [
+        8500,
+        10200,
+        12800,
+        15500
+      ],
+      "netProfit": [
+        2200,
+        2800,
+        3500,
+        4200
+      ],
+      "totalDebt": [
+        3500,
+        3200,
+        2800,
+        2500
+      ]
+    },
+    "analystRating": "Buy",
+    "analystTarget": 36
+  },
+  {
+    "symbol": "GAS",
+    "name": "PetroVietnam Gas",
+    "sector": "Energy",
+    "exchange": "HOSE",
+    "price": 89.4,
+    "change": 1.4,
+    "changePercent": 1.6,
+    "volume": 980000,
+    "marketCap": 185000,
+    "pe": 13.2,
+    "pb": 2,
+    "roe": 15,
+    "revenueGrowth": 5,
+    "rsi": 40,
+    "dividendYield": 4.5,
+    "high52w": 98,
+    "low52w": 72,
+    "profile": "PetroVietnam Gas operates gas processing plants, pipelines, and LPG distribution across Vietnam.",
+    "financials": {
+      "years": [
+        "2022",
+        "2023",
+        "2024",
+        "2025E"
+      ],
+      "revenue": [
+        82000,
+        85000,
+        88000,
+        91000
+      ],
+      "netProfit": [
+        12500,
+        13200,
+        13800,
+        14200
+      ],
+      "totalDebt": [
+        18000,
+        16500,
+        15000,
+        14000
+      ]
+    },
+    "analystRating": "Hold",
+    "analystTarget": 92
+  },
+  {
+    "symbol": "PNJ",
+    "name": "Phu Nhuan Jewelry",
+    "sector": "Consumer",
+    "exchange": "HOSE",
+    "price": 97.9,
+    "change": 2.4,
+    "changePercent": 2.5,
+    "volume": 850000,
+    "marketCap": 32000,
+    "pe": 13.8,
+    "pb": 3.2,
+    "roe": 22,
+    "revenueGrowth": 18.5,
+    "rsi": 58,
+    "dividendYield": 2,
+    "high52w": 105,
+    "low52w": 65,
+    "profile": "PNJ is Vietnam's largest gold and jewelry retailer with a nationwide chain of stores.",
+    "financials": {
+      "years": [
+        "2022",
+        "2023",
+        "2024",
+        "2025E"
+      ],
+      "revenue": [
+        18500,
+        22000,
+        25800,
+        29500
+      ],
+      "netProfit": [
+        1200,
+        1500,
+        1850,
+        2200
+      ],
+      "totalDebt": [
+        2800,
+        2500,
+        2200,
+        2000
+      ]
+    },
+    "analystRating": "Buy",
+    "analystTarget": 105
+  },
+  {
+    "symbol": "VNM",
+    "name": "Vinamilk",
+    "sector": "Consumer",
+    "exchange": "HOSE",
+    "price": 60.6,
+    "change": 2.4,
+    "changePercent": 4.1,
+    "volume": 1100000,
+    "marketCap": 120000,
+    "pe": 14.2,
+    "pb": 3.5,
+    "roe": 24,
+    "revenueGrowth": 8,
+    "rsi": 50,
+    "dividendYield": 3.8,
+    "high52w": 68,
+    "low52w": 48,
+    "profile": "Vietnam Dairy Products JSC (Vinamilk) is the country's leading dairy company with products exported to 50+ countries.",
+    "financials": {
+      "years": [
+        "2022",
+        "2023",
+        "2024",
+        "2025E"
+      ],
+      "revenue": [
+        62000,
+        65000,
+        68000,
+        72000
+      ],
+      "netProfit": [
+        10500,
+        11200,
+        11800,
+        12500
+      ],
+      "totalDebt": [
+        5200,
+        4800,
+        4200,
+        3800
+      ]
+    },
+    "analystRating": "Hold",
+    "analystTarget": 62
+  },
+  {
+    "symbol": "REE",
+    "name": "Refrigeration Electrical Engineering",
+    "sector": "Industrial",
+    "exchange": "HOSE",
+    "price": 53.8,
+    "change": 1.8,
+    "changePercent": 3.5,
+    "volume": 750000,
+    "marketCap": 18000,
+    "pe": 12.5,
+    "pb": 1.8,
+    "roe": 14.5,
+    "revenueGrowth": 10,
+    "rsi": 28,
+    "dividendYield": 3.2,
+    "high52w": 62,
+    "low52w": 38,
+    "profile": "REE operates in power generation, infrastructure, and real estate with a portfolio of industrial parks and energy assets.",
+    "financials": {
+      "years": [
+        "2022",
+        "2023",
+        "2024",
+        "2025E"
+      ],
+      "revenue": [
+        8500,
+        9200,
+        9800,
+        10500
+      ],
+      "netProfit": [
+        1200,
+        1350,
+        1480,
+        1620
+      ],
+      "totalDebt": [
+        4500,
+        4200,
+        3800,
+        3500
+      ]
+    },
+    "analystRating": "Buy",
+    "analystTarget": 58
+  },
+  {
+    "symbol": "MSN",
+    "name": "Masan Group",
+    "sector": "Consumer",
+    "exchange": "HOSE",
+    "price": 75.2,
+    "change": 2.7,
+    "changePercent": 3.7,
+    "volume": 2200000,
+    "marketCap": 85000,
+    "pe": 22,
+    "pb": 2.5,
+    "roe": 11.5,
+    "revenueGrowth": 6,
+    "rsi": 35,
+    "dividendYield": 1,
+    "high52w": 95,
+    "low52w": 55,
+    "profile": "Masan Group is a consumer-retail conglomerate operating WinMart supermarkets, meat processing (Masan MEATLife), and mining (Masan High-Tech Materials).",
+    "financials": {
+      "years": [
+        "2022",
+        "2023",
+        "2024",
+        "2025E"
+      ],
+      "revenue": [
+        78000,
+        82000,
+        85000,
+        88000
+      ],
+      "netProfit": [
+        2500,
+        3200,
+        3800,
+        4200
+      ],
+      "totalDebt": [
+        95000,
+        88000,
+        82000,
+        78000
+      ]
+    },
+    "analystRating": "Hold",
+    "analystTarget": 75
+  },
+  {
+    "symbol": "PLX",
+    "name": "Petrolimex",
+    "sector": "Energy",
+    "exchange": "HOSE",
+    "price": 39.6,
+    "change": 1.1,
+    "changePercent": 2.9,
+    "volume": 1500000,
+    "marketCap": 45000,
+    "pe": 11.8,
+    "pb": 1.2,
+    "roe": 10.5,
+    "revenueGrowth": 4,
+    "rsi": 38,
+    "dividendYield": 5,
+    "high52w": 45,
+    "low52w": 30,
+    "profile": "Vietnam National Petroleum Group (Petrolimex) is the largest petroleum distributor in Vietnam.",
+    "financials": {
+      "years": [
+        "2022",
+        "2023",
+        "2024",
+        "2025E"
+      ],
+      "revenue": [
+        145000,
+        152000,
+        158000,
+        162000
+      ],
+      "netProfit": [
+        3200,
+        3500,
+        3800,
+        4000
+      ],
+      "totalDebt": [
+        12000,
+        11500,
+        10800,
+        10200
+      ]
+    },
+    "analystRating": "Hold",
+    "analystTarget": 40
+  },
+  {
+    "symbol": "BVH",
+    "name": "Bao Viet Holdings",
+    "sector": "Financial Services",
+    "exchange": "HOSE",
+    "price": 53.9,
+    "change": 1.1,
+    "changePercent": 2.1,
+    "volume": 420000,
+    "marketCap": 38000,
+    "pe": 10.2,
+    "pb": 0.9,
+    "roe": 8.5,
+    "revenueGrowth": 7,
+    "rsi": 44,
+    "dividendYield": 4.8,
+    "high52w": 58,
+    "low52w": 38,
+    "profile": "Bao Viet Holdings is Vietnam's leading insurance and financial services group.",
+    "financials": {
+      "years": [
+        "2022",
+        "2023",
+        "2024",
+        "2025E"
+      ],
+      "revenue": [
+        42000,
+        45000,
+        48000,
+        51000
+      ],
+      "netProfit": [
+        3200,
+        3500,
+        3800,
+        4100
+      ],
+      "totalDebt": [
+        8500,
+        8000,
+        7500,
+        7000
+      ]
+    },
+    "analystRating": "Hold",
+    "analystTarget": 55
+  },
+  {
+    "symbol": "DHG",
+    "name": "DHG Pharmaceutical",
+    "sector": "Healthcare",
+    "exchange": "HOSE",
+    "price": 114.2,
+    "change": 2.2,
+    "changePercent": 2,
+    "volume": 280000,
+    "marketCap": 15000,
+    "pe": 16.5,
+    "pb": 4.2,
+    "roe": 25,
+    "revenueGrowth": 14,
+    "rsi": 52,
+    "dividendYield": 2.5,
+    "high52w": 125,
+    "low52w": 85,
+    "profile": "DHG Pharmaceutical is a leading Vietnamese pharmaceutical company producing OTC and prescription medicines.",
+    "financials": {
+      "years": [
+        "2022",
+        "2023",
+        "2024",
+        "2025E"
+      ],
+      "revenue": [
+        4200,
+        4800,
+        5400,
+        6100
+      ],
+      "netProfit": [
+        850,
+        980,
+        1120,
+        1280
+      ],
+      "totalDebt": [
+        200,
+        180,
+        150,
+        120
+      ]
+    },
+    "analystRating": "Buy",
+    "analystTarget": 120
+  },
+  {
+    "symbol": "KBC",
+    "name": "Kinh Bac City Development",
+    "sector": "Industrial",
+    "exchange": "HOSE",
+    "price": 30.1,
+    "change": 1.3,
+    "changePercent": 4.5,
+    "volume": 3200000,
+    "marketCap": 22000,
+    "pe": 9.5,
+    "pb": 1.1,
+    "roe": 11,
+    "revenueGrowth": 25,
+    "rsi": 48,
+    "dividendYield": 1.5,
+    "high52w": 35,
+    "low52w": 18,
+    "profile": "KBC develops and operates industrial parks in northern Vietnam, attracting FDI manufacturing tenants.",
+    "financials": {
+      "years": [
+        "2022",
+        "2023",
+        "2024",
+        "2025E"
+      ],
+      "revenue": [
+        5200,
+        6500,
+        7800,
+        9200
+      ],
+      "netProfit": [
+        1800,
+        2200,
+        2600,
+        3100
+      ],
+      "totalDebt": [
+        8500,
+        7800,
+        7200,
+        6500
+      ]
+    },
+    "analystRating": "Buy",
+    "analystTarget": 32
+  }
+]

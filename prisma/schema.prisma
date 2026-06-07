@@ -1,0 +1,261 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ── Neon production schema (introspected) ──
+
+model AppUser {
+  id           String   @id @db.VarChar(64)
+  username     String   @unique @db.VarChar(128)
+  email        String?  @unique @db.VarChar(256)
+  passwordHash String   @map("password_hash") @db.VarChar(256)
+  status       String   @db.VarChar(16)
+  role         String   @db.VarChar(16)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  watchlist         WatchlistItem[]
+  chatSessions      AiChatSession[]
+  portfolioHoldings PortfolioHolding[]
+
+  @@map("app_user")
+}
+
+model StockSymbol {
+  symbol     String   @id @db.VarChar(16)
+  name       String?  @db.VarChar(256)
+  exchange   String?  @db.VarChar(16)
+  sector     String?  @db.VarChar(128)
+  industry   String?  @db.VarChar(128)
+  isVn30     Boolean  @default(false) @map("is_vn30")
+  isVn100    Boolean  @default(false) @map("is_vn100")
+  updatedAt  DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+
+  @@map("stock_symbol")
+}
+
+model PriceDaily {
+  symbol    String   @db.VarChar(16)
+  tradeDate DateTime @map("trade_date") @db.Date
+  openPx    Float?   @map("open_px")
+  highPx    Float?   @map("high_px")
+  lowPx     Float?   @map("low_px")
+  closePx   Float?   @map("close_px")
+  volume    BigInt?
+
+  @@id([symbol, tradeDate])
+  @@index([symbol, tradeDate(sort: Desc)], map: "ix_price_symbol_date")
+  @@map("price_daily")
+}
+
+model FundamentalSnapshot {
+  symbol                         String   @db.VarChar(16)
+  capturedAt                     DateTime @map("captured_at") @db.Timestamptz(6)
+  peRatio                        Float?   @map("pe_ratio")
+  pbRatio                        Float?   @map("pb_ratio")
+  marketCap                      Float?   @map("market_cap")
+  sharesOutstanding              Float?   @map("shares_outstanding")
+  eps                            Float?
+  bvps                           Float?
+  roe                            Float?
+  roa                            Float?
+  dividendYield                  Float?   @map("dividend_yield")
+  debtToEquity                   Float?   @map("debt_to_equity")
+  psRatio                        Float?   @map("ps_ratio")
+  pCashFlowRatio                 Float?   @map("p_cash_flow_ratio")
+  evEbitda                       Float?   @map("ev_ebitda")
+  shortLongBorrowingToEquity     Float?   @map("short_long_borrowing_to_equity")
+  fixedAssetToEquity             Float?   @map("fixed_asset_to_equity")
+  ownersEquityToCharterCapital   Float?   @map("owners_equity_to_charter_capital")
+  roic                           Float?
+  grossProfitMargin              Float?   @map("gross_profit_margin")
+  netProfitMargin                Float?   @map("net_profit_margin")
+  currentRatio                   Float?   @map("current_ratio")
+  quickRatio                     Float?   @map("quick_ratio")
+  cashRatio                      Float?   @map("cash_ratio")
+  assetTurnover                  Float?   @map("asset_turnover")
+  inventoryTurnover              Float?   @map("inventory_turnover")
+  receivablesTurnover            Float?   @map("receivables_turnover")
+  revenueGrowth                  Float?   @map("revenue_growth")
+  profitGrowth                   Float?   @map("profit_growth")
+  epsGrowth                      Float?   @map("eps_growth")
+  epsGrowth3y                    Float?   @map("eps_growth_3y")
+
+  @@id([symbol, capturedAt])
+  @@index([symbol, capturedAt(sort: Desc)], map: "ix_fund_symbol_captured")
+  @@map("fundamental_snapshot")
+}
+
+model TechnicalSnapshot {
+  symbol          String   @db.VarChar(16)
+  capturedAt      DateTime @map("captured_at") @db.Timestamptz(6)
+  price           Float?
+  rsi             Float?
+  macd            Float?
+  macdSignal      Float?   @map("macd_signal")
+  macdHistogram   Float?   @map("macd_histogram")
+  sma10           Float?   @map("sma_10")
+  sma20           Float?   @map("sma_20")
+  sma50           Float?   @map("sma_50")
+  sma200          Float?   @map("sma_200")
+  ema12           Float?   @map("ema_12")
+  ema26           Float?   @map("ema_26")
+  supportLevel    Float?   @map("support_level")
+  resistanceLevel Float?   @map("resistance_level")
+  volumeMa        Float?   @map("volume_ma")
+  atr14           Float?   @map("atr_14")
+  adx14           Float?   @map("adx_14")
+  volume          Float?
+  vwap            Float?
+
+  @@id([symbol, capturedAt])
+  @@index([symbol, capturedAt(sort: Desc)], map: "ix_tech_symbol_captured")
+  @@map("technical_snapshot")
+}
+
+model Recommendation {
+  id                    BigInt    @id @default(autoincrement())
+  symbol                String    @db.VarChar(16)
+  name                  String?   @db.VarChar(256)
+  source                String    @db.VarChar(32)
+  recommendation        String    @db.VarChar(32)
+  priceAtRecommendation Float     @map("price_at_recommendation")
+  technicalScore        Int       @map("technical_score")
+  fundamentalScore      Int       @default(0) @map("fundamental_score")
+  combinedScore         Int       @map("combined_score")
+  recommendationDate    DateTime  @map("recommendation_date") @db.Date
+  priceAt30d            Float?    @map("price_at_30d")
+  returnPct30d          Float?    @map("return_pct_30d")
+  hit30d                Boolean?  @map("hit_30d")
+  evaluatedDate30d      DateTime? @map("evaluated_date_30d") @db.Date
+  priceAt90d            Float?    @map("price_at_90d")
+  returnPct90d          Float?    @map("return_pct_90d")
+  hit90d                Boolean?  @map("hit_90d")
+  evaluatedDate90d      DateTime? @map("evaluated_date_90d") @db.Date
+  priceAt365d           Float?    @map("price_at_365d")
+  returnPct365d         Float?    @map("return_pct_365d")
+  hit365d               Boolean?  @map("hit_365d")
+  evaluatedDate365d     DateTime? @map("evaluated_date_365d") @db.Date
+
+  @@unique([symbol, source, recommendationDate], map: "uq_recommendation_unique")
+  @@index([recommendationDate(sort: Desc)], map: "ix_recommendation_date")
+  @@index([symbol], map: "ix_recommendation_symbol")
+  @@map("recommendation")
+}
+
+/// Per-user portfolio — synced from stock-service UI (localStorage → Neon).
+model PortfolioHolding {
+  userId         String   @map("user_id") @db.VarChar(64)
+  symbol         String   @db.VarChar(16)
+  name           String?  @db.VarChar(256)
+  exchange       String?  @db.VarChar(16)
+  sector         String?  @db.VarChar(128)
+  industry       String?  @db.VarChar(128)
+  shares         Int      @default(0)
+  avgBuyPrice    Float?   @map("avg_buy_price")
+  target3Month   Float?   @map("target_3_month")
+  targetLongTerm Float?   @map("target_long_term")
+  targetSetDate  String?  @map("target_set_date") @db.VarChar(32)
+  platform       String?  @db.VarChar(64)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(6)
+  user           AppUser  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, symbol])
+  @@index([userId], map: "ix_portfolio_holding_user")
+  @@index([sector], map: "ix_portfolio_holding_sector")
+  @@map("portfolio_holding")
+}
+
+model TradingTransaction {
+  id              String   @id @db.VarChar(64)
+  transactionDate DateTime @map("transaction_date") @db.Date
+  itemName        String?  @map("item_name") @db.VarChar(64)
+  quantity        Int?
+  unitPrice       Decimal? @map("unit_price") @db.Decimal(20, 4)
+  totalAmount     Decimal? @map("total_amount") @db.Decimal(20, 4)
+  fee             Decimal? @db.Decimal(20, 4)
+  tax             Decimal? @db.Decimal(20, 4)
+  profit          Decimal? @db.Decimal(20, 4)
+  transactionType String?  @map("transaction_type") @db.VarChar(16)
+  exchange        String?  @db.VarChar(16)
+  sector          String?  @db.VarChar(128)
+
+  @@index([transactionDate(sort: Desc)], map: "ix_trading_date")
+  @@index([itemName], map: "ix_trading_item")
+  @@map("trading_transaction")
+}
+
+model AiResponseCache {
+  id           BigInt   @id @default(autoincrement())
+  symbol       String   @db.VarChar(16)
+  analysisType String   @map("analysis_type") @db.VarChar(64)
+  modelName    String?  @map("model_name") @db.VarChar(128)
+  cachedAt     DateTime @map("cached_at") @db.Timestamptz(6)
+  ttlHours     Int      @map("ttl_hours")
+  payload      Json?
+
+  @@unique([symbol, analysisType, modelName], map: "uq_ai_cache_key")
+  @@index([symbol, analysisType], map: "ix_ai_cache_symbol_type")
+  @@map("ai_response_cache")
+}
+
+/// Managed by Flyway in Neon — read-only for this app
+model FlywaySchemaHistory {
+  installedRank  Int      @id(map: "flyway_schema_history_pk") @map("installed_rank")
+  version        String?  @db.VarChar(50)
+  description    String   @db.VarChar(200)
+  type           String   @db.VarChar(20)
+  script         String   @db.VarChar(1000)
+  checksum       Int?
+  installedBy    String   @map("installed_by") @db.VarChar(100)
+  installedOn    DateTime @default(now()) @map("installed_on") @db.Timestamp(6)
+  executionTime  Int      @map("execution_time")
+  success        Boolean
+
+  @@index([success], map: "flyway_schema_history_s_idx")
+  @@map("flyway_schema_history")
+  @@ignore
+}
+
+// ── Web app extensions (per-user features) ──
+
+model WatchlistItem {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id") @db.VarChar(64)
+  symbol    String   @db.VarChar(16)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  user      AppUser  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, symbol])
+  @@index([userId])
+  @@map("watchlist_item")
+}
+
+model AiChatSession {
+  id        String          @id @default(cuid())
+  userId    String          @map("user_id") @db.VarChar(64)
+  title     String?
+  createdAt DateTime        @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime        @updatedAt @map("updated_at") @db.Timestamptz(6)
+  user      AppUser         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages  AiChatMessage[]
+
+  @@index([userId])
+  @@map("ai_chat_session")
+}
+
+model AiChatMessage {
+  id        String        @id @default(cuid())
+  sessionId String        @map("session_id")
+  role      String
+  content   String
+  createdAt DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  session   AiChatSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId])
+  @@map("ai_chat_message")
+}

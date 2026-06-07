@@ -1,0 +1,59 @@
+"use client";
+
+import { Star } from "lucide-react";
+import { useState } from "react";
+import { addToWatchlist, removeFromWatchlist } from "@/lib/actions";
+import { Button } from "@/components/ui/button";
+
+export function WatchlistButton({
+  symbol,
+  initialInWatchlist,
+  isAuthenticated,
+}: {
+  symbol: string;
+  initialInWatchlist: boolean;
+  isAuthenticated: boolean;
+}) {
+  const [inWatchlist, setInWatchlist] = useState(initialInWatchlist);
+  const [loading, setLoading] = useState(false);
+
+  if (!isAuthenticated) {
+    return (
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => (window.location.href = "/login")}
+      >
+        <Star className="h-4 w-4" />
+        Watchlist
+      </Button>
+    );
+  }
+
+  async function toggle() {
+    setLoading(true);
+    try {
+      if (inWatchlist) {
+        await removeFromWatchlist(symbol);
+        setInWatchlist(false);
+      } else {
+        await addToWatchlist(symbol);
+        setInWatchlist(true);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Button
+      variant={inWatchlist ? "primary" : "secondary"}
+      size="sm"
+      onClick={toggle}
+      disabled={loading}
+    >
+      <Star className={`h-4 w-4 ${inWatchlist ? "fill-current" : ""}`} />
+      {inWatchlist ? "Watching" : "Add to Watchlist"}
+    </Button>
+  );
+}

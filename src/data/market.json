@@ -1,0 +1,29 @@
+{
+  "lastUpdated": "2026-06-05T14:45:00+07:00",
+  "session": "afternoon",
+  "sentiment": "Bullish",
+  "sentimentScore": 72,
+  "indices": [
+    { "symbol": "VNINDEX", "name": "VN-Index", "value": 1312.8, "change": 18.4, "changePercent": 1.42 },
+    { "symbol": "HNXINDEX", "name": "HNX-Index", "value": 256.7, "change": 2.1, "changePercent": 0.82 },
+    { "symbol": "UPCOM", "name": "UPCoM-Index", "value": 94.6, "change": 0.5, "changePercent": 0.53 }
+  ],
+  "stats": {
+    "totalVolume": 892000000,
+    "totalValue": 24500,
+    "foreignNetBuy": 1420,
+    "advancing": 268,
+    "declining": 112,
+    "unchanged": 35
+  },
+  "sectors": [
+    { "sector": "Technology", "changePercent": 3.1, "marketCapWeight": 12 },
+    { "sector": "Banking", "changePercent": 0.6, "marketCapWeight": 28 },
+    { "sector": "Real Estate", "changePercent": 1.8, "marketCapWeight": 18 },
+    { "sector": "Consumer", "changePercent": 1.2, "marketCapWeight": 10 },
+    { "sector": "Industrial", "changePercent": 2.0, "marketCapWeight": 8 },
+    { "sector": "Energy", "changePercent": -0.3, "marketCapWeight": 6 },
+    { "sector": "Healthcare", "changePercent": 0.9, "marketCapWeight": 4 },
+    { "sector": "Materials", "changePercent": 2.5, "marketCapWeight": 9 }
+  ]
+}

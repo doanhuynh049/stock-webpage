@@ -1,0 +1,92 @@
+[
+  {
+    "id": "n1",
+    "title": "VN-Index hits 1,310 as liquidity surges to 8-month high",
+    "summary": "The benchmark gained 1.42% with matched value exceeding VND 24.5 trillion. Technology and materials led the rally while foreign investors net-bought VND 1,420 billion.",
+    "source": "Vietstock",
+    "publishedAt": "2026-06-05T14:30:00+07:00",
+    "symbols": ["FPT", "HPG", "SSI"],
+    "category": "breaking"
+  },
+  {
+    "id": "n2",
+    "title": "FPT accelerates AI cloud expansion across ASEAN",
+    "summary": "FPT's AI and cloud segment grew 38% YoY in Q1 2026, with new data center partnerships in Japan and Singapore driving margin expansion.",
+    "source": "CafeF",
+    "publishedAt": "2026-06-05T11:00:00+07:00",
+    "symbols": ["FPT"],
+    "category": "earnings"
+  },
+  {
+    "id": "n3",
+    "title": "SBV signals accommodative stance through year-end",
+    "summary": "The State Bank of Vietnam indicated room for further credit growth support, benefiting banking stocks while keeping inflation target at 4-4.5%.",
+    "source": "Reuters",
+    "publishedAt": "2026-06-04T16:30:00+07:00",
+    "symbols": ["VCB", "TCB", "MBB"],
+    "category": "macro"
+  },
+  {
+    "id": "n4",
+    "title": "Vinhomes Grand Park phase 3 sells 92% on launch day",
+    "summary": "Strong pre-sales signal recovering real estate demand in Ho Chi Minh City, lifting VHM and related construction stocks.",
+    "source": "The Leader",
+    "publishedAt": "2026-06-04T10:00:00+07:00",
+    "symbols": ["VHM", "HPG"],
+    "category": "analysis"
+  },
+  {
+    "id": "n5",
+    "title": "Techcombank crosses 16M digital banking users",
+    "summary": "Fee income rose 22% YoY as TCB's digital platform reduces cost-to-income ratio to industry-leading 28%.",
+    "source": "VnEconomy",
+    "publishedAt": "2026-06-03T14:00:00+07:00",
+    "symbols": ["TCB"],
+    "category": "earnings"
+  },
+  {
+    "id": "n6",
+    "title": "Hoa Phat Dung Quat expansion on track for Q3",
+    "summary": "New blast furnace capacity to add 2.5M tons annual output, positioning HPG to capture infrastructure demand from the government's 2026-2030 plan.",
+    "source": "CafeF",
+    "publishedAt": "2026-06-03T09:30:00+07:00",
+    "symbols": ["HPG"],
+    "category": "analysis"
+  },
+  {
+    "id": "n7",
+    "title": "Foreign investors net-buy VN equities for 7th consecutive week",
+    "summary": "Cumulative net buying reached VND 8.6 trillion since April, concentrated in VCB, FPT, VHM, and MWG.",
+    "source": "FiinGroup",
+    "publishedAt": "2026-06-02T15:30:00+07:00",
+    "symbols": ["VCB", "FPT", "VHM", "MWG"],
+    "category": "breaking"
+  },
+  {
+    "id": "n8",
+    "title": "Vietnam GDP growth forecast revised up to 6.8% for 2026",
+    "summary": "ADB and World Bank both raised outlook citing strong FDI inflows, export recovery, and domestic consumption rebound.",
+    "source": "GSO Vietnam",
+    "publishedAt": "2026-06-01T10:00:00+07:00",
+    "symbols": [],
+    "category": "macro"
+  },
+  {
+    "id": "n9",
+    "title": "SSI Securities reports record Q1 trading revenue",
+    "summary": "Retail trading volume surge and margin lending growth pushed SSI's brokerage income up 35% YoY.",
+    "source": "Vietnam Finance",
+    "publishedAt": "2026-05-30T14:00:00+07:00",
+    "symbols": ["SSI"],
+    "category": "earnings"
+  },
+  {
+    "id": "n10",
+    "title": "MWG Bach Hoa Xanh reaches 2,100 stores nationwide",
+    "summary": "Grocery segment margins improved as supply chain optimization reduced logistics costs by 12%.",
+    "source": "The Leader",
+    "publishedAt": "2026-05-29T11:00:00+07:00",
+    "symbols": ["MWG"],
+    "category": "analysis"
+  }
+]
