@@ -1,0 +1,103 @@
+{
+  "investment_framework": {
+    "strategy_and_rules": {
+      "objectives": {
+        "primary_goal": "Medium-term capital growth (6 months – 3 years)",
+        "secondary_goal": "Capture sector rotation opportunities while maintaining risk control",
+        "target_return": "15–25% over 1–3 years or 5% annual alpha vs VN-Index",
+        "risk_tolerance": "Medium (emerging market risk, sector volatility, liquidity)"
+      },
+      "portfolio_structure": {
+        "approach": "Core-Satellite Strategy (medium-term focus)",
+        "core": {
+          "allocation": "60%",
+          "components": [
+            {
+              "category": "VN30 Bluechips",
+              "allocation": "25-30%"
+            },
+            {
+              "category": "Sector ETFs",
+              "allocation": "20-25%"
+            },
+            {
+              "category": "Dividend Stocks",
+              "allocation": "5-10%"
+            }
+          ]
+        },
+        "satellite": {
+          "allocation": "40%",
+          "components": [
+            {
+              "category": "Growth Tech",
+              "allocation": "15%"
+            },
+            {
+              "category": "Consumer & Retail",
+              "allocation": "10%"
+            },
+            {
+              "category": "Banking & Finance",
+              "allocation": "15%"
+            }
+          ]
+        }
+      },
+      "rules": {
+        "entry": {
+          "buy_conditions": [
+            "Buy when price > SMA50 and SMA50 > SMA200 (uptrend confirmation)",
+            "Add on 5–8% pullbacks with rising volume",
+            "Fundamentals: EPS growth >15% YoY and ROE >15%"
+          ]
+        },
+        "exit": {
+          "take_profit": "At +25–40% gain or when P/E > historical average + 1 std dev",
+          "cut_loss": "At -10% or 10% below trailing high"
+        },
+        "risk_management": {
+          "position_sizing": {
+            "max_per_stock": "15%",
+            "max_per_sector": "35%"
+          },
+          "cash_reserve": "5–10%",
+          "hedging": "Prefer ETFs over derivatives for exposure balancing"
+        }
+      },
+      "time_horizon": {
+        "focus": "Medium-term (6 months – 3 years)",
+        "strategy": "Hold fundamentally strong companies through growth cycles while rotating sectors as macro shifts"
+      },
+      "monitoring": {
+        "quarterly_check": "Review earnings and sector rotation opportunities",
+        "semi_annual_check": "Rebalance portfolio weights",
+        "market_updates": "Track interest rate policy, FDI inflows, consumption trends"
+      },
+      "golden_rules": [
+        "Stay focused on medium-term fundamentals, not short-term noise",
+        "Avoid over-concentration in speculative small caps",
+        "Cut losses early, protect medium-term compounding",
+        "Rotate sectors based on macroeconomic and earnings cycle",
+        "Stick to position sizing discipline"
+      ],
+      "sector_targets": {
+        "_comment": "Target % allocation per sector (must sum to 100). Based on medium-term growth strategy with balanced risk. Banking 25% (core stability), Tech 20% (growth satellite), Consumer 15% (defensive), Real Estate 12% (value rotation), Manufacturing 10% (industrial recovery), Energy 8% (utility anchor), Materials 5%, Transport 3%, Healthcare 2%.",
+        "BANKING_FINANCE": 25,
+        "REAL_ESTATE_CONSTRUCTION": 12,
+        "CONSUMER_RETAIL": 15,
+        "MANUFACTURING_INDUSTRIALS": 10,
+        "ENERGY": 8,
+        "MATERIALS": 5,
+        "TECH_TELECOM": 20,
+        "TRANSPORT_LOGISTICS": 3,
+        "HEALTHCARE_PHARMA": 2
+      }
+    },
+    "dynamic_request": {
+      "current_portfolio": [],
+      "new_plan_request": "Suggest a medium-term investment plan (6 months – 3 years) with sector diversification and growth opportunities"
+    }
+  }
+}
+

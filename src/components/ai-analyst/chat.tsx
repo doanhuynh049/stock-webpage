@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { Send, Bot, User, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { MarkdownLite } from "@/components/ui/markdown-lite";
 
 type Message = {
   role: "user" | "assistant";
@@ -23,7 +24,7 @@ export function AiAnalystChat({ initialSymbol }: { initialSymbol?: string }) {
     {
       role: "assistant",
       content:
-        "Xin chào! I'm your Vietnam Stock AI Analyst. Ask me about any ticker, compare stocks, or get market insights. Data refreshes at morning and afternoon sessions.",
+        "## Xin chào!\n\nI'm your **Vietnam Stock AI Analyst**. Ask about any ticker, compare stocks, or get market insights.\n\nData refreshes at **morning** and **afternoon** sessions.",
     },
   ]);
   const [input, setInput] = useState("");
@@ -126,7 +127,11 @@ export function AiAnalystChat({ initialSymbol }: { initialSymbol?: string }) {
                   : "bg-[var(--bg-secondary)] text-muted ring-1 ring-[var(--border)]"
               }`}
             >
-              <div className="whitespace-pre-wrap">{msg.content}</div>
+              {msg.role === "assistant" ? (
+                <MarkdownLite text={msg.content} />
+              ) : (
+                <p className="whitespace-pre-wrap">{msg.content}</p>
+              )}
             </div>
           </div>
         ))}

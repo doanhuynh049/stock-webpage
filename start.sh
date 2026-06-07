@@ -244,7 +244,6 @@ case "$MODE" in
     prisma_prepare
     db_push
     sync_neon_cache
-    sync_trades_db
     probe_runtime_db
     check_api_keys
     run_dev

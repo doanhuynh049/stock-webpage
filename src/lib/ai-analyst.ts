@@ -152,13 +152,21 @@ See full rankings on the [Dashboard](/) or refine in the [Screener](/screener).`
     if (stock) return buildStockAnalysis(stock);
   }
 
-  return `I'm your **Vietnam Stock AI Analyst** with live Entrade/Yahoo data.
+  const ticker = question.toUpperCase().match(/\b([A-Z]{2,5})\b/)?.[1];
+  if (ticker) {
+    const stock = await getStock(ticker);
+    if (stock) return buildStockAnalysis(stock);
+  }
 
-Try:
-- "Should I buy FPT?"
-- "Analyze VCB"
-- "Compare FPT vs CMG"
-- "What's the market outlook today?"
+  return `## Vietnam Stock AI Analyst
 
-Add **GROQ_API_KEY** or **GEMINI_API_KEY** in .env for full LLM responses.`;
+I use live **Entrade/Yahoo** data for Vietnamese equities.
+
+**Try asking:**
+- Should I buy FPT?
+- Analyze VCB
+- Compare FPT vs CMG
+- What's the market outlook today?
+
+> Add **GROQ_API_KEY** or **GEMINI_API_KEY** in .env for full LLM responses.`;
 }

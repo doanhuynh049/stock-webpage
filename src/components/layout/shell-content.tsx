@@ -19,11 +19,11 @@ export function ShellContent({
   }
 
   return (
-    <div className="mesh-bg flex min-h-screen">
+    <div className="mesh-bg flex h-screen overflow-hidden">
       <Sidebar user={user} />
-      <div className="flex flex-1 flex-col overflow-hidden">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
         <MarketTicker />
-        <main className="flex-1 overflow-auto">
+        <main className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
           <div className="w-full px-3 py-3 sm:px-4 sm:py-4">{children}</div>
         </main>
       </div>

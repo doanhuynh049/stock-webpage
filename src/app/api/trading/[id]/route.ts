@@ -23,7 +23,7 @@ export async function PUT(request: Request, { params }: Params) {
   try {
     const trade = await updateTrade(session.user.id, id, body);
     revalidatePath("/portfolio");
-    revalidateTag(`portfolio-${session.user.id}`);
+    revalidateTag(`portfolio-${session.user.id}`, { expire: 0 });
     return NextResponse.json({ success: true, trade, portfolioSynced: true });
   } catch (error) {
     return NextResponse.json(
@@ -43,7 +43,7 @@ export async function DELETE(_request: Request, { params }: Params) {
   try {
     await removeTrade(session.user.id, id);
     revalidatePath("/portfolio");
-    revalidateTag(`portfolio-${session.user.id}`);
+    revalidateTag(`portfolio-${session.user.id}`, { expire: 0 });
     return NextResponse.json({ success: true, portfolioSynced: true });
   } catch (error) {
     return NextResponse.json(

@@ -9,6 +9,7 @@ import {
   Filter,
   LayoutDashboard,
   Star,
+  Target,
   Wallet,
 } from "lucide-react";
 import { BrandLogo } from "@/components/ui/brand-logo";
@@ -20,6 +21,7 @@ const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, desc: "Market overview" },
   { href: "/screener", label: "Screener", icon: Filter, desc: "Find stocks" },
   { href: "/portfolio", label: "Portfolio", icon: Wallet, desc: "Your holdings" },
+  { href: "/strategy-review", label: "Strategy", icon: Target, desc: "Compliance review" },
   { href: "/trading", label: "Trading", icon: ArrowLeftRight, desc: "BUY/SELL ledger" },
   { href: "/analysis", label: "Analysis", icon: BarChart3, desc: "Scores & picks" },
   { href: "/watchlist", label: "Watchlist", icon: Star, desc: "Favorites" },
@@ -37,7 +39,7 @@ export function Sidebar({
   if (isLogin) return null;
 
   return (
-    <aside className="flex w-[248px] shrink-0 flex-col border-r border-[var(--border)] bg-[var(--sidebar)] backdrop-blur-xl">
+    <aside className="flex h-full w-[248px] shrink-0 flex-col border-r border-[var(--border)] bg-[var(--sidebar)] backdrop-blur-xl">
       <div className="flex items-center justify-between border-b border-[var(--border)] px-5 py-5">
         <Link href="/" className="flex items-center gap-3">
           <BrandLogo size="md" />
@@ -51,7 +53,7 @@ export function Sidebar({
         <ThemeToggle />
       </div>
 
-      <nav className="flex-1 space-y-1 p-3">
+      <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto p-3">
         {navItems.map((item) => {
           const active =
             item.href === "/"
@@ -81,7 +83,7 @@ export function Sidebar({
         })}
       </nav>
 
-      <div className="border-t border-[var(--border)] p-4">
+      <div className="shrink-0 border-t border-[var(--border)] p-4">
         {user ? (
           <div className="space-y-3">
             <div className="flex items-center gap-3 rounded-xl bg-[var(--bg-secondary)] px-3 py-2.5 ring-1 ring-[var(--border)]">

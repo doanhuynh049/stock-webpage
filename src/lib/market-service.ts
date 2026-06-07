@@ -30,7 +30,14 @@ const CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours — morning & afternoon sess
 
 type QuoteCache = Record<
   string,
-  { price: number; change: number; changePercent: number; volume: number }
+  {
+    price: number;
+    change: number;
+    changePercent: number;
+    volume: number;
+    high?: number;
+    low?: number;
+  }
 >;
 
 type CachePayload = {
@@ -263,7 +270,13 @@ async function enrichStockDetails(stock: Stock): Promise<Stock> {
   if (meta) {
     s.name = meta.name;
     s.sector = meta.sector;
-    if (meta.exchange) s.exchange = meta.exchange;
+    if (
+      meta.exchange === "HOSE" ||
+      meta.exchange === "HNX" ||
+      meta.exchange === "UPCOM"
+    ) {
+      s.exchange = meta.exchange;
+    }
     if (!s.profile) {
       s.profile = `${meta.name} (${meta.symbol}) operates in the ${meta.sector} sector on ${s.exchange}.`;
     }

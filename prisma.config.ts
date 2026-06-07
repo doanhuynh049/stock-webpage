@@ -7,12 +7,16 @@ import {
   resolveDatabaseUrl,
 } from "./src/lib/database-url";
 
+/** Prisma generate does not connect; a placeholder URL is fine on Vercel when env is unset. */
+const BUILD_PLACEHOLDER_URL =
+  "postgresql://build:build@127.0.0.1:5432/build?schema=public";
+
 export default defineConfig({
   schema: "prisma/schema.prisma",
   migrations: {
     path: "prisma/migrations",
   },
   datasource: {
-    url: normalizeDatabaseUrl(resolveDatabaseUrl()),
+    url: normalizeDatabaseUrl(resolveDatabaseUrl() || BUILD_PLACEHOLDER_URL),
   },
 });
