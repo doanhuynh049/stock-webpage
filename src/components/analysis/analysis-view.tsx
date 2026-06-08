@@ -402,7 +402,7 @@ export function AnalysisView({
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap gap-1 rounded-lg bg-[var(--bg-secondary)] p-1 ring-1 ring-[var(--border)]">
+      <div className="tab-scroll -mx-1 flex gap-1 overflow-x-auto rounded-lg bg-[var(--bg-secondary)] p-1 ring-1 ring-[var(--border)]">
         {MAIN_TABS.map((t) => (
           <button
             key={t.id}
@@ -411,7 +411,7 @@ export function AnalysisView({
               setMainTab(t.id);
               setSelection(null);
             }}
-            className={`rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+            className={`shrink-0 rounded-md px-3 py-2 text-xs font-medium transition-colors sm:py-1.5 ${
               mainTab === t.id ? "bg-accent text-white" : "text-muted hover:text-[var(--fg)]"
             }`}
           >
@@ -421,7 +421,7 @@ export function AnalysisView({
       </div>
 
       {mainTab !== "rules" && mainTab !== "principles" && mainTab !== "sector" && (
-        <div className="flex flex-wrap gap-1">
+        <div className="tab-scroll -mx-1 flex gap-1 overflow-x-auto pb-0.5">
           {SUB_TABS.map((t) => (
             <button
               key={t.id}
@@ -430,7 +430,7 @@ export function AnalysisView({
                 setSubTab(t.id);
                 setSelection(null);
               }}
-              className={`rounded-md px-2.5 py-1 text-[11px] font-medium ring-1 ring-[var(--border)] ${
+              className={`shrink-0 rounded-md px-2.5 py-1.5 text-[11px] font-medium ring-1 ring-[var(--border)] sm:py-1 ${
                 subTab === t.id ? "bg-[var(--accent-bg)] text-accent" : "text-muted"
               }`}
             >
@@ -463,7 +463,7 @@ export function AnalysisView({
                 {description} · Click a row for analysis detail · Click symbol for stock page
               </p>
             )}
-            <div className="overflow-x-auto rounded-lg ring-1 ring-[var(--border)]">
+            <div className="table-scroll overflow-x-auto rounded-lg ring-1 ring-[var(--border)]">
               {mainTab === "rules" ? (
                 <div className="p-2">
                   <RulesPanel />

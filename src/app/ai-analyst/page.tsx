@@ -26,7 +26,7 @@ export default async function AiAnalystPage({
   }
 
   return (
-    <div className="flex h-[calc(100vh-8rem)] flex-col space-y-6">
+    <div className="flex min-h-[calc(100dvh-7rem)] flex-col space-y-4 md:min-h-[calc(100dvh-4rem)] md:space-y-6 lg:min-h-[calc(100dvh-3.5rem)]">
       <PageHeader
         title="AI Analyst"
         description="Intelligent stock analysis powered by Vietnam market data"
@@ -38,7 +38,7 @@ export default async function AiAnalystPage({
         }
       />
 
-      <Card glow className="flex min-h-0 flex-1 flex-col !p-0">
+      <Card glow className="flex min-h-[min(24rem,calc(100dvh-11rem))] flex-1 flex-col !p-0 md:min-h-[min(28rem,calc(100dvh-8rem))]">
         <AiAnalystChat initialSymbol={symbol?.toUpperCase()} />
       </Card>
     </div>

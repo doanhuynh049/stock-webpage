@@ -167,3 +167,41 @@ body {
   scrollbar-width: thin;
   scrollbar-color: var(--border-strong) transparent;
 }
+
+/* ── Mobile / tablet layout helpers ── */
+.safe-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.page-container {
+  padding: 0.75rem;
+}
+
+@media (min-width: 640px) {
+  .page-container {
+    padding: 1rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .page-container {
+    padding: 1.25rem 1.5rem;
+  }
+}
+
+.tab-scroll {
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+
+.tab-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.table-scroll {
+  -webkit-overflow-scrolling: touch;
+}

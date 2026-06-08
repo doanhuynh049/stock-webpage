@@ -11,6 +11,8 @@ type NavLinkProps = {
   label: string;
   desc: string;
   icon: LucideIcon;
+  compact?: boolean;
+  onClick?: () => void;
 };
 
 function NavLinkPending({ icon: Icon, active }: { icon: LucideIcon; active: boolean }) {
@@ -27,7 +29,14 @@ function NavLinkPending({ icon: Icon, active }: { icon: LucideIcon; active: bool
   );
 }
 
-export function NavLink({ href, label, desc, icon: Icon }: NavLinkProps) {
+export function NavLink({
+  href,
+  label,
+  desc,
+  icon: Icon,
+  compact = false,
+  onClick,
+}: NavLinkProps) {
   const pathname = usePathname();
 
   const active =
@@ -37,21 +46,27 @@ export function NavLink({ href, label, desc, icon: Icon }: NavLinkProps) {
     <Link
       href={href}
       prefetch
+      onClick={onClick}
+      title={compact ? `${label} — ${desc}` : undefined}
       aria-current={active ? "page" : undefined}
+      aria-label={compact ? label : undefined}
       className={cn(
-        "group flex items-center gap-3 rounded-xl px-3 py-2.5 transition-all duration-200",
+        "group flex items-center rounded-xl transition-all duration-200",
+        compact ? "justify-center px-2 py-3" : "gap-3 px-3 py-2.5",
         active
           ? "bg-[var(--accent-bg)] text-[var(--accent)] ring-1 ring-[var(--accent)]/25"
           : "text-[var(--fg-muted)] hover:bg-[var(--bg-secondary)] hover:text-[var(--fg)]",
       )}
     >
       <NavLinkPending icon={Icon} active={active} />
-      <div className="min-w-0">
-        <div className="text-sm font-medium">{label}</div>
-        <div className="text-[10px] text-[var(--fg-subtle)] group-hover:text-[var(--fg-muted)]">
-          {desc}
+      {!compact && (
+        <div className="min-w-0">
+          <div className="text-sm font-medium">{label}</div>
+          <div className="text-[10px] text-[var(--fg-subtle)] group-hover:text-[var(--fg-muted)]">
+            {desc}
+          </div>
         </div>
-      </div>
+      )}
     </Link>
   );
 }

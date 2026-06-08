@@ -14,19 +14,21 @@ export function PageHeader({
   className?: string;
 }) {
   return (
-    <div className={cn("flex flex-wrap items-end justify-between gap-4", className)}>
-      <div className="animate-fade-up">
-        <h1 className="text-3xl font-bold tracking-tight">
+    <div className={cn("flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between sm:gap-4", className)}>
+      <div className="min-w-0 animate-fade-up">
+        <h1 className="text-2xl font-bold tracking-tight sm:text-3xl">
           <span className="gradient-text">{title}</span>
         </h1>
         {description && (
-          <p className="mt-1.5 max-w-2xl text-sm text-muted">{description}</p>
+          <p className="mt-1 max-w-2xl text-sm text-muted">{description}</p>
         )}
       </div>
-      <div className="flex items-center gap-3">
-        {badge}
-        {action}
-      </div>
+      {(badge || action) && (
+        <div className="flex shrink-0 flex-wrap items-center gap-2 sm:gap-3">
+          {badge}
+          {action}
+        </div>
+      )}
     </div>
   );
 }

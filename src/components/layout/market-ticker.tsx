@@ -54,17 +54,17 @@ export function MarketTicker() {
 
   return (
     <div className="relative overflow-hidden border-b border-[var(--border)] bg-[var(--ticker-bg)] backdrop-blur-md">
-      <div className="flex items-center gap-6 py-2">
-        <div className="flex shrink-0 items-center gap-2 px-4">
+      <div className="flex items-center gap-3 py-1.5 sm:gap-6 sm:py-2">
+        <div className="flex shrink-0 items-center gap-1.5 px-2 sm:gap-2 sm:px-4">
           <span className="live-dot h-1.5 w-1.5 rounded-full bg-[var(--accent)]" />
-          <span className="text-[10px] font-semibold uppercase tracking-widest text-[var(--accent)]">
+          <span className="hidden text-[10px] font-semibold uppercase tracking-widest text-[var(--accent)] sm:inline">
             {market.session} · live
           </span>
         </div>
-        <div className="flex-1 overflow-hidden">
-          <div className="ticker-animate flex w-max gap-8">
+        <div className="min-w-0 flex-1 overflow-hidden">
+          <div className="ticker-animate flex w-max gap-4 sm:gap-8">
             {doubled.map((item, i) => (
-              <div key={i} className="flex items-center gap-2 text-xs">
+              <div key={i} className="flex items-center gap-1.5 text-[11px] sm:gap-2 sm:text-xs">
                 <span className="font-medium text-[var(--fg-muted)]">{item.label}</span>
                 <span className="font-mono text-[var(--fg)]">{item.value}</span>
                 {item.showChange && (
