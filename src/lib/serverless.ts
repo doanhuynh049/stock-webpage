@@ -7,3 +7,8 @@ export function isVercel(): boolean {
 export function canUseLocalDataFiles(): boolean {
   return !isVercel();
 }
+
+/** Writable `.cache/` — false on Vercel (`/var/task` is read-only). Use in-memory cache only there. */
+export function canWriteLocalCache(): boolean {
+  return !isVercel();
+}

@@ -15,6 +15,7 @@ import {
   readCachedFundamentalSnapshot,
   readCachedTechnicalSnapshot,
 } from "@/lib/db/neon-cache";
+import { canWriteLocalCache } from "@/lib/serverless";
 import { lookupIndexStock } from "@/lib/stock-metadata";
 import type {
   MarketSnapshot,
@@ -58,6 +59,7 @@ function delay(ms: number) {
 
 async function readCache(): Promise<CachePayload | null> {
   if (memoryCache) return memoryCache;
+  if (!canWriteLocalCache()) return null;
   try {
     const raw = await fs.readFile(CACHE_FILE, "utf-8");
     memoryCache = JSON.parse(raw) as CachePayload;
@@ -69,8 +71,13 @@ async function readCache(): Promise<CachePayload | null> {
 
 async function writeCache(payload: CachePayload) {
   memoryCache = payload;
-  await fs.mkdir(CACHE_DIR, { recursive: true });
-  await fs.writeFile(CACHE_FILE, JSON.stringify(payload, null, 2));
+  if (!canWriteLocalCache()) return;
+  try {
+    await fs.mkdir(CACHE_DIR, { recursive: true });
+    await fs.writeFile(CACHE_FILE, JSON.stringify(payload, null, 2));
+  } catch (err) {
+    console.warn("[market-cache] disk write skipped:", (err as Error).message);
+  }
 }
 
 function isCacheFresh(cache: CachePayload | null): boolean {

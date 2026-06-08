@@ -7,12 +7,11 @@ import { Badge } from "@/components/ui/badge";
 import { ChangeBadge } from "@/components/stock/change-badge";
 import { PriceChartPanel } from "@/components/stock/price-chart-panel";
 import { WatchlistButton } from "@/components/stock/watchlist-button";
-import { NewsFeed } from "@/components/stock/news-feed";
+import { CachedNewsFeed } from "@/components/stock/cached-news-feed";
 import { StockAvatar } from "@/components/ui/stock-avatar";
 import { analyzeStock } from "@/lib/analysis/stock-analysis";
 import {
   generateAiSummary,
-  getNewsLive,
   getPriceHistory,
   getStock,
   getTechnicalSignals,
@@ -32,11 +31,10 @@ export default async function StockDetailPage({
   const stock = await getStock(symbol);
   if (!stock) notFound();
 
-  const [priceHistory, technicals, analysis, news] = await Promise.all([
+  const [priceHistory, technicals, analysis] = await Promise.all([
     getPriceHistory(symbol, 90),
     getTechnicalSignals(stock),
     analyzeStock(stock),
-    getNewsLive(symbol),
   ]);
   const aiSummary = generateAiSummary(stock);
   const session = await auth();
@@ -215,11 +213,7 @@ export default async function StockDetailPage({
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
           <CardTitle>Related News</CardTitle>
-          {news.length > 0 ? (
-            <NewsFeed items={news} />
-          ) : (
-            <p className="text-sm text-muted">No recent news for this stock.</p>
-          )}
+          <CachedNewsFeed symbol={stock.symbol} limit={10} />
         </Card>
 
         <Card className="bg-gradient-to-br from-emerald-500/5 to-cyan-500/5" glow>

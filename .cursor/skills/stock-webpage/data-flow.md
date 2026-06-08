@@ -1,6 +1,8 @@
 # VN Stocks — Data Flow & Database
 
-Reference for portfolio, trading, caching, and Vercel deployment.
+Reference for portfolio, trading, caching layers, and Vercel deployment.
+
+**Rules**: `.cursor/rules/vercel-cache.mdc`, `.cursor/rules/page-state-cache.mdc`
 
 ---
 
@@ -16,8 +18,9 @@ Reference for portfolio, trading, caching, and Vercel deployment.
 | `fundamental_snapshot` | `FundamentalSnapshot` | Analysis inputs |
 | `technical_snapshot` | `TechnicalSnapshot` | Analysis inputs |
 | `ai_chat_session` / `ai_chat_message` | — | AI analyst history |
+| `ai_response_cache` | `AiResponseCache` | Cached AI responses; **`analysisType=user_strategy`** for per-user strategy overrides |
 
-Market data (indices, screener) uses file cache + Entrade/Yahoo — not these tables.
+Market data (indices, screener) uses file/memory cache + Entrade/Yahoo — not these tables.
 
 ---
 
@@ -59,6 +62,62 @@ On Vercel, `canUseLocalDataFiles()` is false — no writes to `data/user-trades/
 
 ---
 
+## Cache layers (overview)
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Browser: localStorage (vnstocks:*) — news, market ticker    │
+├─────────────────────────────────────────────────────────────┤
+│ Next.js: unstable_cache (page-cache.ts) — portfolio/analysis│
+├─────────────────────────────────────────────────────────────┤
+│ Server: in-memory module vars — warm lambda only            │
+├─────────────────────────────────────────────────────────────┤
+│ Local disk: .cache/, data/neon-cache/ — dev only            │
+├─────────────────────────────────────────────────────────────┤
+│ Neon Postgres — durable user + snapshot data                │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Serverless guards (`src/lib/serverless.ts`)
+
+| Helper | Meaning |
+|--------|---------|
+| `isVercel()` | `VERCEL=1` |
+| `canUseLocalDataFiles()` | Read/write `data/` JSON (local dev) |
+| `canWriteLocalCache()` | Read/write `.cache/` (local dev only) |
+
+**Never** `mkdir('.cache')` on Vercel — causes `ENOENT: mkdir '/var/task/.cache'`.
+
+Guarded modules: `market-service.ts`, `news-service.ts`, `cache/pe-cache.ts`.
+
+### Client localStorage (`src/lib/client/local-storage-cache.ts`)
+
+Used by `useCachedFetch` for stale-while-revalidate:
+
+| Key | TTL | Consumer |
+|-----|-----|----------|
+| `vnstocks:news-market` | 1h | Dashboard news |
+| `vnstocks:news-{SYMBOL}` | 1h | Stock detail news |
+| `vnstocks:market-snapshot` | 6h | Market ticker |
+
+Flow: show cached data immediately → background fetch → update UI + localStorage.
+
+### Live news flow
+
+```
+CachedNewsFeed (client)
+  → GET /api/news (?symbol= optional, ?refresh=true force)
+  → news-service.ts
+      → Yahoo RSS + Google News RSS (providers/rss-news.ts)
+      → in-memory cache (warm lambda)
+      → .cache/news.json (local dev only)
+  → localStorage write on client
+```
+
+Do **not** call `getNewsLive()` from Server Components on pages that already mount `CachedNewsFeed`.
+
+---
+
 ## File-based data (local vs Vercel)
 
 | Path | Local | Vercel | Git |
@@ -66,8 +125,11 @@ On Vercel, `canUseLocalDataFiles()` is false — no writes to `data/user-trades/
 | `data/neon-cache/*.json` | Read fallback | **Not used** if missing | gitignored |
 | `data/user-trades/{userId}.json` | Read/write | Read-only fallback | **tracked** |
 | `data/investment-strategy.json` | Read | Read | tracked |
+| `data/investment-principles.json` | Read | Read | tracked |
 | `data/sector-stocks.json` | Read | Read | tracked |
-| `.cache/market-data.json` | Read/write | Ephemeral | gitignored |
+| `.cache/market-data.json` | Read/write | **Never write** | gitignored |
+| `.cache/news.json` | Read/write | **Never write** | gitignored |
+| `.cache/pe-ratios.json` | Read/write | **Never write** | gitignored |
 
 ### `DB_CACHE_FIRST` (`src/lib/db/cache-first.ts`)
 
@@ -76,6 +138,37 @@ When `DB_CACHE_FIRST=1` **and** `data/neon-cache/*.json` exist → skip Neon rea
 On **Vercel**: if JSON cache files are absent, **always read Neon** even when `DB_CACHE_FIRST=1`.
 
 Set `DB_CACHE_FIRST=0` on Vercel to avoid confusion.
+
+---
+
+## Analysis snapshots (batch DB reads)
+
+`loadAnalysisSnapshotStore(symbols)` in `src/lib/db/analysis-snapshots.ts`:
+
+- **2 queries** per universe: `findMany` on `fundamental_snapshot` + `technical_snapshot`
+- Used by: `fundamental-analysis`, `stock-analysis`, `combined-analysis`, `sector-analysis`
+- Replaces per-symbol N+1 reads
+
+### Scoring weights
+
+- **Combined score**: `0.60 × Technical + 0.40 × Fundamental`
+- **Technical**: base 50 + MA/RSI/MACD/volume/S-R adjustments (`technical-scoring.ts`)
+- **Signals**: ACCUMULATE / WATCH / HOLD / TRIM / AVOID / SELL (context-aware)
+- UI copy: `scoring-rules.ts`, `investment-principles.ts`
+
+### Sector P/E
+
+Resolved from snapshot store (`fund?.peRatio`), not stale `stock.pe` column. Yahoo fallback via `pe-cache.ts` (local disk only).
+
+---
+
+## User strategy persistence
+
+`user-strategy.ts` resolution:
+
+1. **Local dev**: `data/user-strategy/{userId}.json`
+2. **Neon**: `ai_response_cache` where `analysisType = 'user_strategy'`
+3. Default: `data/investment-strategy.json`
 
 ---
 
@@ -119,11 +212,20 @@ Used in `/api/portfolio`, `/api/trading`, `/api/trading/[id]`.
 
 ---
 
+## Screener defaults
+
+First visit to `/screener` redirects with query params from `screener-defaults.ts`:
+
+- `maxPe=18`, `minRevenueGrowth=12`, `minRoe=14`, `maxRsi=55`
+- Reject `maxPe=0` (would match nothing)
+
+---
+
 ## Quotes & enrichment
 
 `enrichHoldings()` → `getQuotesForSymbols()`:
 
-1. Seed cache from `.cache/market-data.json`
+1. Seed cache from `.cache/market-data.json` (local only)
 2. Entrade per missing symbol
 3. **Yahoo** (`SYMBOL.VN`) fallback
 
@@ -138,7 +240,7 @@ ETFs / illiquid tickers may still show `—` if both providers fail.
 ### What to sell / trim today
 
 | Source | Route | Signals |
-|--------|-------|-----------|
+|--------|-------|---------|
 | Strategy Review | `/strategy-review` | STOP_LOSS, TAKE_PROFIT, TRIM, SECTOR_CAP |
 | Analysis portfolio | `/analysis` → Portfolio → Combined | SELL, TRIM, AVOID |
 | Stock detail | `/stocks/[symbol]` | Recommendation badge |
@@ -172,3 +274,13 @@ Common empty-data causes:
 3. `DB_CACHE_FIRST=1` with no neon-cache files (fixed in code — falls back to Neon)
 4. Trading: Neon empty and no bundled JSON for logged-in `userId`
 5. Analysis: stale cache — fixed by shared portfolio key + symbolKey
+6. **`.cache` write on Vercel** — fixed by `canWriteLocalCache()`; use client localStorage for news/market
+
+Common production errors:
+
+| Error | Fix |
+|-------|-----|
+| `ENOENT: mkdir '/var/task/.cache'` | Guard disk writes; use `CachedNewsFeed` + localStorage |
+| Screener 0 matches | Ensure defaults redirect; never submit `maxPe=0` |
+| Raw HTML in news titles | `decodeHtmlEntities` in `rss-news.ts` |
+| Missing sector P/E | Use snapshot store, not `stock.pe` |

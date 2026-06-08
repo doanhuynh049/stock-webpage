@@ -1,9 +1,9 @@
 ---
 name: stock-webpage
 description: >-
-  Vietnam stock dashboard (VN Stocks) — pages, components, lib modules, DB tables,
-  trading/portfolio sync, and API routes. Use when editing this repo, fixing empty
-  portfolio/trading on Vercel, analysis/sector features, or architecture questions.
+  Vietnam stock dashboard (VN Stocks) — pages, components, DB, caching (Neon,
+  localStorage, Vercel), analysis/scoring, trading/portfolio sync. Use when editing
+  this repo, fixing Vercel production issues, or adding features.
 ---
 
 # VN Stocks — Project Knowledge
@@ -11,133 +11,97 @@ description: >-
 | Doc | Contents |
 |-----|----------|
 | [components.md](components.md) | Full component & API catalog |
-| [data-flow.md](data-flow.md) | DB tables, trading→portfolio, cache, Vercel ops, sync scripts |
+| [data-flow.md](data-flow.md) | DB, trading→portfolio, cache layers, Vercel ops |
 
-Follow **action-first** for navigation/mutations (`.cursor/rules/action-first-navigation.mdc`).
+**Cursor rules**: `action-first-navigation.mdc`, `page-state-cache.mdc`, `vercel-cache.mdc`
 
 ## Stack
 
 - **Next.js 16** App Router, React 19, Tailwind 4
-- **Auth**: NextAuth v5 credentials → JWT session (`session.user.id`)
+- **Auth**: NextAuth v5 credentials → JWT (`session.user.id`)
 - **DB**: Prisma + Neon Postgres (`DB_DRIVER=http` on Vercel)
-- **Market**: Entrade + Yahoo fallback → `src/lib/market-service.ts`
-- **AI**: Groq/Gemini + rule fallback → `src/lib/providers/llm.ts`
+- **Market**: Entrade + Yahoo → `market-service.ts`
+- **News**: Yahoo + Google RSS → `news-service.ts` (API); UI via `CachedNewsFeed` + localStorage
+- **AI**: Groq/Gemini + rule fallback
 
 ## Routes
 
 | Route | Purpose |
 |-------|---------|
-| `/` | Market dashboard |
-| `/portfolio` | Holdings ledger (sortable), charts — `portfolio_holding` |
-| `/trading` | BUY/SELL ledger — `trading_transaction` |
-| `/analysis` | Portfolio / **Sector** / VN30 / VN100 |
+| `/` | Dashboard — market, movers, **CachedNewsFeed**, picks |
+| `/portfolio` | Sortable holdings ledger + charts |
+| `/trading` | BUY/SELL ledger → rebuilds `portfolio_holding` |
+| `/analysis` | Portfolio / Sector / VN30 / VN100 / **Scoring rules** / **Principles** |
 | `/strategy-review` | Core–Satellite compliance, sell/trim signals |
-| `/watchlist` | Saved tickers |
-| `/ai-analyst` | AI chat |
-| `/screener` | URL-param stock filter |
-| `/stocks/[symbol]` | Stock detail + analysis panel |
+| `/watchlist` | Quick-add panel + grid |
+| `/screener` | Auto-runs default filters on first visit (URL redirect) |
+| `/stocks/[symbol]` | Detail + **CachedNewsFeed** |
+| `/ai-analyst` | Chat (Neon + localStorage session hydrate) |
 | `/login` | Auth |
+
+## Caching (critical on Vercel)
+
+| Layer | Where | Use for |
+|-------|--------|---------|
+| **Neon** | `DATABASE_URL` | Portfolio, trades, snapshots, strategy overrides |
+| **`unstable_cache`** | `page-cache.ts` | Server pages (portfolio, analysis) |
+| **In-memory** | module vars | Warm lambda only; news/market server |
+| **`.cache/`** | local dev only | `canWriteLocalCache()` — **never on Vercel** |
+| **localStorage** | browser | News, market ticker (`vnstocks:*` keys) |
+| **`data/neon-cache/`** | local dev | DB read fallback when TCP blocked |
+
+See [data-flow.md](data-flow.md) and `.cursor/rules/vercel-cache.mdc`.
 
 ## Core data model
 
-**Portfolio** (`portfolio_holding`): per-user holdings. Edited on `/portfolio` or **rebuilt from trades**.
+- **Portfolio** (`portfolio_holding`) — direct edits or rebuilt from trades
+- **Trading** (`trading_transaction`) — scoped by id prefix `{userId}__`
+- **Strategy overrides** — per user: local `data/user-strategy/` or Neon `ai_response_cache`
 
-**Trading** (`trading_transaction`): ledger. No `user_id` column — scoped by trade `id` prefix `{userId}__`.
+## Analysis & scoring
 
-**Flow**: trade CRUD → `syncPortfolioFromTrades()` → `rebuildPortfolioFromTrades()` → `portfolio_holding`.
+**Tabs**: Portfolio | Sector | VN30 | VN100 | Scoring rules | Principles
 
-See [data-flow.md](data-flow.md) for ID conventions, file paths, and sync commands.
-
-## Data layers (read order)
-
-1. **Live Neon** — when `PERSISTENCE_ENABLED` + `DATABASE_URL` set
-2. **`data/neon-cache/*.json`** — local only; skipped on Vercel if files missing
-3. **`data/user-trades/{userId}.json`** — trading fallback on Vercel (read-only, git-tracked)
-4. **`.cache/market-data.json`** — market quotes (6h TTL)
+- **Batch DB**: `loadAnalysisSnapshotStore(symbols)` — 2 queries per universe
+- **Combined**: `0.60 × Technical + 0.40 × Fundamental`
+- **Signals**: ACCUMULATE / WATCH / HOLD / TRIM / AVOID / SELL (context-aware, not score bands alone)
+- **Rules copy**: `src/lib/analysis/scoring-rules.ts`
+- **Principles copy**: `src/lib/content/investment-principles.ts`, `data/investment-principles.json`
+- **Sector P/E**: from snapshot store + `.cache/pe-ratios.json` (local disk only)
 
 ## Action-first pattern
 
-**Navigation**: `NavLink` + `useLinkStatus`; `src/app/loading.tsx` skeleton.
+`NavLink` + `useLinkStatus`; mutations optimistic → API → rollback. See `action-first-navigation.mdc`.
 
-**Mutations**: UI first → background API → rollback on failure → `revalidateTag` / `router.refresh()`.
+## Key env vars (Vercel)
 
-| Component | Optimistic | Background |
-|-----------|------------|------------|
-| `WatchlistButton` | Toggle star | server actions |
-| `WatchlistGrid` / `RemoveWatchlistButton` | Hide card | `removeFromWatchlist` |
-| `HoldingsLedger` | Table + close modal | `POST /api/portfolio` |
-| `TradingLedger` | Trades list | `/api/trading` |
-| `StrategyEditor` | Close editor | `PUT /api/strategy` |
-| `SignOutButton` | Navigate `/` | `signOut()` |
-
-## Analysis page
-
-Tabs: **Portfolio** | **Sector** | VN30 | VN100 | Scoring rules.
-
-- Portfolio bundle shares cache key with `/portfolio` page
-- Cache key includes **symbol list**, not just count
-- **Sector tab**: `computeSectorAnalysis()` — 9 sectors × 10 leaders from `data/sector-stocks.json`
-- **Trend leaders**: top combined scores across sectors (ACCUMULATE/WATCH candidates)
-
-Lib: `sector-analysis.ts`, `sector-universe.ts`, `combined-analysis.ts`, `db/analysis-snapshots.ts` (batch snapshot loader — 2 DB queries per universe).
-
-## Strategy / sell signals
-
-`/strategy-review` compares holdings vs `data/investment-strategy.json` targets:
-
-- STOP_LOSS, TAKE_PROFIT, TARGET_REACHED, TRIM, SECTOR_CAP
-
-Editable via Strategy editor → `PUT /api/strategy`.
-
-## Key env vars
-
-| Var | Purpose |
-|-----|---------|
-| `DATABASE_URL` | Neon pooler URL (**required on Vercel**) |
-| `PERSISTENCE_ENABLED=true` | Enable DB auth + user data |
-| `DB_DRIVER=http` | Neon HTTP on Vercel |
-| `DB_CACHE_FIRST=0` | **Vercel** — do not rely on gitignored neon-cache |
-| `AUTH_SECRET`, `AUTH_URL` | NextAuth |
-| `CACHE_USER_ID` | Fallback user for bundled trade JSON |
-| `STOCK_SERVICE_TRADES_USER` | Ledger key for import (default `quocthien049`) |
-| `GROQ_API_KEY` / `GEMINI_API_KEY` | LLM |
+```
+DATABASE_URL, AUTH_SECRET, AUTH_URL
+PERSISTENCE_ENABLED=true, DB_DRIVER=http, DB_CACHE_FIRST=0
+CACHE_USER_ID=   # match bundled data/user-trades/{id}.json if needed
+```
 
 ## Common tasks
 
-### Fix empty portfolio/trading on Vercel
+### Vercel ENOENT `.cache`
 
-1. Set `DATABASE_URL`, `PERSISTENCE_ENABLED`, `DB_CACHE_FIRST=0`
-2. Set `CACHE_USER_ID` to match `data/user-trades/{id}.json`
-3. Run `npm run sync:trades` from host that reaches Neon
-4. See [data-flow.md](data-flow.md) troubleshooting
+Guard disk writes with `canWriteLocalCache()`. Use `CachedNewsFeed` / `useCachedFetch` for client cache.
 
-### Add a page
+### Empty portfolio/trading
 
-1. `src/app/<route>/page.tsx` + nav in `sidebar.tsx`
-2. Wrap loaders in `pageCache()` — `.cursor/rules/page-state-cache.mdc`
-3. Invalidate tags on mutations
+See [data-flow.md](data-flow.md) — `DATABASE_URL`, `CACHE_USER_ID`, `npm run sync:trades`
 
-### Import trades from stock-service
+### Screener defaults
+
+`src/lib/screener-defaults.ts` — redirect `/screener` → `?maxPe=18&minRevenueGrowth=12&minRoe=14&maxRsi=55`. Reject `maxPe=0`.
+
+### Import trades
 
 ```bash
-npm run import:trades:service
-npm run sync:trades
-npm run probe:trades
+npm run import:trades:service && npm run sync:trades && npm run probe:trades
 ```
-
-## Scripts (`package.json`)
-
-| Script | Purpose |
-|--------|---------|
-| `dev` | Next dev :4873 |
-| `sync:trades` | JSON → Neon |
-| `import:trades:service` | stock-service JSON → local JSON |
-| `probe:trades` | DB row counts |
-| `sync:users:cache` | User cache export |
 
 ## Reference
 
-- Components: [components.md](components.md)
-- Data & DB: [data-flow.md](data-flow.md)
-- Page cache: `.cursor/rules/page-state-cache.mdc`
-- Action-first: `.cursor/rules/action-first-navigation.mdc`
+- [components.md](components.md) · [data-flow.md](data-flow.md)
+- Rules: `.cursor/rules/*.mdc`

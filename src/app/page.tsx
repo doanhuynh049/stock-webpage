@@ -13,7 +13,7 @@ import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
 import { MoverList } from "@/components/stock/mover-list";
-import { NewsFeed } from "@/components/stock/news-feed";
+import { CachedNewsFeed } from "@/components/stock/cached-news-feed";
 import { SectorHeatmap } from "@/components/stock/sector-heatmap";
 import { StockTable } from "@/components/stock/stock-table";
 import { ChangeBadge } from "@/components/stock/change-badge";
@@ -24,7 +24,6 @@ import {
   getMarketSnapshot,
   getTopMovers,
 } from "@/lib/stocks";
-import { getNewsLive } from "@/lib/news-service";
 import { getStockPicks } from "@/lib/stock-picks";
 import { getWatchlistWithStocks } from "@/lib/user-data";
 import { formatVolume } from "@/lib/utils";
@@ -33,14 +32,12 @@ export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
   const market = await getMarketSnapshot();
-  const [{ gainers, losers }, stocks, watchlist, picks, newsAll] = await Promise.all([
+  const [{ gainers, losers }, stocks, watchlist, picks] = await Promise.all([
     getTopMovers(5),
     getAllStocks(),
     getWatchlistWithStocks(),
     getStockPicks(5),
-    getNewsLive(),
   ]);
-  const news = newsAll.slice(0, 5);
   const vnindex = market.indices.find((i) => i.symbol === "VNINDEX")!;
 
   return (
@@ -154,7 +151,7 @@ export default async function DashboardPage() {
       <div className="grid gap-6 lg:grid-cols-5">
         <Card className="lg:col-span-3">
           <CardTitle>Market News</CardTitle>
-          <NewsFeed items={news} />
+          <CachedNewsFeed limit={5} />
         </Card>
 
         <Card className="lg:col-span-2">

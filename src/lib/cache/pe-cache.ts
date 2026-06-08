@@ -1,5 +1,6 @@
 import fs from "fs/promises";
 import path from "path";
+import { canWriteLocalCache } from "@/lib/serverless";
 
 const CACHE_FILE = path.join(process.cwd(), ".cache", "pe-ratios.json");
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24h
@@ -13,12 +14,24 @@ let memory: PeCachePayload | null = null;
 
 async function readPayload(): Promise<PeCachePayload | null> {
   if (memory) return memory;
+  if (!canWriteLocalCache()) return null;
   try {
     const raw = await fs.readFile(CACHE_FILE, "utf-8");
     memory = JSON.parse(raw) as PeCachePayload;
     return memory;
   } catch {
     return null;
+  }
+}
+
+async function persistPayload(payload: PeCachePayload): Promise<void> {
+  memory = payload;
+  if (!canWriteLocalCache()) return;
+  try {
+    await fs.mkdir(path.dirname(CACHE_FILE), { recursive: true });
+    await fs.writeFile(CACHE_FILE, JSON.stringify(payload, null, 2));
+  } catch (err) {
+    console.warn("[pe-cache] disk write skipped:", (err as Error).message);
   }
 }
 
@@ -60,9 +73,7 @@ export async function savePeToCache(
   };
   existing.ratios[sym] = pe;
   existing.syncedAt = new Date().toISOString();
-  memory = existing;
-  await fs.mkdir(path.dirname(CACHE_FILE), { recursive: true });
-  await fs.writeFile(CACHE_FILE, JSON.stringify(existing, null, 2));
+  await persistPayload(existing);
 }
 
 export async function savePeBatchToCache(
@@ -76,7 +87,5 @@ export async function savePeBatchToCache(
     if (pe > 0) existing.ratios[sym.toUpperCase()] = pe;
   }
   existing.syncedAt = new Date().toISOString();
-  memory = existing;
-  await fs.mkdir(path.dirname(CACHE_FILE), { recursive: true });
-  await fs.writeFile(CACHE_FILE, JSON.stringify(existing, null, 2));
+  await persistPayload(existing);
 }

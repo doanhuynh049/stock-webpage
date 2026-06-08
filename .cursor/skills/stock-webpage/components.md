@@ -2,7 +2,7 @@
 
 High-level reference for AI agents. Server = React Server Component; Client = `"use client"`.
 
-**Related**: [data-flow.md](data-flow.md) — DB tables, trading sync, Vercel pitfalls.
+**Related**: [data-flow.md](data-flow.md) — DB, cache layers, Vercel. **Rules**: `.cursor/rules/vercel-cache.mdc`
 
 ---
 
@@ -10,15 +10,15 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 
 | Route | File | Type | Purpose | Data sources |
 |-------|------|------|---------|--------------|
-| `/` | `page.tsx` | Server | Market dashboard: indices, movers, sectors, news, picks | `stocks`, `stock-picks`, `user-data` |
+| `/` | `page.tsx` | Server | Market dashboard: indices, movers, sectors, picks | `stocks`, `stock-picks`; news via **`CachedNewsFeed`** (client) |
 | `/login` | `login/page.tsx` | Client | Email/password login & registration | `actions` |
 | `/portfolio` | `portfolio/page.tsx` | Server | Holdings ledger (sortable), allocation charts | `advisory-portfolio`, `holdings-enrichment`, `page-cache` |
-| `/watchlist` | `watchlist/page.tsx` | Server | User watchlist + discover stocks | `user-data`, `stocks` |
-| `/analysis` | `analysis/page.tsx` | Server | Portfolio / **Sector** / VN30 / VN100 analysis | `combined-analysis`, `sector-analysis`, `recommendations`, shared portfolio cache |
+| `/watchlist` | `watchlist/page.tsx` | Server | **Quick-add panel** + watchlist grid | `user-data`, `stocks` |
+| `/analysis` | `analysis/page.tsx` | Server | Portfolio / Sector / VN30 / VN100 / **Scoring rules** / **Principles** | `combined-analysis`, `sector-analysis`, `recommendations`, shared portfolio cache |
 | `/ai-analyst` | `ai-analyst/page.tsx` | Server | AI chat shell | `auth`; chat via `/api/ai` |
-| `/stocks/[symbol]` | `stocks/[symbol]/page.tsx` | Server | Stock detail: quote, charts, fundamentals | `stocks`, `stock-analysis`, `user-data` |
+| `/stocks/[symbol]` | `stocks/[symbol]/page.tsx` | Server | Stock detail: quote, charts, fundamentals | `stocks`, `stock-analysis`, `user-data`; news via **`CachedNewsFeed`** |
 | `/trading` | `trading/page.tsx` | Server | Trade ledger wrapper | `auth`; `TradingLedger` → `/api/trading` |
-| `/screener` | `screener/page.tsx` | Server | Filter stocks via URL params | `stocks` (`screenStocks`) |
+| `/screener` | `screener/page.tsx` | Server | Filter stocks; **redirects with defaults** on first visit | `stocks`, `screener-defaults` |
 | `/strategy-review` | `strategy-review/page.tsx` | Server | Core–Satellite compliance, action items | `advisory-portfolio`, `strategy/*` |
 
 **Global loading**: `loading.tsx` — route transition skeleton.
@@ -43,7 +43,7 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 | `shell-content.tsx` | Client | Sidebar + market ticker + main; hides chrome on `/login` |
 | `sidebar.tsx` | Client | Nav links, user info, theme toggle, sign out |
 | `nav-link.tsx` | Client | Nav link with `useLinkStatus` pending indicator |
-| `market-ticker.tsx` | Client | Scrolling index strip; fetches `/api/market` |
+| `market-ticker.tsx` | Client | Scrolling index strip; **`useCachedFetch`** → `/api/market` |
 | `theme-toggle.tsx` | Client | Light / dark / system cycle |
 | `sign-out-button.tsx` | Client | Sign out — navigates first, session cleared after |
 
@@ -71,7 +71,8 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 | `mover-list.tsx` | Server | Top gainers/losers rows |
 | `stock-table.tsx` | Server | Market table |
 | `sector-heatmap.tsx` | Server | Sector performance grid |
-| `news-feed.tsx` | Server | News list |
+| `news-feed.tsx` | Server | Static news list (legacy; prefer **`cached-news-feed`**) |
+| `cached-news-feed.tsx` | Client | Live news via **`useCachedFetch`** → `/api/news`; localStorage TTL 1h |
 | `investment-picks.tsx` | Server | Curated picks card |
 | `stock-analysis-panel.tsx` | Server | Combined analysis on detail page |
 | `price-chart.tsx` | Client | Recharts line chart |
@@ -96,7 +97,7 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 
 | File | Type | Purpose |
 |------|------|---------|
-| `analysis-view.tsx` | Client | Tabbed Portfolio / **Sector** / VN30 / VN100 grids |
+| `analysis-view.tsx` | Client | Tabs: Portfolio / Sector / VN30 / VN100 / **Scoring rules** / **Principles** |
 | `sector-analysis-view.tsx` | Client | Per-sector leaders + trend leaders panel |
 | `analysis-detail-panel.tsx` | Client | Slide-over detail for scored row |
 
@@ -112,20 +113,38 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 
 | File | Type | Purpose |
 |------|------|---------|
-| `chat.tsx` | Client | Chat UI; `/api/ai`, `/api/ai/session` |
+| `chat.tsx` | Client | Chat UI; `/api/ai`, `/api/ai/session`; localStorage session hydrate |
 
 ### `screener/`
 
 | File | Type | Purpose |
 |------|------|---------|
-| `screener-form.tsx` | Client | Filter form; `startTransition` + navigate with query params |
+| `screener-form.tsx` | Client | Filter form; always submits valid defaults; `startTransition` + navigate |
 
 ### `watchlist/`
 
 | File | Type | Purpose |
 |------|------|---------|
+| `watchlist-add-panel.tsx` | Client | Quick-add symbol search + add to watchlist |
 | `watchlist-grid.tsx` | Client | Watchlist cards with optimistic remove |
 | `remove-watchlist-button.tsx` | Client | Remove symbol — optimistic hide |
+
+---
+
+## Hooks & client cache
+
+| File | Purpose |
+|------|---------|
+| `src/hooks/use-cached-fetch.ts` | Stale-while-revalidate fetch; reads/writes localStorage |
+| `src/lib/client/local-storage-cache.ts` | `readLocalCache` / `writeLocalCache`; keys prefixed `vnstocks:` |
+
+**localStorage keys**
+
+| Key | TTL | Used by |
+|-----|-----|---------|
+| `vnstocks:news-market` | 1h | Dashboard `CachedNewsFeed` |
+| `vnstocks:news-{SYMBOL}` | 1h | Stock detail news |
+| `vnstocks:market-snapshot` | 6h | `MarketTicker` |
 
 ---
 
@@ -160,32 +179,42 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 | `db/neon-cache.ts` | JSON cache snapshots (`data/neon-cache/`) |
 | `user-data.ts` | Watchlist + AI sessions for pages |
 
-### Market
+### Market & news
 
 | Module | Purpose |
 |--------|---------|
-| `market-service.ts` | Sync, quotes (Entrade + **Yahoo `.VN` fallback**), screener, news |
+| `market-service.ts` | Sync, quotes (Entrade + Yahoo fallback); disk cache guarded by `canWriteLocalCache()` |
+| `news-service.ts` | Yahoo + Google RSS; in-memory + optional `.cache/news.json` (local only) |
+| `providers/rss-news.ts` | RSS parse, HTML entity decode, tag strip |
 | `stocks.ts` | Re-export barrel → market-service |
 | `stock-metadata.ts` | Index/universe metadata |
 | `stock-picks.ts` | Scored picks for dashboard |
+| `screener-defaults.ts` | Default screener params + URL redirect helper |
 | `providers/entrade.ts` | Entrade API |
 | `providers/yahoo.ts` | Yahoo Finance fallback |
 | `sector-colors.ts` | Sector → color mapping |
+| `cache/pe-cache.ts` | Sector P/E Yahoo fallback cache (local disk only) |
 
 ### Analysis
 
 | Module | Purpose |
 |--------|---------|
 | `analysis/stock-analysis.ts` | Single-stock combined analysis |
-| `analysis/fundamental-analysis.ts` | Universe fundamental rows |
+| `analysis/fundamental-analysis.ts` | Universe fundamental rows (batch snapshots) |
 | `analysis/fundamental-scoring.ts` | PE/PB/ROE scoring |
-| `analysis/technical-scoring.ts` | RSI/MACD scoring |
-| `analysis/combined-analysis.ts` | Bundled universes (portfolio, VN30, VN100) |
+| `analysis/technical-scoring.ts` | RSI/MACD/MA/volume scoring (base 50 + adjustments) |
+| `analysis/combined-analysis.ts` | Bundled universes (portfolio, VN30, VN100); **0.60×Tech + 0.40×Fund** |
 | `analysis/sector-universe.ts` | Load `data/sector-stocks.json` |
-| `analysis/sector-analysis.ts` | Sector scores + **trend leaders** |
+| `analysis/sector-analysis.ts` | Sector scores, trend leaders, P/E from snapshot store |
 | `analysis/index-universe.ts` | VN30 / VN100 lists |
-| `analysis/scoring-rules.ts` | UI rule copy |
+| `analysis/scoring-rules.ts` | Scoring rules tab copy (technical + combined weights) |
 | `analysis/strategy-review.ts` | Portfolio vs targets |
+
+### Content
+
+| Module | Purpose |
+|--------|---------|
+| `content/investment-principles.ts` | Principles tab copy from `data/investment-principles.json` |
 
 ### Portfolio & Strategy
 
@@ -195,7 +224,7 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 | `portfolio/from-trades.ts` | Rebuild holdings from trade ledger |
 | `strategy/strategy-types.ts` | Core–Satellite types |
 | `strategy/strategy-config.ts` | Default config |
-| `strategy/user-strategy.ts` | Per-user strategy persistence |
+| `strategy/user-strategy.ts` | Per-user strategy: local file + Neon `ai_response_cache` |
 | `strategy/strategy-review.ts` | Compliance comparison |
 
 ### AI & Infra
@@ -205,6 +234,7 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 | `ai-analyst.ts` | Rule-based fallback Q&A |
 | `providers/llm.ts` | OpenAI-compatible LLM (Groq/Gemini) |
 | `page-cache.ts` | `unstable_cache` wrapper + TTL |
+| `serverless.ts` | `isVercel`, `canUseLocalDataFiles`, **`canWriteLocalCache`** |
 | `utils.ts` | `cn`, formatting helpers |
 
 ---
@@ -215,6 +245,7 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 |------|---------|
 | `sector-stocks.json` | 9 sectors × 10 leader symbols (Sector analysis tab) |
 | `investment-strategy.json` | Default Core–Satellite targets |
+| `investment-principles.json` | Investment principles (English) for Analysis tab |
 | `user-trades/{userId}.json` | Bundled trade ledger (Vercel read fallback) |
 | `neon-cache/*.json` | Local DB read cache (gitignored; not on Vercel) |
 
@@ -240,7 +271,7 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 | `/api/stocks` | GET | All/screened stocks | Public | — |
 | `/api/stocks/[symbol]` | GET | Stock detail | Public | — |
 | `/api/stocks/[symbol]/history` | GET | Price history | Public | — |
-| `/api/news` | GET | News feed | Public | — |
+| `/api/news` | GET | Live RSS news (`?refresh=true` bypasses server memory) | Public | — |
 | `/api/picks` | GET | Investment picks | Public | — |
 | `/api/data/sync` | GET, POST | Market data sync | Session / cron | — |
 | `/api/portfolio` | GET, POST | Portfolio holdings | Session | `portfolio-*`, `analysis-*` |
@@ -255,12 +286,14 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 ## Dependency graph
 
 ```
-layout (Sidebar, NavLink, Ticker)
+layout (Sidebar, NavLink, MarketTicker + localStorage)
   └── pages (Server prefetch + pageCache)
-        └── client components (ledgers, charts, analysis tabs, chat)
+        └── client components (CachedNewsFeed, ledgers, charts, analysis tabs, chat)
               └── /api routes
                     └── lib/db (trading-store → portfolio-sync)
-                          └── market-service + analysis
+                          └── market-service + news-service + analysis (batch snapshots)
 ```
 
 **Trading mutation path**: `TradingLedger` → `/api/trading` → `trading-store` → `trading_transaction` → `syncPortfolioFromTrades` → `portfolio_holding`.
+
+**News path (preferred)**: `CachedNewsFeed` → `/api/news` → `news-service` (RSS); browser caches in localStorage.

@@ -9,6 +9,7 @@ import {
   type RssItem,
 } from "@/lib/providers/rss-news";
 import type { NewsItem } from "@/types/stock";
+import { canWriteLocalCache } from "@/lib/serverless";
 
 const CACHE_DIR = path.join(process.cwd(), ".cache");
 const CACHE_FILE = path.join(CACHE_DIR, "news.json");
@@ -74,6 +75,7 @@ function dedupeNews(items: NewsItem[]): NewsItem[] {
 
 async function readCache(): Promise<NewsCachePayload | null> {
   if (memoryCache) return memoryCache;
+  if (!canWriteLocalCache()) return null;
   try {
     const raw = await fs.readFile(CACHE_FILE, "utf-8");
     memoryCache = JSON.parse(raw) as NewsCachePayload;
@@ -85,8 +87,13 @@ async function readCache(): Promise<NewsCachePayload | null> {
 
 async function writeCache(payload: NewsCachePayload) {
   memoryCache = payload;
-  await fs.mkdir(CACHE_DIR, { recursive: true });
-  await fs.writeFile(CACHE_FILE, JSON.stringify(payload, null, 2));
+  if (!canWriteLocalCache()) return;
+  try {
+    await fs.mkdir(CACHE_DIR, { recursive: true });
+    await fs.writeFile(CACHE_FILE, JSON.stringify(payload, null, 2));
+  } catch (err) {
+    console.warn("[news-cache] disk write skipped:", (err as Error).message);
+  }
 }
 
 function isFresh(cache: NewsCachePayload | null): boolean {

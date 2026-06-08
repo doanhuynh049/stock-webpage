@@ -1,18 +1,31 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback } from "react";
 import type { MarketSnapshot } from "@/types/stock";
 import { changeColor } from "@/lib/utils";
+import {
+  LOCAL_CACHE_KEYS,
+  LOCAL_CACHE_TTL,
+} from "@/lib/client/local-storage-cache";
+import { useCachedFetch } from "@/hooks/use-cached-fetch";
+
+function parseMarketResponse(json: unknown): MarketSnapshot | null {
+  const market = (json as { market?: MarketSnapshot })?.market;
+  return market?.indices?.length ? market : null;
+}
 
 export function MarketTicker() {
-  const [market, setMarket] = useState<MarketSnapshot | null>(null);
+  const select = useCallback(
+    (json: unknown) => parseMarketResponse(json),
+    [],
+  );
 
-  useEffect(() => {
-    fetch("/api/market")
-      .then((r) => r.json())
-      .then((d) => setMarket(d.market))
-      .catch(() => null);
-  }, []);
+  const { data: market } = useCachedFetch<MarketSnapshot>(
+    LOCAL_CACHE_KEYS.market,
+    "/api/market",
+    LOCAL_CACHE_TTL.market,
+    select,
+  );
 
   if (!market) {
     return (

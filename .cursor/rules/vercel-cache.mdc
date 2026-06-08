@@ -1,0 +1,49 @@
+---
+description: Caching on Vercel — no disk writes; use memory, localStorage, or Neon
+globs: src/lib/**/*.ts,src/components/**/*.tsx,src/hooks/**/*.ts
+alwaysApply: false
+---
+
+# Vercel & client caching
+
+`/var/task` on Vercel is **read-only**. Never `mkdir` or write under `.cache/` in production.
+
+## Server (`src/lib/serverless.ts`)
+
+| Helper | When true |
+|--------|-----------|
+| `isVercel()` | `VERCEL=1` |
+| `canUseLocalDataFiles()` | Local dev — read/write `data/` JSON |
+| `canWriteLocalCache()` | Local dev — read/write `.cache/` |
+
+On Vercel: use **in-memory** module vars only (`memoryCache` in market/news services). Survives warm lambda reuse, not cold starts.
+
+## Client (browser)
+
+For news, market ticker, and other public API data that users revisit:
+
+- Use `src/lib/client/local-storage-cache.ts` (`readLocalCache` / `writeLocalCache`)
+- Use `src/hooks/use-cached-fetch.ts` — show cache first, revalidate in background
+- Keys prefixed `vnstocks:` (e.g. `vnstocks:news-market`, `vnstocks:market-snapshot`)
+
+Prefer **client fetch + localStorage** over server SSR for:
+- Live RSS news (`CachedNewsFeed` → `/api/news`)
+- Market ticker strip (`MarketTicker` → `/api/market`)
+
+Do **not** call `getNewsLive()` from Server Components on pages that already use `CachedNewsFeed`.
+
+## Neon / JSON fallbacks
+
+| Data | Vercel read | Vercel write |
+|------|-------------|--------------|
+| `portfolio_holding`, trades | Neon HTTP | Neon HTTP |
+| `data/neon-cache/` | Skip if missing | Never |
+| `data/user-trades/` | Read bundled JSON | Never |
+| User strategy | `ai_response_cache` row | Neon upsert |
+| `.cache/` | Skip | **Never** — use `canWriteLocalCache()` guard |
+
+## Adding new cache
+
+1. Server-only ephemeral → in-memory + optional `.cache/` guarded by `canWriteLocalCache()`
+2. User-facing repeat loads → client `useCachedFetch` + localStorage TTL
+3. Shared durable → Neon table or `unstable_cache` + `revalidateTag`

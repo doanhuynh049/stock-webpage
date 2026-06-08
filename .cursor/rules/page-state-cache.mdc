@@ -51,6 +51,16 @@ Rules:
 - Client refetch: `fetch('/api/...')` with local `useState`; optional SWR later.
 - Do **not** duplicate server cache on the client; API routes stay the source of truth for edits.
 
+## Client localStorage (public data)
+
+For news and market ticker, use `useCachedFetch` + `localStorage` (see `.cursor/rules/vercel-cache.mdc`):
+
+- TTL: news 1h, market 6h
+- Keys: `vnstocks:news-market`, `vnstocks:news-{SYMBOL}`, `vnstocks:market-snapshot`
+- Components: `CachedNewsFeed`, `MarketTicker`
+
+Do not SSR-fetch live news when the page uses `CachedNewsFeed`.
+
 ## New pages checklist
 
 1. Identify the slowest loader (DB, Entrade, analysis).
