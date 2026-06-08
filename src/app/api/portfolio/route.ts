@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { revalidateTag } from "next/cache";
 import { auth } from "@/lib/auth";
 import {
   listPortfolioHoldings,
@@ -54,6 +55,8 @@ export async function POST(request: Request) {
 
   try {
     const totalHoldings = await syncPortfolioHoldings(session.user.id, body);
+    revalidateTag(`portfolio-${session.user.id}`, { expire: 0 });
+    revalidateTag(`analysis-${session.user.id}`, { expire: 0 });
     return NextResponse.json({ success: true, totalHoldings });
   } catch (error) {
     return NextResponse.json(

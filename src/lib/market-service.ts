@@ -372,7 +372,23 @@ export async function getQuotesForSymbols(
   if (missing.length) {
     const fetched = await Promise.all(
       missing.map(async (sym) => {
-        const quote = await fetchStockQuote(sym);
+        let quote = await fetchStockQuote(sym);
+        if (!quote?.price) {
+          const yq = await fetchYahooQuote(sym);
+          if (yq?.price) {
+            quote = {
+              symbol: sym,
+              price: yq.price,
+              change: yq.change,
+              changePercent: yq.changePercent,
+              volume: yq.volume,
+              open: yq.price,
+              high: yq.price,
+              low: yq.price,
+              date: new Date().toISOString().slice(0, 10),
+            };
+          }
+        }
         return quote && quote.price > 0 ? ([sym, quote.price] as const) : null;
       }),
     );
@@ -408,8 +424,26 @@ export async function getStock(symbol: string): Promise<Stock | undefined> {
   }
 
   const live = await fetchStockQuote(sym);
-  if (!live?.price) return undefined;
-  return enrichStockDetails(minimalStockFromQuote(sym, live));
+  if (live?.price) return enrichStockDetails(minimalStockFromQuote(sym, live));
+
+  const yq = await fetchYahooQuote(sym);
+  if (yq?.price) {
+    return enrichStockDetails(
+      minimalStockFromQuote(sym, {
+        symbol: sym,
+        price: yq.price,
+        change: yq.change,
+        changePercent: yq.changePercent,
+        volume: yq.volume,
+        open: yq.price,
+        high: yq.price,
+        low: yq.price,
+        date: new Date().toISOString().slice(0, 10),
+      }),
+    );
+  }
+
+  return undefined;
 }
 
 export async function getTopMovers(limit = 5) {

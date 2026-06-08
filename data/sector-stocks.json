@@ -1,0 +1,51 @@
+{
+  "version": 1,
+  "description": "Curated 10 leaders per Vietnamese sector (from stock-service).",
+  "sectors": [
+    {
+      "id": "BANKING_FINANCE",
+      "name": "Banking & Financial Services",
+      "tickers": ["VCB", "BID", "CTG", "MBB", "TCB", "VPB", "ACB", "HDB", "STB", "SSI"]
+    },
+    {
+      "id": "REAL_ESTATE_CONSTRUCTION",
+      "name": "Real Estate & Construction",
+      "tickers": ["VIC", "VHM", "VRE", "NVL", "KDH", "DXG", "PDR", "NLG", "KBC", "BCM"]
+    },
+    {
+      "id": "CONSUMER_RETAIL",
+      "name": "Consumer Goods & Retail",
+      "tickers": ["VNM", "MSN", "MWG", "SAB", "BHN", "PNJ", "FRT", "DGW", "QNS", "VHC"]
+    },
+    {
+      "id": "MANUFACTURING_INDUSTRIALS",
+      "name": "Manufacturing & Industrials",
+      "tickers": ["HPG", "HSG", "NKG", "VGT", "TCM", "DHC", "STK", "PAC", "TLG", "GVR"]
+    },
+    {
+      "id": "ENERGY",
+      "name": "Energy (Oil, Gas, Utilities)",
+      "tickers": ["GAS", "PVD", "PVS", "PLX", "POW", "REE", "NT2", "BSR", "PVT", "PGV"]
+    },
+    {
+      "id": "MATERIALS",
+      "name": "Materials (Chemicals, Fertilizers, Mining)",
+      "tickers": ["DGC", "DPM", "DCM", "BFC", "LAS", "CSV", "KSB", "HT1", "BMP", "AAA"]
+    },
+    {
+      "id": "TECH_TELECOM",
+      "name": "Technology & Telecommunications",
+      "tickers": ["FPT", "CMG", "ELC", "SGT", "ITD", "SAM", "VGI", "CTR", "TTN", "ICT"]
+    },
+    {
+      "id": "TRANSPORT_LOGISTICS",
+      "name": "Transportation & Logistics",
+      "tickers": ["GMD", "HVN", "VTP", "ACV", "HAH", "VOS", "VSC", "TMS", "STG", "SCS"]
+    },
+    {
+      "id": "HEALTHCARE_PHARMA",
+      "name": "Healthcare & Pharmaceuticals",
+      "tickers": ["DHG", "TRA", "IMP", "DBD", "DMC", "JVC", "DVN", "OPC", "DCL", "MED"]
+    }
+  ]
+}

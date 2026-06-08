@@ -63,7 +63,7 @@ function filePath(userId: string): string {
 }
 
 function readFileTrades(userId: string): TradeRecord[] {
-  if (!canUseLocalDataFiles()) return [];
+  if (!canUseLocalDataFiles()) return readBundledTrades(userId);
   const path = filePath(userId);
   if (!existsSync(path)) return [];
   try {
@@ -72,6 +72,29 @@ function readFileTrades(userId: string): TradeRecord[] {
   } catch {
     return [];
   }
+}
+
+/** Read-only ledger shipped in repo (`data/user-trades/{userId}.json`) — used on Vercel when Neon is empty. */
+function readBundledTrades(userId: string): TradeRecord[] {
+  const path = filePath(userId);
+  if (!existsSync(path)) return [];
+  try {
+    const raw = JSON.parse(readFileSync(path, "utf-8")) as TradeRecord[];
+    if (!Array.isArray(raw)) return [];
+    return raw.map((t) => ({ ...t, userId: t.userId || userId }));
+  } catch {
+    return [];
+  }
+}
+
+function bundledTradesFallback(userId: string): TradeRecord[] {
+  let trades = readBundledTrades(userId);
+  if (trades.length) return trades;
+  const cacheUser = process.env.CACHE_USER_ID?.trim();
+  if (cacheUser && cacheUser !== userId) {
+    trades = readBundledTrades(cacheUser);
+  }
+  return trades;
 }
 
 function writeFileTrades(userId: string, trades: TradeRecord[]) {
@@ -405,16 +428,21 @@ export async function listTrades(
 
   if (canUseLocalDataFiles()) {
     ensureTradesFromStockService(userId, opts?.email);
-    const fileTrades = readFileTrades(userId);
-    trades = fileTrades;
-    if (fileTrades.length && process.env.SYNC_TRADES_ON_READ === "1") {
+    trades = readFileTrades(userId);
+    if (trades.length && process.env.SYNC_TRADES_ON_READ === "1") {
       await syncUserTradesJsonToDb(userId);
     }
   }
 
   if (!trades.length && isPersistenceEnabled()) {
     trades = await readDbTrades(userId);
-    if (trades.length) writeFileTrades(userId, trades);
+    if (trades.length && canUseLocalDataFiles()) {
+      writeFileTrades(userId, trades);
+    }
+  }
+
+  if (!trades.length) {
+    trades = bundledTradesFallback(userId);
   }
 
   return trades.map((t) => ({ ...t, userId: t.userId || userId })).filter((t) => {

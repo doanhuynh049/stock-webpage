@@ -13,6 +13,7 @@
     "db:studio": "prisma studio",
     "sync:market": "tsx scripts/sync-market.ts",
     "sync:trades": "tsx scripts/sync-trades-to-db.ts",
+    "probe:trades": "tsx scripts/probe-trades-db.ts",
     "seed:trades": "tsx scripts/seed-trades-from-portfolio.ts",
     "import:trades": "tsx scripts/import-trading-json.ts",
     "import:trades:service": "tsx scripts/import-trading-json.ts ../stock-service/cache/trading-records.json --all",

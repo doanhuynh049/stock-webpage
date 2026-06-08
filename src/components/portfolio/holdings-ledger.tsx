@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2, X } from "lucide-react";
@@ -10,6 +10,24 @@ import {
   changeColor,
 } from "@/lib/utils";
 import type { EnrichedHolding } from "@/lib/portfolio/holdings-enrichment";
+
+type SortKey =
+  | "symbol"
+  | "exchange"
+  | "sector"
+  | "shares"
+  | "avgBuyPrice"
+  | "costBasis"
+  | "currentPriceK"
+  | "currentValueK"
+  | "gainLossK"
+  | "gainPct"
+  | "toTargetPct"
+  | "target3Month"
+  | "targetLongTerm"
+  | "weight";
+
+type SortDir = "asc" | "desc";
 
 type Draft = {
   symbol: string;
@@ -21,6 +39,88 @@ type Draft = {
   target3Month: number;
   targetLongTerm: number;
 };
+
+function sortHoldings(
+  rows: EnrichedHolding[],
+  key: SortKey,
+  dir: SortDir,
+  totalCostBasis: number,
+): EnrichedHolding[] {
+  const mul = dir === "asc" ? 1 : -1;
+  const num = (v: number | null | undefined, fallback = -Infinity) =>
+    v ?? fallback;
+
+  return [...rows].sort((a, b) => {
+    switch (key) {
+      case "symbol":
+        return mul * a.symbol.localeCompare(b.symbol);
+      case "exchange":
+        return mul * (a.exchange ?? "").localeCompare(b.exchange ?? "");
+      case "sector":
+        return mul * (a.sector ?? "").localeCompare(b.sector ?? "");
+      case "shares":
+        return mul * (a.shares - b.shares);
+      case "avgBuyPrice":
+        return mul * (a.avgBuyPrice - b.avgBuyPrice);
+      case "costBasis":
+        return mul * (a.costBasis - b.costBasis);
+      case "currentPriceK":
+        return mul * (num(a.currentPriceK) - num(b.currentPriceK));
+      case "currentValueK":
+        return mul * (num(a.currentValueK) - num(b.currentValueK));
+      case "gainLossK":
+        return mul * (num(a.gainLossK) - num(b.gainLossK));
+      case "gainPct":
+        return mul * (num(a.gainPct) - num(b.gainPct));
+      case "toTargetPct":
+        return mul * (num(a.toTargetPct) - num(b.toTargetPct));
+      case "target3Month":
+        return mul * (num(a.target3Month, 0) - num(b.target3Month, 0));
+      case "targetLongTerm":
+        return mul * (num(a.targetLongTerm, 0) - num(b.targetLongTerm, 0));
+      case "weight": {
+        const wa = totalCostBasis > 0 ? a.costBasis / totalCostBasis : 0;
+        const wb = totalCostBasis > 0 ? b.costBasis / totalCostBasis : 0;
+        return mul * (wa - wb);
+      }
+      default:
+        return 0;
+    }
+  });
+}
+
+function SortHeader({
+  label,
+  column,
+  active,
+  dir,
+  align = "left",
+  onSort,
+}: {
+  label: string;
+  column: SortKey;
+  active: SortKey;
+  dir: SortDir;
+  align?: "left" | "right" | "center";
+  onSort: (col: SortKey) => void;
+}) {
+  const alignClass =
+    align === "right" ? "text-right" : align === "center" ? "text-center" : "text-left";
+  return (
+    <th className={`px-2 py-2 ${alignClass}`}>
+      <button
+        type="button"
+        className="inline-flex items-center gap-0.5 uppercase hover:text-[var(--fg)]"
+        onClick={() => onSort(column)}
+      >
+        {label}
+        {active === column && (
+          <span className="text-accent">{dir === "asc" ? "↑" : "↓"}</span>
+        )}
+      </button>
+    </th>
+  );
+}
 
 function toDraft(h: EnrichedHolding): Draft {
   return {
@@ -229,8 +329,24 @@ export function HoldingsLedger({
   const [modal, setModal] = useState<"add" | "edit" | null>(null);
   const [draft, setDraft] = useState<Draft>(emptyDraft());
   const [message, setMessage] = useState<string | null>(null);
+  const [sortKey, setSortKey] = useState<SortKey>("costBasis");
+  const [sortDir, setSortDir] = useState<SortDir>("desc");
 
-  const rows = holdings.map(toDraft);
+  function handleSort(col: SortKey) {
+    if (sortKey === col) {
+      setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+    } else {
+      setSortKey(col);
+      setSortDir("desc");
+    }
+  }
+
+  const sortedHoldings = useMemo(
+    () => sortHoldings(holdings, sortKey, sortDir, totalCostBasis),
+    [holdings, sortKey, sortDir, totalCostBasis],
+  );
+
+  const rows = sortedHoldings.map(toDraft);
 
   const persist = useCallback(
     (next: Draft[], prevHoldings: EnrichedHolding[]) => {
@@ -312,24 +428,24 @@ export function HoldingsLedger({
         <table className="w-full min-w-[1100px] border-collapse text-sm">
           <thead>
             <tr className="border-b border-[var(--border)] bg-[var(--bg-secondary)] text-left text-[10px] font-semibold uppercase tracking-wider text-subtle">
-              <th className="px-2 py-2">Symbol</th>
-              <th className="px-2 py-2">Exch</th>
-              <th className="px-2 py-2">Sector</th>
-              <th className="px-2 py-2 text-right">Shares</th>
-              <th className="px-2 py-2 text-right">Avg</th>
-              <th className="px-2 py-2 text-right">Cost</th>
-              <th className="px-2 py-2 text-right">Price</th>
-              <th className="px-2 py-2 text-right">Value</th>
-              <th className="px-2 py-2 text-right">P/L</th>
-              <th className="px-2 py-2 text-right">%</th>
-              <th className="px-2 py-2 text-center">3M prog</th>
-              <th className="px-2 py-2 text-right">3M tgt</th>
-              <th className="px-2 py-2 text-right">LT tgt</th>
-              <th className="px-2 py-2 text-right">Wt%</th>
+              <SortHeader label="Symbol" column="symbol" active={sortKey} dir={sortDir} onSort={handleSort} />
+              <SortHeader label="Exch" column="exchange" active={sortKey} dir={sortDir} onSort={handleSort} />
+              <SortHeader label="Sector" column="sector" active={sortKey} dir={sortDir} onSort={handleSort} />
+              <SortHeader label="Shares" column="shares" active={sortKey} dir={sortDir} align="right" onSort={handleSort} />
+              <SortHeader label="Avg" column="avgBuyPrice" active={sortKey} dir={sortDir} align="right" onSort={handleSort} />
+              <SortHeader label="Cost" column="costBasis" active={sortKey} dir={sortDir} align="right" onSort={handleSort} />
+              <SortHeader label="Price" column="currentPriceK" active={sortKey} dir={sortDir} align="right" onSort={handleSort} />
+              <SortHeader label="Value" column="currentValueK" active={sortKey} dir={sortDir} align="right" onSort={handleSort} />
+              <SortHeader label="P/L" column="gainLossK" active={sortKey} dir={sortDir} align="right" onSort={handleSort} />
+              <SortHeader label="%" column="gainPct" active={sortKey} dir={sortDir} align="right" onSort={handleSort} />
+              <SortHeader label="3M prog" column="toTargetPct" active={sortKey} dir={sortDir} align="center" onSort={handleSort} />
+              <SortHeader label="3M tgt" column="target3Month" active={sortKey} dir={sortDir} align="right" onSort={handleSort} />
+              <SortHeader label="LT tgt" column="targetLongTerm" active={sortKey} dir={sortDir} align="right" onSort={handleSort} />
+              <SortHeader label="Wt%" column="weight" active={sortKey} dir={sortDir} align="right" onSort={handleSort} />
             </tr>
           </thead>
           <tbody>
-            {holdings.map((h) => {
+            {sortedHoldings.map((h) => {
               const weight =
                 totalCostBasis > 0 ? (h.costBasis / totalCostBasis) * 100 : 0;
               return (

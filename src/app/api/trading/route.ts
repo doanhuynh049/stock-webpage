@@ -80,6 +80,7 @@ export async function POST(request: Request) {
     const trade = await addTrade(session.user.id, body);
     revalidatePath("/portfolio");
     revalidateTag(`portfolio-${session.user.id}`, { expire: 0 });
+    revalidateTag(`analysis-${session.user.id}`, { expire: 0 });
     return NextResponse.json({ success: true, trade, portfolioSynced: true });
   } catch (error) {
     return NextResponse.json(

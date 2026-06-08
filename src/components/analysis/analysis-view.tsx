@@ -14,13 +14,16 @@ import type {
   TechnicalAnalysisRow,
   UniverseAnalysisBundle,
 } from "@/lib/analysis/combined-analysis";
+import type { SectorAnalysisResult } from "@/lib/analysis/sector-analysis";
+import { SectorAnalysisView } from "@/components/analysis/sector-analysis-view";
 import { FUNDAMENTAL_RULES, INDEX_RULES, TECHNICAL_RULES } from "@/lib/analysis/scoring-rules";
 
-type MainTab = "portfolio" | "vn30" | "vn100" | "rules";
+type MainTab = "portfolio" | "sector" | "vn30" | "vn100" | "rules";
 type SubTab = "fundamental" | "technical" | "combined";
 
 const MAIN_TABS: { id: MainTab; label: string }[] = [
   { id: "portfolio", label: "Portfolio" },
+  { id: "sector", label: "Sector" },
   { id: "vn30", label: "VN30" },
   { id: "vn100", label: "VN100" },
   { id: "rules", label: "Scoring rules" },
@@ -285,11 +288,13 @@ export function AnalysisView({
   portfolio,
   vn30,
   vn100,
+  sectorAnalysis,
   ownedSymbols,
 }: {
   portfolio: UniverseAnalysisBundle;
   vn30: UniverseAnalysisBundle;
   vn100: UniverseAnalysisBundle;
+  sectorAnalysis?: SectorAnalysisResult;
   ownedSymbols?: string[];
 }) {
   const [mainTab, setMainTab] = useState<MainTab>("portfolio");
@@ -298,12 +303,22 @@ export function AnalysisView({
   const owned = new Set((ownedSymbols ?? []).map((s) => s.toUpperCase()));
 
   const bundle =
-    mainTab === "portfolio" ? portfolio : mainTab === "vn30" ? vn30 : mainTab === "vn100" ? vn100 : null;
+    mainTab === "portfolio"
+      ? portfolio
+      : mainTab === "vn30"
+        ? vn30
+        : mainTab === "vn100"
+          ? vn100
+          : null;
 
   const description =
-    mainTab === "portfolio" ? INDEX_RULES.portfolio
-      : mainTab === "vn30" ? INDEX_RULES.vn30
-        : mainTab === "vn100" ? INDEX_RULES.vn100 : "";
+    mainTab === "portfolio"
+      ? INDEX_RULES.portfolio
+      : mainTab === "vn30"
+        ? INDEX_RULES.vn30
+        : mainTab === "vn100"
+          ? INDEX_RULES.vn100
+          : "";
 
   const selectedSymbol = selection?.row.symbol.toUpperCase() ?? null;
 
@@ -327,7 +342,7 @@ export function AnalysisView({
         ))}
       </div>
 
-      {mainTab !== "rules" && (
+      {mainTab !== "rules" && mainTab !== "sector" && (
         <div className="flex flex-wrap gap-1">
           {SUB_TABS.map((t) => (
             <button
@@ -355,41 +370,49 @@ export function AnalysisView({
       )}
 
       <Card className="!p-4">
-        <CardTitle className="!mb-1 !text-base">
-          {MAIN_TABS.find((t) => t.id === mainTab)?.label}
-          {mainTab !== "rules" && ` — ${SUB_TABS.find((t) => t.id === subTab)?.label}`}
-        </CardTitle>
-        {mainTab !== "rules" && bundle && (
-          <p className="mb-3 text-xs text-muted">
-            {description} · Click a row for analysis detail · Click symbol for stock page
-          </p>
+        {mainTab === "sector" && sectorAnalysis ? (
+          <SectorAnalysisView data={sectorAnalysis} />
+        ) : (
+          <>
+            <CardTitle className="!mb-1 !text-base">
+              {MAIN_TABS.find((t) => t.id === mainTab)?.label}
+              {mainTab !== "rules" && ` — ${SUB_TABS.find((t) => t.id === subTab)?.label}`}
+            </CardTitle>
+            {mainTab !== "rules" && bundle && (
+              <p className="mb-3 text-xs text-muted">
+                {description} · Click a row for analysis detail · Click symbol for stock page
+              </p>
+            )}
+            <div className="overflow-x-auto rounded-lg ring-1 ring-[var(--border)]">
+              {mainTab === "rules" ? (
+                <div className="p-2">
+                  <RulesPanel />
+                </div>
+              ) : subTab === "fundamental" ? (
+                <FundamentalTable
+                  rows={bundle?.fundamental ?? []}
+                  owned={owned}
+                  selectedSymbol={selectedSymbol}
+                  onSelect={(row) => setSelection({ kind: "fundamental", row })}
+                />
+              ) : subTab === "technical" ? (
+                <TechnicalTable
+                  rows={bundle?.technical ?? []}
+                  owned={owned}
+                  selectedSymbol={selectedSymbol}
+                  onSelect={(row) => setSelection({ kind: "technical", row })}
+                />
+              ) : (
+                <CombinedTable
+                  rows={bundle?.combined ?? []}
+                  owned={owned}
+                  selectedSymbol={selectedSymbol}
+                  onSelect={(row) => setSelection({ kind: "combined", row })}
+                />
+              )}
+            </div>
+          </>
         )}
-        <div className="overflow-x-auto rounded-lg ring-1 ring-[var(--border)]">
-          {mainTab === "rules" ? (
-            <div className="p-2"><RulesPanel /></div>
-          ) : subTab === "fundamental" ? (
-            <FundamentalTable
-              rows={bundle?.fundamental ?? []}
-              owned={owned}
-              selectedSymbol={selectedSymbol}
-              onSelect={(row) => setSelection({ kind: "fundamental", row })}
-            />
-          ) : subTab === "technical" ? (
-            <TechnicalTable
-              rows={bundle?.technical ?? []}
-              owned={owned}
-              selectedSymbol={selectedSymbol}
-              onSelect={(row) => setSelection({ kind: "technical", row })}
-            />
-          ) : (
-            <CombinedTable
-              rows={bundle?.combined ?? []}
-              owned={owned}
-              selectedSymbol={selectedSymbol}
-              onSelect={(row) => setSelection({ kind: "combined", row })}
-            />
-          )}
-        </div>
       </Card>
     </div>
   );
