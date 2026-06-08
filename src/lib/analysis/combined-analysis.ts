@@ -2,6 +2,7 @@ import { analyzeStock } from "@/lib/analysis/stock-analysis";
 import type { FundamentalAnalysisRow } from "@/lib/analysis/fundamental-analysis";
 import { analyzeFundamentalRow } from "@/lib/analysis/fundamental-analysis";
 import type { IndexStock } from "@/lib/analysis/index-universe";
+import { loadAnalysisSnapshotStore } from "@/lib/db/analysis-snapshots";
 import { getStock } from "@/lib/market-service";
 import type { Stock } from "@/types/stock";
 
@@ -29,7 +30,13 @@ export type CombinedAnalysisRow = {
   source: string;
 };
 
-async function stockForSymbol(meta: IndexStock | { symbol: string; name?: string | null; sector?: string | null }): Promise<Stock> {
+type StockMeta = IndexStock | {
+  symbol: string;
+  name?: string | null;
+  sector?: string | null;
+};
+
+async function stockForSymbol(meta: StockMeta): Promise<Stock> {
   const sym = meta.symbol.toUpperCase();
   const existing = await getStock(sym);
   if (existing) return existing;
@@ -59,10 +66,11 @@ async function stockForSymbol(meta: IndexStock | { symbol: string; name?: string
 }
 
 export async function analyzeTechnicalRow(
-  meta: IndexStock | { symbol: string; name?: string | null; sector?: string | null },
+  meta: StockMeta,
+  store?: Awaited<ReturnType<typeof loadAnalysisSnapshotStore>>,
 ): Promise<TechnicalAnalysisRow> {
   const stock = await stockForSymbol(meta);
-  const a = await analyzeStock(stock);
+  const a = await analyzeStock(stock, store);
   return {
     symbol: a.symbol,
     name: stock.name,
@@ -78,10 +86,11 @@ export async function analyzeTechnicalRow(
 }
 
 export async function analyzeCombinedRow(
-  meta: IndexStock | { symbol: string; name?: string | null; sector?: string | null },
+  meta: StockMeta,
+  store?: Awaited<ReturnType<typeof loadAnalysisSnapshotStore>>,
 ): Promise<CombinedAnalysisRow> {
   const stock = await stockForSymbol(meta);
-  const a = await analyzeStock(stock);
+  const a = await analyzeStock(stock, store);
   return {
     symbol: a.symbol,
     name: stock.name,
@@ -97,8 +106,14 @@ export async function analyzeCombinedRow(
 export async function analyzeTechnicalUniverse(
   universe: IndexStock[],
   limit?: number,
+  store?: Awaited<ReturnType<typeof loadAnalysisSnapshotStore>>,
 ): Promise<TechnicalAnalysisRow[]> {
-  const rows = await Promise.all(universe.map((s) => analyzeTechnicalRow(s)));
+  const snapshotStore =
+    store ??
+    (await loadAnalysisSnapshotStore(universe.map((s) => s.symbol)));
+  const rows = await Promise.all(
+    universe.map((s) => analyzeTechnicalRow(s, snapshotStore)),
+  );
   const sorted = rows.sort((a, b) => b.technicalScore - a.technicalScore);
   return limit ? sorted.slice(0, limit) : sorted;
 }
@@ -106,23 +121,41 @@ export async function analyzeTechnicalUniverse(
 export async function analyzeCombinedUniverse(
   universe: IndexStock[],
   limit?: number,
+  store?: Awaited<ReturnType<typeof loadAnalysisSnapshotStore>>,
 ): Promise<CombinedAnalysisRow[]> {
-  const rows = await Promise.all(universe.map((s) => analyzeCombinedRow(s)));
+  const snapshotStore =
+    store ??
+    (await loadAnalysisSnapshotStore(universe.map((s) => s.symbol)));
+  const rows = await Promise.all(
+    universe.map((s) => analyzeCombinedRow(s, snapshotStore)),
+  );
   const sorted = rows.sort((a, b) => b.combinedScore - a.combinedScore);
   return limit ? sorted.slice(0, limit) : sorted;
 }
 
 export async function analyzePortfolioTechnical(
   holdings: Array<{ symbol: string; name?: string | null; sector?: string | null }>,
+  store?: Awaited<ReturnType<typeof loadAnalysisSnapshotStore>>,
 ): Promise<TechnicalAnalysisRow[]> {
-  const rows = await Promise.all(holdings.map((h) => analyzeTechnicalRow(h)));
+  const snapshotStore =
+    store ??
+    (await loadAnalysisSnapshotStore(holdings.map((h) => h.symbol)));
+  const rows = await Promise.all(
+    holdings.map((h) => analyzeTechnicalRow(h, snapshotStore)),
+  );
   return rows.sort((a, b) => b.technicalScore - a.technicalScore);
 }
 
 export async function analyzePortfolioCombined(
   holdings: Array<{ symbol: string; name?: string | null; sector?: string | null }>,
+  store?: Awaited<ReturnType<typeof loadAnalysisSnapshotStore>>,
 ): Promise<CombinedAnalysisRow[]> {
-  const rows = await Promise.all(holdings.map((h) => analyzeCombinedRow(h)));
+  const snapshotStore =
+    store ??
+    (await loadAnalysisSnapshotStore(holdings.map((h) => h.symbol)));
+  const rows = await Promise.all(
+    holdings.map((h) => analyzeCombinedRow(h, snapshotStore)),
+  );
   return rows.sort((a, b) => b.combinedScore - a.combinedScore);
 }
 
@@ -136,12 +169,20 @@ export async function analyzeUniverseBundle(
   universe: IndexStock[],
   limit?: number,
 ): Promise<UniverseAnalysisBundle> {
+  const snapshotStore = await loadAnalysisSnapshotStore(
+    universe.map((s) => s.symbol),
+  );
+
   const [fundamental, technical, combined] = await Promise.all([
-    Promise.all(universe.map((s) => analyzeFundamentalRow(s))).then((r) =>
-      r.sort((a, b) => b.breakdown.finalScore - a.breakdown.finalScore).slice(0, limit ?? r.length),
+    Promise.all(universe.map((s) => analyzeFundamentalRow(s, snapshotStore))).then(
+      (r) =>
+        r
+          .sort((a, b) => b.breakdown.finalScore - a.breakdown.finalScore)
+          .slice(0, limit ?? r.length),
     ),
-    analyzeTechnicalUniverse(universe, limit),
-    analyzeCombinedUniverse(universe, limit),
+    analyzeTechnicalUniverse(universe, limit, snapshotStore),
+    analyzeCombinedUniverse(universe, limit, snapshotStore),
   ]);
+
   return { fundamental, technical, combined };
 }

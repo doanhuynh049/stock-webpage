@@ -1,10 +1,18 @@
+import { revalidatePath, revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
-import { getNews } from "@/lib/market-service";
+import { getNewsLive, syncNews } from "@/lib/news-service";
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const symbol = searchParams.get("symbol") ?? undefined;
-  const news = getNews(symbol);
+  const refresh = searchParams.get("refresh") === "true";
 
+  if (refresh) {
+    const sync = await syncNews(symbol ?? undefined);
+    const news = await getNewsLive(symbol);
+    return NextResponse.json({ count: news.length, news, sync });
+  }
+
+  const news = await getNewsLive(symbol);
   return NextResponse.json({ count: news.length, news });
 }

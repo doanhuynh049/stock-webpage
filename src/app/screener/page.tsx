@@ -1,3 +1,4 @@
+import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Filter, Sparkles } from "lucide-react";
 import { Card, CardTitle } from "@/components/ui/card";
@@ -7,6 +8,14 @@ import { ChangeBadge } from "@/components/stock/change-badge";
 import { StockAvatar } from "@/components/ui/stock-avatar";
 import { getSectors, screenStocks } from "@/lib/stocks";
 import { ScreenerForm } from "@/components/screener/screener-form";
+import {
+  normalizeScreenerParams,
+  parseScreenerFilters,
+  SCREENER_DEFAULTS,
+  SCREENER_DEFAULTS_LABEL,
+  screenerDefaultsQuery,
+  screenerParamsNeedDefaults,
+} from "@/lib/screener-defaults";
 
 export default async function ScreenerPage({
   searchParams,
@@ -20,30 +29,30 @@ export default async function ScreenerPage({
   }>;
 }) {
   const params = await searchParams;
+
+  if (screenerParamsNeedDefaults(params)) {
+    redirect(`/screener?${screenerDefaultsQuery()}`);
+  }
+
+  const normalized = normalizeScreenerParams(params);
+  const filters = parseScreenerFilters(params);
   const sectors = await getSectors();
-
-  const filters = {
-    maxPe: params.maxPe ? parseFloat(params.maxPe) : undefined,
-    minRevenueGrowth: params.minRevenueGrowth
-      ? parseFloat(params.minRevenueGrowth)
-      : undefined,
-    minRoe: params.minRoe ? parseFloat(params.minRoe) : undefined,
-    maxRsi: params.maxRsi ? parseFloat(params.maxRsi) : undefined,
-    sector: params.sector,
-  };
-
-  const hasFilters = Object.values(filters).some((v) => v !== undefined);
-  const results = hasFilters
-    ? await screenStocks(filters)
-    : await screenStocks({ maxPe: 15, minRevenueGrowth: 20, minRoe: 15, maxRsi: 30 });
+  const results = await screenStocks(filters);
 
   const activeFilters = [
-    filters.maxPe !== undefined && `PE < ${filters.maxPe}`,
-    filters.minRevenueGrowth !== undefined && `Growth > ${filters.minRevenueGrowth}%`,
-    filters.minRoe !== undefined && `ROE > ${filters.minRoe}%`,
-    filters.maxRsi !== undefined && `RSI < ${filters.maxRsi}`,
+    filters.maxPe != null && `PE < ${filters.maxPe}`,
+    filters.minRevenueGrowth != null && `Growth > ${filters.minRevenueGrowth}%`,
+    filters.minRoe != null && `ROE > ${filters.minRoe}%`,
+    filters.maxRsi != null && `RSI < ${filters.maxRsi}`,
     filters.sector && filters.sector !== "All" && filters.sector,
   ].filter(Boolean);
+
+  const isDefaultRun =
+    normalized.maxPe === SCREENER_DEFAULTS.maxPe &&
+    normalized.minRevenueGrowth === SCREENER_DEFAULTS.minRevenueGrowth &&
+    normalized.minRoe === SCREENER_DEFAULTS.minRoe &&
+    normalized.maxRsi === SCREENER_DEFAULTS.maxRsi &&
+    !normalized.sector;
 
   return (
     <div className="space-y-8">
@@ -60,11 +69,11 @@ export default async function ScreenerPage({
 
       <Card glow>
         <CardTitle>Filter Criteria</CardTitle>
-        <ScreenerForm sectors={sectors} defaults={params} />
-        {!hasFilters && (
+        <ScreenerForm sectors={sectors} defaults={normalized} />
+        {isDefaultRun && (
           <p className="mt-4 flex items-center gap-2 text-xs text-subtle">
             <Sparkles className="h-3 w-3 text-accent" />
-            Default: PE &lt; 15 · Growth &gt; 20% · ROE &gt; 15% · RSI &lt; 30
+            Default screen: {SCREENER_DEFAULTS_LABEL}
           </p>
         )}
         {activeFilters.length > 0 && (
@@ -144,6 +153,12 @@ export default async function ScreenerPage({
           <div className="rounded-xl border border-dashed border-[var(--border)] py-12 text-center">
             <p className="text-sm text-muted">No stocks match your criteria.</p>
             <p className="mt-1 text-xs text-subtle">Try relaxing the filters above.</p>
+            <Link
+              href={`/screener?${screenerDefaultsQuery()}`}
+              className="mt-3 inline-block text-xs text-accent hover:underline"
+            >
+              Reset to default screen
+            </Link>
           </div>
         )}
       </Card>

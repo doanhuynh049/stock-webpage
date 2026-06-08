@@ -16,7 +16,14 @@ Use `src/lib/page-cache.ts` for server-rendered pages so repeat visits skip redu
 | Enriched holdings | `portfolio` (90s) | `portfolio-{userId}` |
 | Trading list | `trading` (60s) | `trading-{userId}` |
 | Analysis bundles | `analysis` (300s) | `analysis-{userId}` |
+| Sector analysis | `analysis` (300s) | `analysis-{userId}` |
 | Market snapshot | `market` (300s) | `market` |
+
+**Analysis page**: reuse the same cache key as portfolio (`["portfolio", userId]`) for holdings — do not use a separate `analysis-portfolio` key.
+
+**Analysis bundles**: include a **symbolKey** (sorted symbols joined) in the cache key, not just symbol count — avoids stale empty bundles.
+
+Skip caching empty analysis bundles; invalidate `analysis-{userId}` on portfolio/trading mutations.
 
 ## Server page pattern
 

@@ -2,13 +2,9 @@ import type { FundamentalBreakdown, FundamentalInputs } from "@/lib/analysis/fun
 import { calculateSectorFundamentalBreakdown } from "@/lib/analysis/sector-fundamental-scoring";
 import type { IndexStock } from "@/lib/analysis/index-universe";
 import {
-  readCachedFundamentalSnapshot,
-  readCachedTechnicalSnapshot,
-} from "@/lib/db/neon-cache";
-import { shouldSkipDbReads } from "@/lib/db/cache-first";
-import { isPersistenceEnabled } from "@/lib/persistence";
-import { prisma } from "@/lib/prisma";
-import { withDbRetry } from "@/lib/prisma-query";
+  loadAnalysisSnapshotStore,
+  type AnalysisSnapshotStore,
+} from "@/lib/db/analysis-snapshots";
 import { getStock } from "@/lib/market-service";
 
 export type FundamentalAnalysisRow = {
@@ -25,73 +21,35 @@ export type FundamentalAnalysisRow = {
   source: "neon" | "cache" | "market";
 };
 
-async function loadFundInputs(symbol: string): Promise<{
+type StockMeta = IndexStock | {
+  symbol: string;
+  name?: string | null;
+  sector?: string | null;
+};
+
+async function resolveFundInputs(
+  symbol: string,
+  store: AnalysisSnapshotStore,
+): Promise<{
   inputs: FundamentalInputs;
   source: "neon" | "cache" | "market";
+  techPrice: number | null;
 }> {
   const sym = symbol.toUpperCase();
+  const resolved = store.resolve(sym);
 
-  const fromRow = (row: {
-    pe_ratio?: number | null;
-    pb_ratio?: number | null;
-    roe?: number | null;
-    roa?: number | null;
-    revenue_growth?: number | null;
-    profit_growth?: number | null;
-    eps_growth?: number | null;
-    debt_to_equity?: number | null;
-    net_profit_margin?: number | null;
-    gross_profit_margin?: number | null;
-  }): FundamentalInputs => ({
-    peRatio: row.pe_ratio,
-    pbRatio: row.pb_ratio,
-    roe: row.roe != null ? row.roe * 100 : null,
-    roa: row.roa != null ? row.roa * 100 : null,
-    revenueGrowth: row.revenue_growth != null ? row.revenue_growth * 100 : null,
-    profitGrowth: row.profit_growth != null ? row.profit_growth * 100 : null,
-    epsGrowth: row.eps_growth != null ? row.eps_growth * 100 : null,
-    debtToEquity: row.debt_to_equity,
-    netProfitMargin: row.net_profit_margin,
-    grossProfitMargin: row.gross_profit_margin,
-  });
-
-  if (shouldSkipDbReads()) {
-    const cached = readCachedFundamentalSnapshot(sym);
-    if (cached) return { inputs: fromRow(cached), source: "cache" };
-  }
-
-  if (isPersistenceEnabled()) {
-    try {
-      const row = await withDbRetry(
-        () =>
-          prisma.fundamentalSnapshot.findFirst({
-            where: { symbol: sym },
-            orderBy: { capturedAt: "desc" },
-          }),
-        "fund-snapshot",
-        0,
-      );
-      if (row) {
-        return {
-          inputs: fromRow({
-            pe_ratio: row.peRatio,
-            pb_ratio: row.pbRatio,
-            roe: row.roe,
-            roa: row.roa,
-            revenue_growth: row.revenueGrowth,
-            profit_growth: row.profitGrowth,
-            eps_growth: row.epsGrowth,
-            debt_to_equity: row.debtToEquity,
-            net_profit_margin: row.netProfitMargin,
-            gross_profit_margin: row.grossProfitMargin,
-          }),
-          source: "neon",
-        };
-      }
-    } catch {
-      const cached = readCachedFundamentalSnapshot(sym);
-      if (cached) return { inputs: fromRow(cached), source: "cache" };
-    }
+  if (resolved.fund) {
+    const source: "neon" | "cache" | "market" =
+      resolved.source === "neon"
+        ? "neon"
+        : resolved.source === "cache"
+          ? "cache"
+          : "market";
+    return {
+      inputs: resolved.fund,
+      source,
+      techPrice: resolved.techPrice,
+    };
   }
 
   const stock = await getStock(sym);
@@ -109,21 +67,23 @@ async function loadFundInputs(symbol: string): Promise<{
       grossProfitMargin: null,
     },
     source: "market",
+    techPrice: resolved.techPrice,
   };
 }
 
 export async function analyzeFundamentalRow(
-  meta: IndexStock | { symbol: string; name?: string | null; sector?: string | null },
+  meta: StockMeta,
+  store?: AnalysisSnapshotStore,
 ): Promise<FundamentalAnalysisRow> {
   const sym = meta.symbol.toUpperCase();
   const sector = ("sector" in meta && meta.sector) || "Unknown";
-  const { inputs, source } = await loadFundInputs(sym);
+  const snapshotStore =
+    store ?? (await loadAnalysisSnapshotStore([sym]));
+  const { inputs, source, techPrice } = await resolveFundInputs(sym, snapshotStore);
   const breakdown = calculateSectorFundamentalBreakdown(inputs, sector);
 
-  let price = 0;
-  const techCache = readCachedTechnicalSnapshot(sym);
-  if (techCache?.price) price = techCache.price;
-  else {
+  let price = techPrice ?? 0;
+  if (!price) {
     const stock = await getStock(sym);
     price = stock?.price ?? 0;
   }
@@ -146,22 +106,35 @@ export async function analyzeFundamentalRow(
 export async function analyzeFundamentalUniverse(
   universe: IndexStock[],
   limit?: number,
+  store?: AnalysisSnapshotStore,
 ): Promise<FundamentalAnalysisRow[]> {
-  const rows = await Promise.all(universe.map((s) => analyzeFundamentalRow(s)));
+  const snapshotStore =
+    store ??
+    (await loadAnalysisSnapshotStore(universe.map((s) => s.symbol)));
+  const rows = await Promise.all(
+    universe.map((s) => analyzeFundamentalRow(s, snapshotStore)),
+  );
   const sorted = rows.sort((a, b) => b.breakdown.finalScore - a.breakdown.finalScore);
   return limit ? sorted.slice(0, limit) : sorted;
 }
 
 export async function analyzePortfolioFundamentals(
   holdings: Array<{ symbol: string; name?: string | null; sector?: string | null }>,
+  store?: AnalysisSnapshotStore,
 ): Promise<FundamentalAnalysisRow[]> {
+  const snapshotStore =
+    store ??
+    (await loadAnalysisSnapshotStore(holdings.map((h) => h.symbol)));
   const rows = await Promise.all(
     holdings.map((h) =>
-      analyzeFundamentalRow({
-        symbol: h.symbol,
-        name: h.name,
-        sector: h.sector,
-      }),
+      analyzeFundamentalRow(
+        {
+          symbol: h.symbol,
+          name: h.name,
+          sector: h.sector,
+        },
+        snapshotStore,
+      ),
     ),
   );
   return rows.sort((a, b) => b.breakdown.finalScore - a.breakdown.finalScore);

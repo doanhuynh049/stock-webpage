@@ -10,7 +10,7 @@ User actions and route changes must feel instant. Never block UI on DB/API when 
 
 ## Navigation
 
-- Sidebar links use `NavLink` (`src/components/layout/nav-link.tsx`) with `useTransition`.
+- Sidebar links use `NavLink` (`src/components/layout/nav-link.tsx`) with `useLinkStatus` for pending indicator.
 - Global `src/app/loading.tsx` shows skeleton while server pages load.
 - Screener form uses `startTransition` + `router.push` — navigate first, server re-renders after.
 

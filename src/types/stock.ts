@@ -69,6 +69,8 @@ export type NewsItem = {
   publishedAt: string;
   symbols: string[];
   category: "breaking" | "earnings" | "macro" | "analysis";
+  /** External article URL when fetched from live RSS. */
+  link?: string;
 };
 
 export type TechnicalSignal = {

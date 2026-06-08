@@ -1,8 +1,12 @@
 import { analyzeStock } from "@/lib/analysis/stock-analysis";
 import { getSectorUniverse, tickerToSectorId } from "@/lib/analysis/sector-universe";
+import {
+  getCachedPeBatch,
+  savePeBatchToCache,
+} from "@/lib/cache/pe-cache";
+import { loadAnalysisSnapshotStore } from "@/lib/db/analysis-snapshots";
 import { getStock } from "@/lib/market-service";
 import type { EnrichedHolding } from "@/lib/portfolio/holdings-enrichment";
-import { readCachedTechnicalSnapshot } from "@/lib/db/neon-cache";
 
 export type SectorStockRow = {
   symbol: string;
@@ -47,10 +51,25 @@ function sectorStatus(
   return deltaPct > 0 ? "OVERWEIGHT" : "UNDERWEIGHT";
 }
 
+function resolvePeRatio(
+  sym: string,
+  store: Awaited<ReturnType<typeof loadAnalysisSnapshotStore>>,
+  stockPe: number,
+  peCache: Map<string, number>,
+): number | null {
+  const fromSnapshot = store.resolve(sym).fund?.peRatio;
+  if (fromSnapshot != null && fromSnapshot > 0) return fromSnapshot;
+  const cached = peCache.get(sym);
+  if (cached != null && cached > 0) return cached;
+  if (stockPe > 0) return stockPe;
+  return null;
+}
+
 async function scoreTicker(
   symbol: string,
-  sectorName: string,
   owned: boolean,
+  store: Awaited<ReturnType<typeof loadAnalysisSnapshotStore>>,
+  peCache: Map<string, number>,
 ): Promise<SectorStockRow | null> {
   const sym = symbol.toUpperCase();
   const stock = await getStock(sym);
@@ -65,15 +84,16 @@ async function scoreTicker(
       recommendation: "AVOID",
       currentPriceK: null,
       rsi: null,
-      peRatio: null,
+      peRatio: peCache.get(sym) ?? null,
       owned,
     };
   }
 
-  const analysis = await analyzeStock(stock);
-  const techSnap = readCachedTechnicalSnapshot(sym);
+  const analysis = await analyzeStock(stock, store);
+  const resolved = store.resolve(sym);
   const priceK =
     stock.price >= 10000 ? stock.price / 1000 : stock.price;
+  const peRatio = resolvePeRatio(sym, store, stock.pe, peCache);
 
   return {
     symbol: sym,
@@ -84,8 +104,8 @@ async function scoreTicker(
     combinedScore: analysis.combinedScore,
     recommendation: analysis.recommendation,
     currentPriceK: priceK > 0 ? priceK : null,
-    rsi: techSnap?.rsi ?? stock.rsi ?? null,
-    peRatio: stock.pe > 0 ? stock.pe : null,
+    rsi: resolved.tech?.rsi ?? stock.rsi ?? null,
+    peRatio,
     owned,
   };
 }
@@ -97,6 +117,10 @@ export async function computeSectorAnalysis(
 ): Promise<SectorAnalysisResult> {
   const owned = new Set(ownedSymbols.map((s) => s.toUpperCase()));
   const tickerSector = tickerToSectorId();
+  const universe = getSectorUniverse();
+  const allTickers = universe.flatMap((sec) => sec.tickers);
+  const snapshotStore = await loadAnalysisSnapshotStore(allTickers);
+  const peCache = await getCachedPeBatch(allTickers);
 
   const totalValueK = holdings.reduce(
     (s, h) => s + (h.currentValueK ?? h.costBasis),
@@ -115,17 +139,29 @@ export async function computeSectorAnalysis(
   const sectors: SectorRollup[] = [];
   const allRows: SectorStockRow[] = [];
   let analyzed = 0;
+  const peToCache: Record<string, number> = {};
 
-  for (const sec of getSectorUniverse()) {
-    const rows: SectorStockRow[] = [];
-    for (const ticker of sec.tickers) {
-      const row = await scoreTicker(ticker, sec.name, owned.has(ticker.toUpperCase()));
-      if (row) {
-        rows.push(row);
-        analyzed++;
+  for (const sec of universe) {
+    const rows = (
+      await Promise.all(
+        sec.tickers.map((ticker) =>
+          scoreTicker(
+            ticker,
+            owned.has(ticker.toUpperCase()),
+            snapshotStore,
+            peCache,
+          ),
+        ),
+      )
+    ).filter((row): row is SectorStockRow => row != null);
+
+    for (const row of rows) {
+      if (row.peRatio != null && row.peRatio > 0) {
+        peToCache[row.symbol] = row.peRatio;
       }
     }
 
+    analyzed += rows.length;
     rows.sort((a, b) => b.combinedScore - a.combinedScore);
     const ranked = rows.map((r, i) => ({ ...r, rank: i + 1 }));
     allRows.push(...ranked);
@@ -145,6 +181,10 @@ export async function computeSectorAnalysis(
       leaderCount: ranked.length,
       stocks: ranked,
     });
+  }
+
+  if (Object.keys(peToCache).length) {
+    await savePeBatchToCache(peToCache);
   }
 
   const trendLeaders = [...allRows]

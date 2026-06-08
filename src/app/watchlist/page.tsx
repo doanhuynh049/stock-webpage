@@ -1,11 +1,10 @@
 import Link from "next/link";
-import { Bell, Plus, Star } from "lucide-react";
+import { Bell, Star } from "lucide-react";
 import { Card, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
-import { ChangeBadge } from "@/components/stock/change-badge";
-import { StockAvatar } from "@/components/ui/stock-avatar";
 import { WatchlistGrid } from "@/components/watchlist/watchlist-grid";
+import { WatchlistAddPanel } from "@/components/watchlist/watchlist-add-panel";
 import { getWatchlistWithStocks } from "@/lib/user-data";
 import { getAllStocks } from "@/lib/stocks";
 
@@ -28,6 +27,7 @@ export default async function WatchlistPage() {
   const notWatched = allStocks.filter(
     (s) => !watchlist.items.some((w) => w.symbol === s.symbol),
   );
+  const suggestions = notWatched.map((s) => s.symbol);
 
   return (
     <div className="space-y-8">
@@ -41,6 +41,14 @@ export default async function WatchlistPage() {
           </span>
         }
       />
+
+      <Card glow>
+        <CardTitle>Quick add</CardTitle>
+        <p className="mb-3 text-xs text-muted">
+          Enter a ticker or pick a suggestion. You can also use the star button on any stock detail page.
+        </p>
+        <WatchlistAddPanel suggestions={suggestions} />
+      </Card>
 
       {watchlist.items.length > 0 ? (
         <WatchlistGrid items={watchlist.items} />
@@ -85,12 +93,7 @@ export default async function WatchlistPage() {
 
       {notWatched.length > 0 && (
         <Card>
-          <CardTitle>
-            <span className="flex items-center gap-2">
-              <Plus className="h-3.5 w-3.5" />
-              Discover Stocks
-            </span>
-          </CardTitle>
+          <CardTitle>Discover stocks</CardTitle>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {notWatched.slice(0, 9).map((s) => (
               <Link
@@ -98,12 +101,8 @@ export default async function WatchlistPage() {
                 href={`/stocks/${s.symbol}`}
                 className="interactive-row flex items-center gap-3 px-3 py-2.5 ring-1 ring-[var(--border)] hover:ring-[var(--accent)]/25"
               >
-                <StockAvatar symbol={s.symbol} sector={s.sector} size="sm" />
-                <div className="flex-1">
-                  <div className="font-semibold text-[var(--fg)]">{s.symbol}</div>
-                  <div className="text-[10px] text-subtle">{s.sector}</div>
-                </div>
-                <ChangeBadge value={s.changePercent} />
+                <span className="font-semibold text-[var(--fg)]">{s.symbol}</span>
+                <span className="flex-1 truncate text-[10px] text-subtle">{s.sector}</span>
               </Link>
             ))}
           </div>

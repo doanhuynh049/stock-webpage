@@ -22,9 +22,9 @@ import { InvestmentPicks } from "@/components/stock/investment-picks";
 import {
   getAllStocks,
   getMarketSnapshot,
-  getNews,
   getTopMovers,
 } from "@/lib/stocks";
+import { getNewsLive } from "@/lib/news-service";
 import { getStockPicks } from "@/lib/stock-picks";
 import { getWatchlistWithStocks } from "@/lib/user-data";
 import { formatVolume } from "@/lib/utils";
@@ -33,13 +33,14 @@ export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
   const market = await getMarketSnapshot();
-  const [{ gainers, losers }, stocks, watchlist, picks] = await Promise.all([
+  const [{ gainers, losers }, stocks, watchlist, picks, newsAll] = await Promise.all([
     getTopMovers(5),
     getAllStocks(),
     getWatchlistWithStocks(),
     getStockPicks(5),
+    getNewsLive(),
   ]);
-  const news = getNews().slice(0, 5);
+  const news = newsAll.slice(0, 5);
   const vnindex = market.indices.find((i) => i.symbol === "VNINDEX")!;
 
   return (

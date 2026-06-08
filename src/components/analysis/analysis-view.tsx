@@ -16,9 +16,14 @@ import type {
 } from "@/lib/analysis/combined-analysis";
 import type { SectorAnalysisResult } from "@/lib/analysis/sector-analysis";
 import { SectorAnalysisView } from "@/components/analysis/sector-analysis-view";
-import { FUNDAMENTAL_RULES, INDEX_RULES, TECHNICAL_RULES } from "@/lib/analysis/scoring-rules";
+import { FUNDAMENTAL_RULES, INDEX_RULES, TECHNICAL_RULES, COMBINED_RULES } from "@/lib/analysis/scoring-rules";
+import {
+  INVESTMENT_MOTTO,
+  INVESTMENT_PRINCIPLES,
+  PRINCIPLES_IN_APP,
+} from "@/lib/content/investment-principles";
 
-type MainTab = "portfolio" | "sector" | "vn30" | "vn100" | "rules";
+type MainTab = "portfolio" | "sector" | "vn30" | "vn100" | "rules" | "principles";
 type SubTab = "fundamental" | "technical" | "combined";
 
 const MAIN_TABS: { id: MainTab; label: string }[] = [
@@ -27,6 +32,7 @@ const MAIN_TABS: { id: MainTab; label: string }[] = [
   { id: "vn30", label: "VN30" },
   { id: "vn100", label: "VN100" },
   { id: "rules", label: "Scoring rules" },
+  { id: "principles", label: "Principles" },
 ];
 
 const SUB_TABS: { id: SubTab; label: string }[] = [
@@ -252,7 +258,7 @@ function Empty() {
 
 function RulesPanel() {
   return (
-    <div className="space-y-4 text-sm">
+    <div className="space-y-6 text-sm">
       <section>
         <h3 className="mb-2 font-semibold">{FUNDAMENTAL_RULES.title}</h3>
         <p className="mb-2 text-xs text-muted">{FUNDAMENTAL_RULES.formula}</p>
@@ -260,25 +266,97 @@ function RulesPanel() {
           <div key={c.name} className="mb-3">
             <p className="text-xs font-medium text-accent">{c.name}</p>
             <ul className="ml-4 list-disc text-xs text-muted">
-              {c.rules.map((r) => <li key={r}>{r}</li>)}
+              {c.rules.map((r) => (
+                <li key={r}>{r}</li>
+              ))}
             </ul>
           </div>
         ))}
+        <p className="text-[10px] text-subtle">
+          Data: {FUNDAMENTAL_RULES.dataSources.join(" · ")}
+        </p>
       </section>
-      <section>
+
+      <section className="border-t border-[var(--border)] pt-4">
         <h3 className="mb-2 font-semibold">{TECHNICAL_RULES.title}</h3>
-        <p className="mb-2 text-xs text-muted">{TECHNICAL_RULES.combinedFormula}</p>
+        <p className="mb-2 text-xs text-muted">{TECHNICAL_RULES.formula}</p>
+        {TECHNICAL_RULES.categories.map((c) => (
+          <div key={c.name} className="mb-3">
+            <p className="text-xs font-medium text-accent">{c.name}</p>
+            <ul className="ml-4 list-disc text-xs text-muted">
+              {c.rules.map((r) => (
+                <li key={r}>{r}</li>
+              ))}
+            </ul>
+          </div>
+        ))}
+        <p className="mb-1 text-xs font-medium text-accent">Rating labels</p>
         <ul className="ml-4 list-disc text-xs text-muted">
-          {TECHNICAL_RULES.signals.map((s) => <li key={s}>{s}</li>)}
+          {TECHNICAL_RULES.ratings.map((r) => (
+            <li key={r}>{r}</li>
+          ))}
+        </ul>
+        <p className="mt-2 text-[10px] text-subtle">
+          Data: {TECHNICAL_RULES.dataSources.join(" · ")}
+        </p>
+      </section>
+
+      <section className="border-t border-[var(--border)] pt-4">
+        <h3 className="mb-2 font-semibold">{COMBINED_RULES.title}</h3>
+        <p className="mb-2 text-xs text-muted">{COMBINED_RULES.formula}</p>
+        <p className="mb-2 text-xs text-muted">{COMBINED_RULES.note}</p>
+        <ul className="ml-4 list-disc text-xs text-muted">
+          {COMBINED_RULES.signals.map((s) => (
+            <li key={s}>{s}</li>
+          ))}
         </ul>
       </section>
-      <section>
+
+      <section className="border-t border-[var(--border)] pt-4">
         <h3 className="mb-2 font-semibold">Universes</h3>
         <ul className="ml-4 list-disc text-xs text-muted">
           <li>{INDEX_RULES.portfolio}</li>
+          <li>{INDEX_RULES.sector}</li>
           <li>{INDEX_RULES.vn30}</li>
           <li>{INDEX_RULES.vn100}</li>
         </ul>
+      </section>
+    </div>
+  );
+}
+
+function PrinciplesPanel() {
+  return (
+    <div className="space-y-5 text-sm">
+      <blockquote className="rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] px-4 py-3">
+        <p className="text-sm font-medium italic text-[var(--fg)]">
+          &ldquo;{INVESTMENT_MOTTO.quote}&rdquo;
+        </p>
+        <p className="mt-1 text-[10px] text-subtle">{INVESTMENT_MOTTO.attribution}</p>
+      </blockquote>
+
+      {INVESTMENT_PRINCIPLES.map((p) => (
+        <section key={p.id} className="border-b border-[var(--border)] pb-4 last:border-0">
+          <h3 className="font-semibold text-[var(--fg)]">{p.title}</h3>
+          <p className="mt-1 text-xs text-muted">{p.summary}</p>
+          <ul className="mt-2 ml-4 list-disc text-xs text-muted">
+            {p.bullets.map((b) => (
+              <li key={b}>{b}</li>
+            ))}
+          </ul>
+        </section>
+      ))}
+
+      <section className="pt-2">
+        <p className="text-xs font-medium text-accent">Referenced in this app</p>
+        <ul className="mt-1 ml-4 list-disc text-xs text-muted">
+          {PRINCIPLES_IN_APP.map((line) => (
+            <li key={line}>{line}</li>
+          ))}
+        </ul>
+        <p className="mt-2 text-[10px] text-subtle">
+          Canonical copy: data/investment-principles.json · src/lib/content/investment-principles.ts
+        </p>
       </section>
     </div>
   );
@@ -342,7 +420,7 @@ export function AnalysisView({
         ))}
       </div>
 
-      {mainTab !== "rules" && mainTab !== "sector" && (
+      {mainTab !== "rules" && mainTab !== "principles" && mainTab !== "sector" && (
         <div className="flex flex-wrap gap-1">
           {SUB_TABS.map((t) => (
             <button
@@ -376,9 +454,11 @@ export function AnalysisView({
           <>
             <CardTitle className="!mb-1 !text-base">
               {MAIN_TABS.find((t) => t.id === mainTab)?.label}
-              {mainTab !== "rules" && ` — ${SUB_TABS.find((t) => t.id === subTab)?.label}`}
+              {mainTab !== "rules" &&
+                mainTab !== "principles" &&
+                ` — ${SUB_TABS.find((t) => t.id === subTab)?.label}`}
             </CardTitle>
-            {mainTab !== "rules" && bundle && (
+            {mainTab !== "rules" && mainTab !== "principles" && bundle && (
               <p className="mb-3 text-xs text-muted">
                 {description} · Click a row for analysis detail · Click symbol for stock page
               </p>
@@ -387,6 +467,10 @@ export function AnalysisView({
               {mainTab === "rules" ? (
                 <div className="p-2">
                   <RulesPanel />
+                </div>
+              ) : mainTab === "principles" ? (
+                <div className="p-2">
+                  <PrinciplesPanel />
                 </div>
               ) : subTab === "fundamental" ? (
                 <FundamentalTable

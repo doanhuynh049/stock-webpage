@@ -25,11 +25,24 @@ export function NewsFeed({ items }: { items: NewsItem[] }) {
             </div>
             <div className="min-w-0 flex-1">
               <h4 className="text-sm font-medium leading-snug text-[var(--fg)] group-hover:text-accent">
-                {item.title}
+                {item.link ? (
+                  <a
+                    href={item.link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:underline"
+                  >
+                    {item.title}
+                  </a>
+                ) : (
+                  item.title
+                )}
               </h4>
-              <p className="mt-1.5 text-xs leading-relaxed text-muted">
-                {item.summary}
-              </p>
+              {item.summary && item.summary !== item.title && (
+                <p className="mt-1.5 text-xs leading-relaxed text-muted">
+                  {item.summary}
+                </p>
+              )}
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <Badge variant={categoryVariant[item.category]}>
                   {item.category}

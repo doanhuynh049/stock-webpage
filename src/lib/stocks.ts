@@ -14,3 +14,5 @@ export {
   syncMarketData,
   refreshMarketData,
 } from "@/lib/market-service";
+
+export { getNewsLive, syncNews } from "@/lib/news-service";

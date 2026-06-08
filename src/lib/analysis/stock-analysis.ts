@@ -8,13 +8,9 @@ import {
   type TechnicalIndicators,
 } from "@/lib/analysis/technical-scoring";
 import {
-  readCachedFundamentalSnapshot,
-  readCachedTechnicalSnapshot,
-} from "@/lib/db/neon-cache";
-import { shouldSkipDbReads } from "@/lib/db/cache-first";
-import { isPersistenceEnabled } from "@/lib/persistence";
-import { prisma } from "@/lib/prisma";
-import { withDbRetry } from "@/lib/prisma-query";
+  loadAnalysisSnapshotStore,
+  type AnalysisSnapshotStore,
+} from "@/lib/db/analysis-snapshots";
 import type { Stock } from "@/types/stock";
 
 export type StockAnalysisResult = {
@@ -44,59 +40,6 @@ function stockToFundamentals(stock: Stock): FundamentalInputs {
     debtToEquity: null,
     netProfitMargin: null,
     grossProfitMargin: null,
-  };
-}
-
-function mapTechnicalSnapshot(row: {
-  price?: number | null;
-  rsi?: number | null;
-  sma_20?: number | null;
-  sma_50?: number | null;
-  sma_200?: number | null;
-  macd?: number | null;
-  macd_signal?: number | null;
-  support_level?: number | null;
-  resistance_level?: number | null;
-  volume?: number | null;
-  volume_ma?: number | null;
-}): TechnicalIndicators {
-  return {
-    rsi: row.rsi,
-    sma20: row.sma_20,
-    sma50: row.sma_50,
-    sma200: row.sma_200,
-    macd: row.macd,
-    macdSignal: row.macd_signal,
-    supportLevel: row.support_level,
-    resistanceLevel: row.resistance_level,
-    volume: row.volume,
-    volumeMa: row.volume_ma,
-  };
-}
-
-function mapFundamentalSnapshot(row: {
-  pe_ratio?: number | null;
-  pb_ratio?: number | null;
-  roe?: number | null;
-  roa?: number | null;
-  revenue_growth?: number | null;
-  profit_growth?: number | null;
-  eps_growth?: number | null;
-  debt_to_equity?: number | null;
-  net_profit_margin?: number | null;
-  gross_profit_margin?: number | null;
-}): FundamentalInputs {
-  return {
-    peRatio: row.pe_ratio,
-    pbRatio: row.pb_ratio,
-    roe: row.roe != null ? row.roe * 100 : null,
-    roa: row.roa != null ? row.roa * 100 : null,
-    revenueGrowth: row.revenue_growth != null ? row.revenue_growth * 100 : null,
-    profitGrowth: row.profit_growth != null ? row.profit_growth * 100 : null,
-    epsGrowth: row.eps_growth != null ? row.eps_growth * 100 : null,
-    debtToEquity: row.debt_to_equity,
-    netProfitMargin: row.net_profit_margin,
-    grossProfitMargin: row.gross_profit_margin,
   };
 }
 
@@ -146,87 +89,12 @@ function describeSupportResistance(
   return parts.join(" | ") || "N/A";
 }
 
-async function loadSnapshots(symbol: string): Promise<{
-  tech: TechnicalIndicators | null;
-  fund: FundamentalInputs | null;
-  source: "neon" | "cache" | "computed";
-}> {
-  const sym = symbol.toUpperCase();
-
-  if (shouldSkipDbReads()) {
-    const techRow = readCachedTechnicalSnapshot(sym);
-    const fundRow = readCachedFundamentalSnapshot(sym);
-    if (techRow || fundRow) {
-      return {
-        tech: techRow ? mapTechnicalSnapshot(techRow) : null,
-        fund: fundRow ? mapFundamentalSnapshot(fundRow) : null,
-        source: "cache",
-      };
-    }
-  }
-
-  if (!isPersistenceEnabled()) {
-    return { tech: null, fund: null, source: "computed" };
-  }
-
-  try {
-    const [techRow, fundRow] = await withDbRetry(
-      () =>
-        Promise.all([
-          prisma.technicalSnapshot.findFirst({
-            where: { symbol: sym },
-            orderBy: { capturedAt: "desc" },
-          }),
-          prisma.fundamentalSnapshot.findFirst({
-            where: { symbol: sym },
-            orderBy: { capturedAt: "desc" },
-          }),
-        ]),
-      "stock-analysis",
-      0,
-    );
-
-    return {
-      tech: techRow
-        ? mapTechnicalSnapshot({
-            price: techRow.price,
-            rsi: techRow.rsi,
-            sma_20: techRow.sma20,
-            sma_50: techRow.sma50,
-            sma_200: techRow.sma200,
-            macd: techRow.macd,
-            macd_signal: techRow.macdSignal,
-            support_level: techRow.supportLevel,
-            resistance_level: techRow.resistanceLevel,
-            volume: techRow.volume,
-            volume_ma: techRow.volumeMa,
-          })
-        : null,
-      fund: fundRow
-        ? mapFundamentalSnapshot({
-            pe_ratio: fundRow.peRatio,
-            pb_ratio: fundRow.pbRatio,
-            roe: fundRow.roe,
-            roa: fundRow.roa,
-            revenue_growth: fundRow.revenueGrowth,
-            profit_growth: fundRow.profitGrowth,
-            eps_growth: fundRow.epsGrowth,
-            debt_to_equity: fundRow.debtToEquity,
-            net_profit_margin: fundRow.netProfitMargin,
-            gross_profit_margin: fundRow.grossProfitMargin,
-          })
-        : null,
-      source: "neon",
-    };
-  } catch {
-    const techRow = readCachedTechnicalSnapshot(sym);
-    const fundRow = readCachedFundamentalSnapshot(sym);
-    return {
-      tech: techRow ? mapTechnicalSnapshot(techRow) : null,
-      fund: fundRow ? mapFundamentalSnapshot(fundRow) : null,
-      source: techRow || fundRow ? "cache" : "computed",
-    };
-  }
+async function resolveSnapshotStore(
+  symbol: string,
+  store?: AnalysisSnapshotStore,
+): Promise<AnalysisSnapshotStore> {
+  if (store) return store;
+  return loadAnalysisSnapshotStore([symbol]);
 }
 
 /** Snapshots use price in thousands (K); live quotes may be full VND. */
@@ -238,8 +106,12 @@ function priceInThousands(stock: Stock, tech: TechnicalIndicators | null): numbe
   return stock.price;
 }
 
-export async function analyzeStock(stock: Stock): Promise<StockAnalysisResult> {
-  const { tech, fund, source } = await loadSnapshots(stock.symbol);
+export async function analyzeStock(
+  stock: Stock,
+  store?: AnalysisSnapshotStore,
+): Promise<StockAnalysisResult> {
+  const snapshotStore = await resolveSnapshotStore(stock.symbol, store);
+  const { tech, fund, source } = snapshotStore.resolve(stock.symbol);
   const currentPriceK = priceInThousands(stock, tech);
 
   const fundamentalInputs: FundamentalInputs = {

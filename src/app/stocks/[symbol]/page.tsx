@@ -12,7 +12,7 @@ import { StockAvatar } from "@/components/ui/stock-avatar";
 import { analyzeStock } from "@/lib/analysis/stock-analysis";
 import {
   generateAiSummary,
-  getNews,
+  getNewsLive,
   getPriceHistory,
   getStock,
   getTechnicalSignals,
@@ -32,12 +32,12 @@ export default async function StockDetailPage({
   const stock = await getStock(symbol);
   if (!stock) notFound();
 
-  const [priceHistory, technicals, analysis] = await Promise.all([
+  const [priceHistory, technicals, analysis, news] = await Promise.all([
     getPriceHistory(symbol, 90),
     getTechnicalSignals(stock),
     analyzeStock(stock),
+    getNewsLive(symbol),
   ]);
-  const news = getNews(symbol);
   const aiSummary = generateAiSummary(stock);
   const session = await auth();
   const inWatchlist = session?.user?.id ? await isInWatchlist(symbol) : false;

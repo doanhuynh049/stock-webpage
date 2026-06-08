@@ -51,41 +51,82 @@ export const FUNDAMENTAL_RULES = {
 
 export const TECHNICAL_RULES = {
   title: "Technical score (0–100)",
+  formula: "Starts at 50 (neutral). Adjustments from technical_snapshot + current price. Clamped 0–100.",
   categories: [
     {
-      name: "Trend (MA alignment)",
-      rules: ["Price vs SMA20/50/200, golden/death cross patterns"],
-    },
-    {
-      name: "Momentum",
-      rules: ["RSI zones (30 oversold / 70 overbought), MACD vs signal"],
-    },
-    {
-      name: "Volume",
-      rules: ["Volume vs volume MA — confirmation of moves"],
+      name: "Trend — moving averages (SMA20 / SMA50)",
+      rules: [
+        "Price > SMA20 > SMA50 (uptrend) → +25",
+        "Price > SMA20 and SMA20 ≈ SMA50 (within 0.5%) → +15",
+        "Price < SMA20 < SMA50 (downtrend) → −25",
+        "Price < SMA20 and SMA20 ≈ below SMA50 (within 0.5%) → −15",
+        "Price > 15% above SMA20 (extended) → −10",
+      ],
     },
     {
       name: "Support / resistance",
-      rules: ["Distance to support/resistance levels from technical_snapshot"],
+      rules: [
+        "Price in lower 30% of support–resistance range → +15 (near support)",
+        "Price in upper 70% of range → −15 (near resistance)",
+        "Price breaks below support by > 2% → −25",
+      ],
+    },
+    {
+      name: "Volume vs volume MA",
+      rules: [
+        "Volume ≥ 1.5× volume MA → +20 (strong confirmation)",
+        "Volume < 0.8× volume MA → −10 (weak participation)",
+        "Volume < 0.25× volume MA → additional −5",
+      ],
+    },
+    {
+      name: "RSI",
+      rules: [
+        "RSI 45–60 (healthy zone) → +5",
+        "RSI > 70 (overbought) → −10",
+        "RSI > 75 → additional −15",
+        "RSI > 70 with volume < volume MA → −20 (weak overbought rally)",
+      ],
+    },
+    {
+      name: "MACD",
+      rules: [
+        "MACD > signal line (bullish) → +10",
+        "MACD < signal line (bearish) → −10",
+      ],
     },
   ],
-  combinedFormula: "Combined = round(0.45 × Technical + 0.55 × Fundamental)",
-  signals: [
-    "≥ 72 → ACCUMULATE",
-    "62–71 → WATCH",
-    "52–61 → HOLD",
-    "42–51 → TRIM",
-    "32–41 → AVOID",
-    "< 32 → SELL",
+  ratings: [
+    "≥ 75 → Excellent",
+    "60–74 → Good",
+    "45–59 → Fair",
+    "< 45 → Poor",
   ],
   dataSources: [
-    "Primary: technical_snapshot in Neon (or data/neon-cache/technical-snapshots.json)",
-    "Fallback: computed RSI from price history",
+    "Primary: technical_snapshot in Neon (RSI, SMA, MACD, support/resistance, volume)",
+    "Or data/neon-cache/technical-snapshots.json when DB_CACHE_FIRST=1",
+    "No snapshot → score stays 50; trend/momentum labels show N/A",
+  ],
+} as const;
+
+export const COMBINED_RULES = {
+  title: "Combined score & signals",
+  formula: "Combined = round(0.60 × Technical + 0.40 × Fundamental)",
+  note: "Recommendation uses combined + technical + fundamental scores plus support/resistance context (not score bands alone).",
+  signals: [
+    "ACCUMULATE — combined ≥ 65, technical ≥ 55, fundamental ≥ 60, favorable risk/reward near support",
+    "WATCH — strong scores but near resistance or risk/reward < 1.5",
+    "HOLD — combined ≥ 50, technical ≥ 45, fundamental ≥ 55, not near resistance",
+    "TRIM — near resistance with RSI overbought",
+    "AVOID — combined < 50 or technical < 45",
+    "SELL — support broken, or below MA50 + overbought RSI, or combined < 35 (unless risk/reward ≥ 2 at support)",
   ],
 } as const;
 
 export const INDEX_RULES = {
-  vn30: "All 30 symbols from data/vn30-stock-info.json (HOSE blue-chip index). Ranked by fundamental score.",
+  vn30: "All 30 symbols from data/vn30-stock-info.json (HOSE blue-chip index). Ranked by score.",
   vn100: "All symbols from data/vn100-stock-info.json. Top 30 shown by default (same as stock-service top-30 screen).",
   portfolio: "Your portfolio_holding symbols — fundamental breakdown per holding you own.",
+  sector:
+    "9 sector leaders from data/sector-stocks.json — combined scores + trend leaders.",
 } as const;

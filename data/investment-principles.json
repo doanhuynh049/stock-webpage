@@ -1,0 +1,61 @@
+/** Git-tracked reference — English principles shown in Analysis → Principles tab. */
+{
+  "version": 1,
+  "locale": "en",
+  "motto": {
+    "quote": "Don't lose money. If you're not sure, don't invest.",
+    "attribution": "Simple rule many successful investors follow"
+  },
+  "principles": [
+    {
+      "id": "understand",
+      "title": "Only invest in what you understand",
+      "summary": "Do not buy a stock just because someone else recommended it."
+    },
+    {
+      "id": "living-money",
+      "title": "Do not use money you need to live on",
+      "summary": "Build an emergency fund (3–6 months) before investing."
+    },
+    {
+      "id": "diversify",
+      "title": "Diversify your portfolio",
+      "summary": "Spread capital across sectors and names; avoid single-stock concentration."
+    },
+    {
+      "id": "long-term",
+      "title": "Invest for the long term",
+      "summary": "Hold quality businesses; avoid emotional short-term trading."
+    },
+    {
+      "id": "quality-price",
+      "title": "Buy good businesses at fair prices",
+      "summary": "Check growth, debt, competitive advantage, and management."
+    },
+    {
+      "id": "risk",
+      "title": "Manage risk",
+      "summary": "No all-in bets; avoid leverage; prepare for drawdowns."
+    },
+    {
+      "id": "emotion",
+      "title": "Control greed and fear",
+      "summary": "Chasing rallies and panic selling cause many losses."
+    },
+    {
+      "id": "dca",
+      "title": "Invest consistently (DCA)",
+      "summary": "Regular monthly/quarterly investing beats timing the market."
+    },
+    {
+      "id": "plan",
+      "title": "Have a plan before you buy",
+      "summary": "Define why you buy, when you sell, and what invalidates your thesis."
+    },
+    {
+      "id": "learn",
+      "title": "Never stop learning",
+      "summary": "Fundamentals, financials, portfolio management, and market psychology."
+    }
+  ]
+}

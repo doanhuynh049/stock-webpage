@@ -1,10 +1,10 @@
 import { NextResponse } from "next/server";
 import {
   generateAiSummary,
-  getNews,
   getStock,
   getTechnicalSignals,
 } from "@/lib/market-service";
+import { getNewsLive } from "@/lib/news-service";
 
 export async function GET(
   _request: Request,
@@ -17,8 +17,10 @@ export async function GET(
     return NextResponse.json({ error: "Stock not found" }, { status: 404 });
   }
 
-  const technicals = await getTechnicalSignals(stock);
-  const news = getNews(symbol);
+  const [technicals, news] = await Promise.all([
+    getTechnicalSignals(stock),
+    getNewsLive(symbol),
+  ]);
   const aiSummary = generateAiSummary(stock);
 
   return NextResponse.json({ stock, technicals, news, aiSummary });

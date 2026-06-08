@@ -474,8 +474,14 @@ export async function screenStocks(filters: {
 }): Promise<Stock[]> {
   const stocks = await getAllStocks();
   return stocks.filter((s) => {
-    if (filters.maxPe !== undefined && s.pe > 0 && s.pe > filters.maxPe)
+    if (
+      filters.maxPe != null &&
+      filters.maxPe > 0 &&
+      s.pe > 0 &&
+      s.pe > filters.maxPe
+    ) {
       return false;
+    }
     if (
       filters.minRevenueGrowth !== undefined &&
       s.revenueGrowth < filters.minRevenueGrowth
