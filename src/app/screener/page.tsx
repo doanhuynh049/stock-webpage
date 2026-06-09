@@ -4,10 +4,9 @@ import { Filter, Sparkles } from "lucide-react";
 import { Card, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { Badge } from "@/components/ui/badge";
-import { ChangeBadge } from "@/components/stock/change-badge";
-import { StockAvatar } from "@/components/ui/stock-avatar";
 import { getSectors, screenStocks } from "@/lib/stocks";
 import { ScreenerForm } from "@/components/screener/screener-form";
+import { ScreenerResultsTable } from "@/components/screener/screener-results-table";
 import {
   normalizeScreenerParams,
   parseScreenerFilters,
@@ -90,65 +89,7 @@ export default async function ScreenerPage({
       <Card>
         <CardTitle>Results</CardTitle>
         {results.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-[var(--border)] text-left text-[11px] font-semibold uppercase tracking-wider text-subtle">
-                  <th className="pb-3 pr-4">Stock</th>
-                  <th className="pb-3 pr-4">Price</th>
-                  <th className="pb-3 pr-4">Change</th>
-                  <th className="pb-3 pr-4">PE</th>
-                  <th className="pb-3 pr-4">ROE</th>
-                  <th className="pb-3 pr-4">Growth</th>
-                  <th className="pb-3">RSI</th>
-                </tr>
-              </thead>
-              <tbody>
-                {results.map((s) => (
-                  <tr
-                    key={s.symbol}
-                    className="group border-b border-[var(--border)] transition-colors hover:bg-[var(--bg-secondary)]"
-                  >
-                    <td className="py-3.5 pr-4">
-                      <Link href={`/stocks/${s.symbol}`} className="flex items-center gap-3">
-                        <StockAvatar symbol={s.symbol} sector={s.sector} size="sm" />
-                        <div>
-                          <div className="font-semibold text-[var(--fg)] group-hover:text-accent">
-                            {s.symbol}
-                          </div>
-                          <div className="text-xs text-muted">{s.sector}</div>
-                        </div>
-                      </Link>
-                    </td>
-                    <td className="py-3.5 pr-4 font-mono font-medium">{s.price.toLocaleString()}</td>
-                    <td className="py-3.5 pr-4">
-                      <ChangeBadge value={s.changePercent} />
-                    </td>
-                    <td className="py-3.5 pr-4">
-                      <span className={`font-mono ${s.pe > 0 && s.pe < 12 ? "text-success" : ""}`}>
-                        {s.pe || "—"}
-                      </span>
-                    </td>
-                    <td className="py-3.5 pr-4">
-                      <span className={`font-mono ${s.roe >= 20 ? "text-success" : ""}`}>
-                        {s.roe}%
-                      </span>
-                    </td>
-                    <td className="py-3.5 pr-4">
-                      <span className={`font-mono ${s.revenueGrowth >= 20 ? "text-success" : ""}`}>
-                        {s.revenueGrowth}%
-                      </span>
-                    </td>
-                    <td className="py-3.5">
-                      <span className={`font-mono ${s.rsi < 30 ? "text-cyan-600 dark:text-cyan-400" : s.rsi > 70 ? "text-danger" : ""}`}>
-                        {s.rsi}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          <ScreenerResultsTable stocks={results} />
         ) : (
           <div className="rounded-xl border border-dashed border-[var(--border)] py-12 text-center">
             <p className="text-sm text-muted">No stocks match your criteria.</p>

@@ -152,3 +152,27 @@ export async function clearAiChatSession(userId: string): Promise<void> {
 }
 
 export { WELCOME };
+
+export function stripAssistantMeta(content: string): string {
+  return content.replace(/\n\n\*— [^*]+\*$/m, "").trim();
+}
+
+export function isWelcomeMessage(msg: ChatMessage): boolean {
+  return (
+    msg.role === "assistant" &&
+    (msg.content.includes("Vietnam Stock AI Analyst") ||
+      msg.content.includes("Xin chào"))
+  );
+}
+
+export async function getConversationForAi(
+  userId: string,
+  sessionId?: string | null,
+): Promise<{ sessionId: string; messages: ChatMessage[] }> {
+  const session = await loadAiChatSession(userId);
+  if (sessionId && session.sessionId !== sessionId) {
+    return { sessionId: sessionId, messages: [] };
+  }
+  const messages = session.messages.filter((m) => !isWelcomeMessage(m));
+  return { sessionId: session.sessionId, messages };
+}

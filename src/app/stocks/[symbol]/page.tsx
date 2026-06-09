@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { ChangeBadge } from "@/components/stock/change-badge";
 import { PriceChartPanel } from "@/components/stock/price-chart-panel";
 import { WatchlistButton } from "@/components/stock/watchlist-button";
+import { LogTradeLink } from "@/components/trading/log-trade-link";
 import { CachedNewsFeed } from "@/components/stock/cached-news-feed";
 import { StockAvatar } from "@/components/ui/stock-avatar";
 import { analyzeStock } from "@/lib/analysis/stock-analysis";
@@ -66,11 +67,23 @@ export default async function StockDetailPage({
             <p className="mt-1 text-muted">{stock.name}</p>
           </div>
         </div>
-        <WatchlistButton
-          symbol={stock.symbol}
-          initialInWatchlist={inWatchlist}
-          isAuthenticated={!!session?.user}
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          {session?.user && (
+            <LogTradeLink
+              symbol={stock.symbol}
+              price={stock.price}
+              exchange={stock.exchange}
+              sector={stock.sector}
+              variant="outline"
+              label="Log trade"
+            />
+          )}
+          <WatchlistButton
+            symbol={stock.symbol}
+            initialInWatchlist={inWatchlist}
+            isAuthenticated={!!session?.user}
+          />
+        </div>
       </div>
 
       <Card glow className="!p-6 sm:!p-8">

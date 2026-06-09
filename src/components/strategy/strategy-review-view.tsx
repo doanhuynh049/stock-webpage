@@ -1,11 +1,16 @@
 "use client";
 
+import { useMemo } from "react";
 import Link from "next/link";
 import { AlertTriangle, CheckCircle2, Target } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
+import { StockAvatar } from "@/components/ui/stock-avatar";
+import { SortableTableHeader } from "@/components/ui/sortable-table-header";
+import { useTableSort } from "@/hooks/use-table-sort";
+import { applySortDir, compareNumbers, compareStrings } from "@/lib/table-sort";
 import type { StrategyReview } from "@/lib/strategy/strategy-review";
 import { formatPortfolioAmount, formatPortfolioPercent } from "@/lib/utils";
 
@@ -25,6 +30,39 @@ function statusVariant(status: string) {
 }
 
 export function StrategyReviewView({ review }: { review: StrategyReview }) {
+  type SortKey = "symbol" | "bucket" | "alloc" | "pl" | "status" | "action" | "reason";
+  const { sortKey, sortDir, toggleSort } = useTableSort<SortKey>("alloc", "desc");
+  const sortedHoldings = useMemo(() => {
+    if (!sortKey) return review.holdingMappings;
+    return [...review.holdingMappings].sort((a, b) => {
+      let cmp = 0;
+      switch (sortKey) {
+        case "symbol":
+          cmp = compareStrings(a.symbol, b.symbol);
+          break;
+        case "bucket":
+          cmp = compareStrings(a.strategyBucket, b.strategyBucket);
+          break;
+        case "alloc":
+          cmp = compareNumbers(a.allocPct, b.allocPct);
+          break;
+        case "pl":
+          cmp = compareNumbers(a.plPct, b.plPct);
+          break;
+        case "status":
+          cmp = compareStrings(a.allocStatus, b.allocStatus);
+          break;
+        case "action":
+          cmp = compareStrings(a.primaryAction, b.primaryAction);
+          break;
+        case "reason":
+          cmp = compareStrings(a.actionReason, b.actionReason);
+          break;
+      }
+      return applySortDir(cmp, sortDir);
+    });
+  }, [review.holdingMappings, sortKey, sortDir]);
+
   const alerts: { tone: "danger" | "warning" | "success"; text: string }[] = [];
 
   if (review.stopLossCandidates.length) {
@@ -179,33 +217,36 @@ export function StrategyReviewView({ review }: { review: StrategyReview }) {
           <table className="w-full min-w-[900px] text-sm">
             <thead>
               <tr className="border-b border-[var(--border)] bg-[var(--bg-secondary)] text-left text-[10px] uppercase text-subtle">
-                <th className="px-3 py-2">Symbol</th>
-                <th className="px-3 py-2">Bucket</th>
-                <th className="px-3 py-2 text-right">Alloc %</th>
-                <th className="px-3 py-2 text-right">P/L %</th>
-                <th className="px-3 py-2 text-center">Status</th>
-                <th className="px-3 py-2 text-center">Action</th>
-                <th className="px-3 py-2">Reason</th>
+                <SortableTableHeader label="Symbol" column="symbol" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-3 py-2" />
+                <SortableTableHeader label="Bucket" column="bucket" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-3 py-2" />
+                <SortableTableHeader label="Alloc %" column="alloc" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} align="right" className="px-3 py-2" />
+                <SortableTableHeader label="P/L %" column="pl" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} align="right" className="px-3 py-2" />
+                <SortableTableHeader label="Status" column="status" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} align="center" className="px-3 py-2" />
+                <SortableTableHeader label="Action" column="action" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} align="center" className="px-3 py-2" />
+                <SortableTableHeader label="Reason" column="reason" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-3 py-2" />
               </tr>
             </thead>
             <tbody>
-              {review.holdingMappings
-                .sort((a, b) => b.allocPct - a.allocPct)
-                .map((h) => (
+              {sortedHoldings.map((h) => (
                   <tr
                     key={h.symbol}
                     className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--card-hover)]"
                   >
                     <td className="px-3 py-2">
-                      <Link
-                        href={`/stocks/${h.symbol}`}
-                        className="font-semibold text-accent hover:underline"
-                      >
-                        {h.symbol}
-                      </Link>
-                      {h.name && (
-                        <div className="text-[10px] text-subtle">{h.name}</div>
-                      )}
+                      <div className="flex items-center gap-2">
+                        <StockAvatar symbol={h.symbol} sector={h.sector ?? undefined} size="sm" />
+                        <div>
+                          <Link
+                            href={`/stocks/${h.symbol}`}
+                            className="font-semibold text-accent hover:underline"
+                          >
+                            {h.symbol}
+                          </Link>
+                          {h.name && (
+                            <div className="text-[10px] text-subtle">{h.name}</div>
+                          )}
+                        </div>
+                      </div>
                     </td>
                     <td className="px-3 py-2 text-xs text-muted">
                       {h.strategyBucket}

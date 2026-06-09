@@ -1,9 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardTitle } from "@/components/ui/card";
+import { StockAvatar } from "@/components/ui/stock-avatar";
+import { SortableTableHeader } from "@/components/ui/sortable-table-header";
+import { useTableSort } from "@/hooks/use-table-sort";
+import { applySortDir, compareNumbers, compareStrings } from "@/lib/table-sort";
 import {
   AnalysisDetailPanel,
   type Selection,
@@ -60,29 +64,34 @@ function scoreVariant(score: number) {
 function SymbolCell({
   symbol,
   name,
+  sector,
   owned,
 }: {
   symbol: string;
   name?: string;
+  sector?: string;
   owned?: Set<string>;
 }) {
   const sym = symbol.toUpperCase();
   return (
-    <>
-      <Link
-        href={`/stocks/${sym}`}
-        className="font-semibold text-accent hover:underline"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {sym}
-      </Link>
-      {owned?.has(sym) && (
-        <Badge variant="info" className="ml-1 text-[9px]">
-          owned
-        </Badge>
-      )}
-      {name && <div className="text-[10px] text-muted">{name}</div>}
-    </>
+    <div className="flex items-center gap-2">
+      <StockAvatar symbol={sym} sector={sector} size="sm" />
+      <div className="min-w-0">
+        <Link
+          href={`/stocks/${sym}`}
+          className="font-semibold text-accent hover:underline"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {sym}
+        </Link>
+        {owned?.has(sym) && (
+          <Badge variant="info" className="ml-1 text-[9px]">
+            owned
+          </Badge>
+        )}
+        {name && <div className="text-[10px] text-muted">{name}</div>}
+      </div>
+    </div>
   );
 }
 
@@ -97,26 +106,79 @@ function FundamentalTable({
   selectedSymbol: string | null;
   onSelect: (row: FundamentalAnalysisRow) => void;
 }) {
+  type SortKey =
+    | "symbol"
+    | "sector"
+    | "score"
+    | "quality"
+    | "growth"
+    | "value"
+    | "stability"
+    | "roe"
+    | "pe"
+    | "pb";
+
+  const { sortKey, sortDir, toggleSort } = useTableSort<SortKey>("score", "desc");
+  const sorted = useMemo(() => {
+    if (!sortKey) return rows;
+    return [...rows].sort((a, b) => {
+      let cmp = 0;
+      switch (sortKey) {
+        case "symbol":
+          cmp = compareStrings(a.symbol, b.symbol);
+          break;
+        case "sector":
+          cmp = compareStrings(a.sector, b.sector);
+          break;
+        case "score":
+          cmp = compareNumbers(a.breakdown.finalScore, b.breakdown.finalScore);
+          break;
+        case "quality":
+          cmp = compareNumbers(a.breakdown.qualityScore, b.breakdown.qualityScore);
+          break;
+        case "growth":
+          cmp = compareNumbers(a.breakdown.growthScore, b.breakdown.growthScore);
+          break;
+        case "value":
+          cmp = compareNumbers(a.breakdown.valuationScore, b.breakdown.valuationScore);
+          break;
+        case "stability":
+          cmp = compareNumbers(a.breakdown.stabilityScore, b.breakdown.stabilityScore);
+          break;
+        case "roe":
+          cmp = compareNumbers(a.roe, b.roe);
+          break;
+        case "pe":
+          cmp = compareNumbers(a.pe, b.pe);
+          break;
+        case "pb":
+          cmp = compareNumbers(a.pb, b.pb);
+          break;
+      }
+      return applySortDir(cmp, sortDir);
+    });
+  }, [rows, sortKey, sortDir]);
+
   if (!rows?.length) return <Empty />;
   return (
     <table className="w-full min-w-[1000px] text-sm">
       <thead>
         <tr className="border-b border-[var(--border)] bg-[var(--bg-secondary)] text-left text-[10px] uppercase text-subtle">
           <th className="px-2 py-1.5">#</th>
-          <th className="px-2 py-1.5">Symbol</th>
-          <th className="px-2 py-1.5">Sector</th>
-          <th className="px-2 py-1.5 text-center">Score</th>
-          <th className="px-2 py-1.5 text-center">Quality</th>
-          <th className="px-2 py-1.5 text-center">Growth</th>
-          <th className="px-2 py-1.5 text-center">Value</th>
-          <th className="px-2 py-1.5 text-center">Stability</th>
-          <th className="px-2 py-1.5 text-center">ROE</th>
-          <th className="px-2 py-1.5 text-center">P/E</th>
-          <th className="px-2 py-1.5 text-center">P/B</th>
+          <SortableTableHeader label="Symbol" column="symbol" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-2 py-1.5" />
+          <SortableTableHeader label="Sector" column="sector" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-2 py-1.5" />
+          <SortableTableHeader label="Score" column="score" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} align="center" className="px-2 py-1.5" />
+          <SortableTableHeader label="Quality" column="quality" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} align="center" className="px-2 py-1.5" />
+          <SortableTableHeader label="Growth" column="growth" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} align="center" className="px-2 py-1.5" />
+          <SortableTableHeader label="Value" column="value" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} align="center" className="px-2 py-1.5" />
+          <SortableTableHeader label="Stability" column="stability" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} align="center" className="px-2 py-1.5" />
+          <SortableTableHeader label="ROE" column="roe" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} align="center" className="px-2 py-1.5" />
+          <SortableTableHeader label="P/E" column="pe" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} align="center" className="px-2 py-1.5" />
+          <SortableTableHeader label="P/B" column="pb" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} align="center" className="px-2 py-1.5" />
         </tr>
       </thead>
       <tbody>
-        {rows.map((r, i) => (
+        {sorted.map((r, i) => (
           <tr
             key={`${r.symbol}-${i}`}
             onClick={() => onSelect(r)}
@@ -128,7 +190,7 @@ function FundamentalTable({
           >
             <td className="px-2 py-1.5 text-subtle">{i + 1}</td>
             <td className="px-2 py-1.5">
-              <SymbolCell symbol={r.symbol} name={r.name} owned={owned} />
+              <SymbolCell symbol={r.symbol} name={r.name} sector={r.sector} owned={owned} />
             </td>
             <td className="px-2 py-1.5 text-xs text-muted">{r.sector}</td>
             <td className="px-2 py-1.5 text-center">
@@ -159,22 +221,53 @@ function TechnicalTable({
   selectedSymbol: string | null;
   onSelect: (row: TechnicalAnalysisRow) => void;
 }) {
+  type SortKey = "symbol" | "tech" | "rating" | "trend" | "momentum" | "sr";
+
+  const { sortKey, sortDir, toggleSort } = useTableSort<SortKey>("tech", "desc");
+  const sorted = useMemo(() => {
+    if (!sortKey) return rows;
+    return [...rows].sort((a, b) => {
+      let cmp = 0;
+      switch (sortKey) {
+        case "symbol":
+          cmp = compareStrings(a.symbol, b.symbol);
+          break;
+        case "tech":
+          cmp = compareNumbers(a.technicalScore, b.technicalScore);
+          break;
+        case "rating":
+          cmp = compareStrings(a.technicalRating, b.technicalRating);
+          break;
+        case "trend":
+          cmp = compareStrings(a.maTrend, b.maTrend);
+          break;
+        case "momentum":
+          cmp = compareStrings(a.momentum, b.momentum);
+          break;
+        case "sr":
+          cmp = compareStrings(a.supportResistance, b.supportResistance);
+          break;
+      }
+      return applySortDir(cmp, sortDir);
+    });
+  }, [rows, sortKey, sortDir]);
+
   if (!rows?.length) return <Empty />;
   return (
     <table className="w-full min-w-[900px] text-sm">
       <thead>
         <tr className="border-b border-[var(--border)] bg-[var(--bg-secondary)] text-left text-[10px] uppercase text-subtle">
           <th className="px-2 py-1.5">#</th>
-          <th className="px-2 py-1.5">Symbol</th>
-          <th className="px-2 py-1.5 text-center">Tech</th>
-          <th className="px-2 py-1.5">Rating</th>
-          <th className="px-2 py-1.5">Trend</th>
-          <th className="px-2 py-1.5">Momentum</th>
-          <th className="px-2 py-1.5">S/R</th>
+          <SortableTableHeader label="Symbol" column="symbol" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-2 py-1.5" />
+          <SortableTableHeader label="Tech" column="tech" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} align="center" className="px-2 py-1.5" />
+          <SortableTableHeader label="Rating" column="rating" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-2 py-1.5" />
+          <SortableTableHeader label="Trend" column="trend" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-2 py-1.5" />
+          <SortableTableHeader label="Momentum" column="momentum" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-2 py-1.5" />
+          <SortableTableHeader label="S/R" column="sr" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-2 py-1.5" />
         </tr>
       </thead>
       <tbody>
-        {rows.map((r, i) => (
+        {sorted.map((r, i) => (
           <tr
             key={`${r.symbol}-${i}`}
             onClick={() => onSelect(r)}
@@ -186,7 +279,7 @@ function TechnicalTable({
           >
             <td className="px-2 py-1.5 text-subtle">{i + 1}</td>
             <td className="px-2 py-1.5">
-              <SymbolCell symbol={r.symbol} name={r.name} owned={owned} />
+              <SymbolCell symbol={r.symbol} name={r.name} sector={r.sector} owned={owned} />
             </td>
             <td className="px-2 py-1.5 text-center font-mono font-semibold">{r.technicalScore}</td>
             <td className="px-2 py-1.5 text-xs text-muted">{r.technicalRating}</td>
@@ -211,21 +304,49 @@ function CombinedTable({
   selectedSymbol: string | null;
   onSelect: (row: CombinedAnalysisRow) => void;
 }) {
+  type SortKey = "symbol" | "tech" | "fund" | "combined" | "signal";
+
+  const { sortKey, sortDir, toggleSort } = useTableSort<SortKey>("combined", "desc");
+  const sorted = useMemo(() => {
+    if (!sortKey) return rows;
+    return [...rows].sort((a, b) => {
+      let cmp = 0;
+      switch (sortKey) {
+        case "symbol":
+          cmp = compareStrings(a.symbol, b.symbol);
+          break;
+        case "tech":
+          cmp = compareNumbers(a.technicalScore, b.technicalScore);
+          break;
+        case "fund":
+          cmp = compareNumbers(a.fundamentalScore, b.fundamentalScore);
+          break;
+        case "combined":
+          cmp = compareNumbers(a.combinedScore, b.combinedScore);
+          break;
+        case "signal":
+          cmp = compareStrings(a.recommendation, b.recommendation);
+          break;
+      }
+      return applySortDir(cmp, sortDir);
+    });
+  }, [rows, sortKey, sortDir]);
+
   if (!rows?.length) return <Empty />;
   return (
     <table className="w-full min-w-[720px] text-sm">
       <thead>
         <tr className="border-b border-[var(--border)] bg-[var(--bg-secondary)] text-left text-[10px] uppercase text-subtle">
           <th className="px-2 py-1.5">#</th>
-          <th className="px-2 py-1.5">Symbol</th>
-          <th className="px-2 py-1.5 text-center">Tech</th>
-          <th className="px-2 py-1.5 text-center">Fund</th>
-          <th className="px-2 py-1.5 text-center">Combined</th>
-          <th className="px-2 py-1.5">Signal</th>
+          <SortableTableHeader label="Symbol" column="symbol" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-2 py-1.5" />
+          <SortableTableHeader label="Tech" column="tech" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} align="center" className="px-2 py-1.5" />
+          <SortableTableHeader label="Fund" column="fund" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} align="center" className="px-2 py-1.5" />
+          <SortableTableHeader label="Combined" column="combined" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} align="center" className="px-2 py-1.5" />
+          <SortableTableHeader label="Signal" column="signal" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-2 py-1.5" />
         </tr>
       </thead>
       <tbody>
-        {rows.map((r, i) => (
+        {sorted.map((r, i) => (
           <tr
             key={`${r.symbol}-${i}`}
             onClick={() => onSelect(r)}
@@ -237,7 +358,7 @@ function CombinedTable({
           >
             <td className="px-2 py-1.5 text-subtle">{i + 1}</td>
             <td className="px-2 py-1.5">
-              <SymbolCell symbol={r.symbol} owned={owned} />
+              <SymbolCell symbol={r.symbol} name={r.name} sector={r.sector} owned={owned} />
             </td>
             <td className="px-2 py-1.5 text-center font-mono">{r.technicalScore}</td>
             <td className="px-2 py-1.5 text-center font-mono">{r.fundamentalScore}</td>

@@ -1,9 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Plus, Trash2, X } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
+import { StockAvatar } from "@/components/ui/stock-avatar";
+import { FormModal, ModalCheckbox, modalFieldClass, modalLabelClass } from "@/components/ui/form-modal";
 import {
   formatPortfolioAmount,
   formatPortfolioPercent,
@@ -214,6 +216,8 @@ function EditModal({
   mode,
   draft,
   busy,
+  addAnother,
+  onAddAnotherChange,
   onChange,
   onClose,
   onSave,
@@ -222,6 +226,8 @@ function EditModal({
   mode: "add" | "edit";
   draft: Draft;
   busy: boolean;
+  addAnother: boolean;
+  onAddAnotherChange: (checked: boolean) => void;
   onChange: (d: Draft) => void;
   onClose: () => void;
   onSave: () => void;
@@ -239,59 +245,37 @@ function EditModal({
   ] as const;
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-[2px]"
-      onClick={onClose}
-      role="presentation"
-    >
-      <div
-        className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-xl border border-[var(--border)] bg-[var(--card)] p-4 shadow-2xl"
-        role="dialog"
-        aria-modal="true"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="mb-3 flex items-center justify-between">
-          <h3 className="text-sm font-semibold">
-            {mode === "add" ? "Add holding" : `Edit ${draft.symbol}`}
-          </h3>
-          <button type="button" onClick={onClose} className="text-muted">
-            <X className="h-4 w-4" />
-          </button>
-        </div>
-        <div className="grid gap-2 sm:grid-cols-2">
-          {fields.map(([key, label, readOnly, type]) => (
-            <label key={key} className="text-xs">
-              <span className="text-subtle">{label}</span>
-              <input
-                type={type ?? "text"}
-                readOnly={readOnly === true}
-                disabled={busy}
-                className="mt-0.5 w-full rounded border border-[var(--border)] bg-[var(--bg-secondary)] px-2 py-1.5 font-mono text-sm disabled:opacity-60"
-                value={String(draft[key as keyof Draft] ?? "")}
-                onChange={(e) =>
-                  onChange({
-                    ...draft,
-                    [key]:
-                      type === "number"
-                        ? Number(e.target.value)
-                        : e.target.value,
-                  })
-                }
-              />
-            </label>
-          ))}
-        </div>
-        <p className="mt-2 text-[10px] text-subtle">Saves directly to Neon portfolio_holding.</p>
-        <div className="mt-4 flex flex-wrap items-center gap-2">
+    <FormModal
+      open
+      title={mode === "add" ? "Add holding" : `Edit ${draft.symbol}`}
+      subtitle={
+        mode === "add"
+          ? "Adds a row to your Neon portfolio holdings."
+          : "Updates sync to the database immediately."
+      }
+      onClose={onClose}
+      options={
+        mode === "add" ? (
+          <ModalCheckbox
+            id="holding-add-another"
+            checked={addAnother}
+            onChange={onAddAnotherChange}
+            label="Add another after saving"
+            description="Keep this dialog open for the next position."
+          />
+        ) : undefined
+      }
+      footer={
+        <>
           <button
             type="button"
             disabled={busy}
             onClick={onSave}
-            className="rounded-lg bg-accent px-4 py-2 text-xs font-semibold text-white disabled:opacity-50"
+            className="flex-1 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:opacity-90 disabled:opacity-50 sm:flex-none"
           >
-            {busy ? "Saving…" : "Save to DB"}
+            {busy ? "Saving…" : mode === "add" ? "Save holding" : "Save changes"}
           </button>
-          <button type="button" onClick={onClose} className="text-xs text-muted">
+          <button type="button" onClick={onClose} className="px-3 py-2 text-sm text-muted">
             Cancel
           </button>
           {mode === "edit" && onDelete && (
@@ -305,9 +289,33 @@ function EditModal({
               Delete holding
             </button>
           )}
-        </div>
+        </>
+      }
+    >
+      <div className="grid gap-3 sm:grid-cols-2">
+        {fields.map(([key, label, readOnly, type]) => (
+          <label key={key} className="block">
+            <span className={modalLabelClass}>{label}</span>
+            <input
+              type={type ?? "text"}
+              readOnly={readOnly === true}
+              disabled={busy}
+              className={`${modalFieldClass} font-mono disabled:opacity-60`}
+              value={String(draft[key as keyof Draft] ?? "")}
+              onChange={(e) =>
+                onChange({
+                  ...draft,
+                  [key]:
+                    type === "number"
+                      ? Number(e.target.value)
+                      : e.target.value,
+                })
+              }
+            />
+          </label>
+        ))}
       </div>
-    </div>
+    </FormModal>
   );
 }
 
@@ -328,6 +336,7 @@ export function HoldingsLedger({
 
   const [modal, setModal] = useState<"add" | "edit" | null>(null);
   const [draft, setDraft] = useState<Draft>(emptyDraft());
+  const [addAnother, setAddAnother] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [sortKey, setSortKey] = useState<SortKey>("costBasis");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
@@ -387,8 +396,15 @@ export function HoldingsLedger({
     next.push({ ...draft, symbol: sym });
     next.sort((a, b) => a.symbol.localeCompare(b.symbol));
     persist(next, holdings);
-    setModal(null);
-    setDraft(emptyDraft());
+    const keepOpen = addAnother && modal === "add";
+    if (keepOpen) {
+      setDraft(emptyDraft());
+      setModal("add");
+    } else {
+      setModal(null);
+      setDraft(emptyDraft());
+      setAddAnother(false);
+    }
   }
 
   const totalCurrent = holdings.reduce((s, h) => s + (h.currentValueK ?? 0), 0);
@@ -402,6 +418,7 @@ export function HoldingsLedger({
           type="button"
           onClick={() => {
             setDraft(emptyDraft());
+            setAddAnother(false);
             setModal("add");
           }}
           className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white"
@@ -417,9 +434,14 @@ export function HoldingsLedger({
           mode={modal}
           draft={draft}
           busy={false}
+          addAnother={addAnother}
+          onAddAnotherChange={setAddAnother}
           onChange={setDraft}
-          onClose={() => setModal(null)}
-          onSave={() => void saveModal()}
+          onClose={() => {
+            setModal(null);
+            setAddAnother(false);
+          }}
+          onSave={saveModal}
           onDelete={modal === "edit" ? () => void deleteModal() : undefined}
         />
       )}
@@ -458,14 +480,19 @@ export function HoldingsLedger({
                   className="cursor-pointer border-b border-[var(--border)] last:border-0 hover:bg-[var(--card-hover)]"
                 >
                   <td className="px-2 py-1.5">
-                    <Link
-                      href={`/stocks/${h.symbol}`}
-                      onClick={(e) => e.stopPropagation()}
-                      className="font-semibold text-accent"
-                    >
-                      {h.symbol}
-                    </Link>
-                    <div className="max-w-[120px] truncate text-[10px] text-muted">{h.name ?? "—"}</div>
+                    <div className="flex items-center gap-2">
+                      <StockAvatar symbol={h.symbol} sector={h.sector ?? undefined} size="sm" />
+                      <div className="min-w-0">
+                        <Link
+                          href={`/stocks/${h.symbol}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="font-semibold text-accent"
+                        >
+                          {h.symbol}
+                        </Link>
+                        <div className="max-w-[120px] truncate text-[10px] text-muted">{h.name ?? "—"}</div>
+                      </div>
+                    </div>
                   </td>
                   <td className="px-2 py-1.5 text-xs text-muted">{h.exchange ?? "—"}</td>
                   <td className="max-w-[100px] truncate px-2 py-1.5 text-xs text-muted">{h.sector ?? "—"}</td>

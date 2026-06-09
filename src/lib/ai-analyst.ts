@@ -1,17 +1,19 @@
-import { getAllStocks, getStock } from "@/lib/market-service";
+import { getAllStocks, getStock, resolveStocksFromQuestion } from "@/lib/market-service";
+import { extractLastMentionedSymbol, extractTickersFromQuestion } from "@/lib/symbol-utils";
 import type { Stock } from "@/types/stock";
 
-function extractSymbol(question: string, stocks: Stock[]): string | null {
-  const upper = question.toUpperCase();
-  for (const stock of stocks) {
-    if (upper.includes(stock.symbol)) return stock.symbol;
-    if (upper.includes(stock.name.toUpperCase())) return stock.symbol;
+async function extractSymbol(question: string, priorContext?: string): Promise<string | null> {
+  const resolved = await resolveStocksFromQuestion(question, priorContext);
+  if (resolved.length === 1) return resolved[0].symbol;
+  if (resolved.length > 1) {
+    const tickers = extractTickersFromQuestion(question);
+    const match = tickers.find((t) => resolved.some((s) => s.symbol === t));
+    return match ?? resolved[0].symbol;
   }
-  const match = upper.match(/\b([A-Z]{2,5})\b/);
-  if (match) {
-    const candidate = match[1];
-    const found = stocks.find((s) => s.symbol === candidate);
-    if (found) return candidate;
+
+  for (const sym of extractTickersFromQuestion(question)) {
+    const stock = await getStock(sym);
+    if (stock?.price) return sym;
   }
   return null;
 }
@@ -63,7 +65,10 @@ ${risks.map((r) => `- ${r}`).join("\n")}
 *Target: ${stock.analystTarget.toLocaleString()} ₫ | Sector: ${stock.sector} | Source: Entrade/Yahoo live data*`;
 }
 
-export async function analyzeQuestion(question: string): Promise<string> {
+export async function analyzeQuestion(
+  question: string,
+  priorContext?: string,
+): Promise<string> {
   const lower = question.toLowerCase();
   const stocks = await getAllStocks();
 
@@ -92,9 +97,7 @@ Sentiment: **${market.sentiment}** (${market.sentimentScore}%)
   }
 
   if (lower.includes("compare") || lower.includes(" vs ")) {
-    const symbols = stocks
-      .map((s) => s.symbol)
-      .filter((sym) => question.toUpperCase().includes(sym));
+    const symbols = extractTickersFromQuestion(question).slice(0, 2);
     if (symbols.length >= 2) {
       const a = await getStock(symbols[0]);
       const b = await getStock(symbols[1]);
@@ -114,12 +117,25 @@ Sentiment: **${market.sentiment}** (${market.sentimentScore}%)
     }
   }
 
+  const symbol = await extractSymbol(question, priorContext);
+  if (symbol) {
+    const stock = await getStock(symbol);
+    if (stock) return buildStockAnalysis(stock);
+  }
+
+  if (priorContext?.trim()) {
+    const lastSym = extractLastMentionedSymbol(priorContext);
+    if (lastSym) {
+      const stock = await getStock(lastSym);
+      if (stock) return buildStockAnalysis(stock);
+    }
+  }
+
   if (
     lower.includes("screener") ||
     lower.includes("find stock") ||
     lower.includes("opportunit") ||
     lower.includes("undervalued") ||
-    lower.includes("invest") ||
     lower.includes("recommend") ||
     lower.includes("good to buy")
   ) {
@@ -146,16 +162,9 @@ ${list}
 See full rankings on the [Dashboard](/) or refine in the [Screener](/screener).`;
   }
 
-  const symbol = extractSymbol(question, stocks);
-  if (symbol) {
-    const stock = await getStock(symbol);
-    if (stock) return buildStockAnalysis(stock);
-  }
-
-  const ticker = question.toUpperCase().match(/\b([A-Z]{2,5})\b/)?.[1];
-  if (ticker) {
-    const stock = await getStock(ticker);
-    if (stock) return buildStockAnalysis(stock);
+  for (const sym of extractTickersFromQuestion(question)) {
+    const stock = await getStock(sym);
+    if (stock?.price) return buildStockAnalysis(stock);
   }
 
   return `## Vietnam Stock AI Analyst

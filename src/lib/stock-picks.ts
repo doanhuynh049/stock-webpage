@@ -1,4 +1,5 @@
 import { getAllStocks, getMarketSnapshot } from "@/lib/market-service";
+import { analystTargetUpsidePercent } from "@/lib/price-utils";
 import type { Stock } from "@/types/stock";
 
 export type PickHorizon = "short" | "medium";
@@ -56,12 +57,7 @@ function scoreStock(stock: Stock, sectorChange: number): StockPick | null {
     reasons.push(`Analyst ${stock.analystRating}`);
   }
 
-  const target =
-    stock.analystTarget < stock.price / 10
-      ? stock.analystTarget * 1000
-      : stock.analystTarget;
-  const upsidePercent =
-    stock.price > 0 ? ((target - stock.price) / stock.price) * 100 : 0;
+  const upsidePercent = analystTargetUpsidePercent(stock);
   if (upsidePercent >= 10) {
     score += 10;
     reasons.push(`${upsidePercent.toFixed(0)}% upside to target`);

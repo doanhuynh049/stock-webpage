@@ -205,3 +205,24 @@ body {
 .table-scroll {
   -webkit-overflow-scrolling: touch;
 }
+
+/* Text selection — readable in light and dark mode */
+::selection {
+  background: color-mix(in srgb, var(--accent) 40%, transparent);
+  color: var(--fg);
+}
+
+::-moz-selection {
+  background: color-mix(in srgb, var(--accent) 40%, transparent);
+  color: var(--fg);
+}
+
+:root ::selection {
+  background: rgba(5, 150, 105, 0.28);
+  color: #0f172a;
+}
+
+.dark ::selection {
+  background: rgba(52, 211, 153, 0.35);
+  color: #f4f4f5;
+}

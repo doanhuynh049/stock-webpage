@@ -2,18 +2,55 @@ import { auth } from "@/lib/auth";
 import { shouldSkipDbReads } from "@/lib/db/cache-first";
 import { readCachedWatchlist } from "@/lib/db/neon-cache";
 import { getStock } from "@/lib/market-service";
+import { lookupIndexStock } from "@/lib/stock-metadata";
 import { isPersistenceEnabled } from "@/lib/persistence";
 import { prisma } from "@/lib/prisma";
 import { withDbRetry } from "@/lib/prisma-query";
 
+import type { Stock } from "@/types/stock";
+
+export type WatchlistItemView = {
+  symbol: string;
+  stock: Stock | null;
+};
+
+function fallbackStock(symbol: string): Stock {
+  const sym = symbol.toUpperCase();
+  const meta = lookupIndexStock(sym);
+  return {
+    symbol: sym,
+    name: meta?.name ?? sym,
+    sector: meta?.sector ?? "Unknown",
+    exchange: "HOSE",
+    price: 0,
+    change: 0,
+    changePercent: 0,
+    volume: 0,
+    marketCap: 0,
+    pe: 0,
+    pb: 0,
+    roe: 0,
+    revenueGrowth: 0,
+    rsi: 50,
+    dividendYield: 0,
+    high52w: 0,
+    low52w: 0,
+    analystRating: "Hold",
+    analystTarget: 0,
+    profile: "",
+    financials: { years: [], revenue: [], netProfit: [], totalDebt: [] },
+  };
+}
+
 async function enrichWatchlist(
-  items: Array<{ id?: string; symbol: string; userId?: string; createdAt?: Date }>,
-) {
+  items: Array<{ symbol: string }>,
+): Promise<WatchlistItemView[]> {
   return Promise.all(
-    items.map(async (item) => ({
-      ...item,
-      stock: await getStock(item.symbol),
-    })),
+    items.map(async (item) => {
+      const sym = item.symbol.toUpperCase();
+      const stock = (await getStock(sym)) ?? fallbackStock(sym);
+      return { symbol: sym, stock };
+    }),
   );
 }
 

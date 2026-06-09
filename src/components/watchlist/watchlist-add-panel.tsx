@@ -2,17 +2,19 @@
 
 import { FormEvent, useState, useTransition } from "react";
 import { Plus, Search } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { addToWatchlist } from "@/lib/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
 export function WatchlistAddPanel({
   suggestions,
+  onAdded,
+  onFailed,
 }: {
   suggestions: string[];
+  onAdded?: (symbol: string) => void;
+  onFailed?: (symbol: string) => void;
 }) {
-  const router = useRouter();
   const [symbol, setSymbol] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -21,12 +23,13 @@ export function WatchlistAddPanel({
     const ticker = sym.trim().toUpperCase();
     if (!ticker) return;
     setError(null);
+    onAdded?.(ticker);
     startTransition(async () => {
       try {
         await addToWatchlist(ticker);
         setSymbol("");
-        router.refresh();
       } catch (e) {
+        onFailed?.(ticker);
         setError((e as Error).message || "Could not add symbol");
       }
     });

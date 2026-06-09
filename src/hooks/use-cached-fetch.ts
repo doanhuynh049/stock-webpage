@@ -12,9 +12,15 @@ type FetchState<T> = {
   error: boolean;
 };
 
+const INITIAL: FetchState<never> = {
+  data: null,
+  loading: true,
+  error: false,
+};
+
 /**
  * Fetch JSON from an API route with localStorage TTL cache.
- * Shows cached data immediately, then revalidates in the background.
+ * SSR and the first client paint match (loading); cache is read only after mount.
  */
 export function useCachedFetch<T>(
   cacheKey: string,
@@ -22,11 +28,7 @@ export function useCachedFetch<T>(
   ttlMs: number,
   select: (json: unknown) => T | null,
 ): FetchState<T> & { refresh: () => void } {
-  const [state, setState] = useState<FetchState<T>>(() => ({
-    data: readLocalCache<T>(cacheKey, ttlMs),
-    loading: !readLocalCache<T>(cacheKey, ttlMs),
-    error: false,
-  }));
+  const [state, setState] = useState<FetchState<T>>(INITIAL as FetchState<T>);
 
   const load = useCallback(
     (background: boolean) => {

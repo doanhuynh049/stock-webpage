@@ -20,17 +20,25 @@ export function MarketTicker() {
     [],
   );
 
-  const { data: market } = useCachedFetch<MarketSnapshot>(
+  const { data: market, loading } = useCachedFetch<MarketSnapshot>(
     LOCAL_CACHE_KEYS.market,
     "/api/market",
     LOCAL_CACHE_TTL.market,
     select,
   );
 
+  const shellClass =
+    "relative overflow-hidden border-b border-[var(--border)] bg-[var(--ticker-bg)] backdrop-blur-md";
+
   if (!market) {
     return (
-      <div className="border-b border-[var(--border)] bg-[var(--ticker-bg)] px-4 py-2 backdrop-blur-md">
-        <span className="text-xs text-[var(--fg-subtle)]">Loading market data…</span>
+      <div className={shellClass}>
+        <div className="flex items-center gap-3 px-4 py-1.5 sm:gap-6 sm:py-2">
+          <span className="live-dot h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--accent)]/40" />
+          <span className="text-xs text-[var(--fg-subtle)]">
+            {loading ? "Loading market data…" : "Market data unavailable"}
+          </span>
+        </div>
       </div>
     );
   }
@@ -53,7 +61,7 @@ export function MarketTicker() {
   const doubled = [...items, ...items];
 
   return (
-    <div className="relative overflow-hidden border-b border-[var(--border)] bg-[var(--ticker-bg)] backdrop-blur-md">
+    <div className={shellClass}>
       <div className="flex items-center gap-3 py-1.5 sm:gap-6 sm:py-2">
         <div className="flex shrink-0 items-center gap-1.5 px-2 sm:gap-2 sm:px-4">
           <span className="live-dot h-1.5 w-1.5 rounded-full bg-[var(--accent)]" />

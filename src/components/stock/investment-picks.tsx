@@ -117,7 +117,7 @@ export function InvestmentPicks({
                 <ChangeBadge value={pick.stock.changePercent} className="mt-1 text-xs" />
               </div>
 
-              {pick.upsidePercent >= 5 && (
+              {pick.upsidePercent >= 5 && pick.upsidePercent <= 150 && (
                 <div className="rounded-xl bg-[var(--accent-bg)] px-3 py-2 text-left ring-1 ring-[var(--accent)]/15 lg:min-w-[100px] lg:text-right">
                   <p className="text-[10px] font-medium uppercase tracking-wider text-subtle">
                     Target upside

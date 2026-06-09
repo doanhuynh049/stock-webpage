@@ -16,6 +16,7 @@ import {
   readCachedTechnicalSnapshot,
 } from "@/lib/db/neon-cache";
 import { canWriteLocalCache } from "@/lib/serverless";
+import { extractLastMentionedSymbol, extractTickersFromQuestion, isFollowUpQuestion } from "@/lib/symbol-utils";
 import { lookupIndexStock } from "@/lib/stock-metadata";
 import type {
   MarketSnapshot,
@@ -576,14 +577,55 @@ export function generateAiSummary(stock: Stock): string {
   return `${stock.name} (${stock.symbol}) shows ${outlook} fundamentals. Revenue grew ${stock.revenueGrowth}% with ROE at ${stock.roe}%. Trading at PE ${stock.pe > 0 ? stock.pe : "N/A"} with RSI ${stock.rsi}. Analyst consensus: ${stock.analystRating} with target ${stock.analystTarget.toLocaleString()} ₫. Current price: ${stock.price.toLocaleString()} ₫ (${stock.changePercent > 0 ? "+" : ""}${stock.changePercent}%).`;
 }
 
-export async function buildAiContext(question: string): Promise<string> {
+export async function resolveStocksFromQuestion(
+  question: string,
+  priorContext?: string,
+): Promise<Stock[]> {
+  async function resolveFromText(text: string): Promise<Stock[]> {
+    const stocks = await getAllStocks();
+    const bySymbol = new Map<string, Stock>();
+    const upper = text.toUpperCase();
+
+    for (const s of stocks) {
+      if (upper.includes(s.symbol) || upper.includes(s.name.toUpperCase())) {
+        bySymbol.set(s.symbol, s);
+      }
+    }
+
+    for (const sym of extractTickersFromQuestion(text)) {
+      if (bySymbol.has(sym)) continue;
+      const stock = await getStock(sym);
+      if (stock && stock.price > 0) bySymbol.set(sym, stock);
+    }
+
+    return [...bySymbol.values()];
+  }
+
+  let resolved = await resolveFromText(question);
+
+  if (!resolved.length && priorContext?.trim()) {
+    if (isFollowUpQuestion(question)) {
+      const lastSym = extractLastMentionedSymbol(priorContext);
+      if (lastSym) {
+        const stock = await getStock(lastSym);
+        if (stock?.price) return [stock];
+      }
+    }
+    resolved = await resolveFromText(`${priorContext}\n${question}`);
+  }
+
+  return resolved;
+}
+
+export async function buildAiContext(
+  question: string,
+  priorContext?: string,
+): Promise<string> {
+  const searchText = priorContext?.trim()
+    ? `${priorContext}\n${question}`
+    : question;
   const market = await getMarketSnapshot();
-  const stocks = await getAllStocks();
-  const mentioned = stocks.filter(
-    (s) =>
-      question.toUpperCase().includes(s.symbol) ||
-      question.toUpperCase().includes(s.name.toUpperCase()),
-  );
+  const mentioned = await resolveStocksFromQuestion(question, priorContext);
 
   const vnindex = market.indices.find((i) => i.symbol === "VNINDEX");
   let ctx = `Market session: ${market.session}\nLast updated: ${market.lastUpdated}\n`;
@@ -615,12 +657,23 @@ export async function buildAiContext(question: string): Promise<string> {
       ctx += "\n";
     }
   } else {
+    const stocks = await getAllStocks();
     const top = [...stocks]
       .sort((a, b) => b.changePercent - a.changePercent)
       .slice(0, 8);
     ctx += "Top movers today:\n";
     for (const s of top) {
       ctx += `- ${s.symbol}: ${s.price.toLocaleString()} VND (${s.changePercent}%)\n`;
+    }
+    const tickers = extractTickersFromQuestion(searchText);
+    if (tickers.length) {
+      ctx += `\nNote: Could not load live data for: ${tickers.join(", ")}. Check ticker spelling or try again.\n`;
+    }
+    if (priorContext?.trim() && isFollowUpQuestion(question)) {
+      const lastSym = extractLastMentionedSymbol(priorContext);
+      if (lastSym) {
+        ctx += `\nConversation context: user may be referring to ${lastSym} from earlier in the chat.\n`;
+      }
     }
   }
 

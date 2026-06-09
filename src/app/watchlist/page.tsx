@@ -1,18 +1,18 @@
-import Link from "next/link";
 import { Bell, Star } from "lucide-react";
 import { Card, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
-import { WatchlistGrid } from "@/components/watchlist/watchlist-grid";
-import { WatchlistAddPanel } from "@/components/watchlist/watchlist-add-panel";
+import { StockAvatar } from "@/components/ui/stock-avatar";
+import Link from "next/link";
+import { WatchlistSection } from "@/components/watchlist/watchlist-section";
+import { getVN30Universe } from "@/lib/analysis/index-universe";
 import { getWatchlistWithStocks } from "@/lib/user-data";
-import { getAllStocks } from "@/lib/stocks";
 
 export const dynamic = "force-dynamic";
 
 export default async function WatchlistPage() {
   const watchlist = await getWatchlistWithStocks();
-  const allStocks = await getAllStocks();
+  const vn30 = getVN30Universe();
 
   if (!watchlist.isAuthenticated) {
     return (
@@ -24,9 +24,8 @@ export default async function WatchlistPage() {
     );
   }
 
-  const notWatched = allStocks.filter(
-    (s) => !watchlist.items.some((w) => w.symbol === s.symbol),
-  );
+  const watched = new Set(watchlist.items.map((w) => w.symbol.toUpperCase()));
+  const notWatched = vn30.filter((s) => !watched.has(s.symbol.toUpperCase()));
   const suggestions = notWatched.map((s) => s.symbol);
 
   return (
@@ -42,27 +41,7 @@ export default async function WatchlistPage() {
         }
       />
 
-      <Card glow>
-        <CardTitle>Quick add</CardTitle>
-        <p className="mb-3 text-xs text-muted">
-          Enter a ticker or pick a suggestion. You can also use the star button on any stock detail page.
-        </p>
-        <WatchlistAddPanel suggestions={suggestions} />
-      </Card>
-
-      {watchlist.items.length > 0 ? (
-        <WatchlistGrid items={watchlist.items} />
-      ) : (
-        <Card>
-          <div className="py-16 text-center">
-            <Star className="mx-auto h-10 w-10 text-subtle" />
-            <p className="mt-4 text-sm text-muted">Your watchlist is empty</p>
-            <p className="mt-1 text-xs text-subtle">
-              Browse stocks below or add from any stock detail page
-            </p>
-          </div>
-        </Card>
-      )}
+      <WatchlistSection initialItems={watchlist.items} suggestions={suggestions} />
 
       <Card>
         <CardTitle>
@@ -73,14 +52,11 @@ export default async function WatchlistPage() {
         </CardTitle>
         <div className="grid gap-3 sm:grid-cols-3">
           {[
-            { type: "Price Target", desc: "Notify when price hits your target", color: "emerald" },
-            { type: "RSI Oversold", desc: "Alert when RSI drops below 30", color: "cyan" },
-            { type: "Volume Spike", desc: "Volume exceeds 2× 20-day average", color: "violet" },
+            { type: "Price Target", desc: "Notify when price hits your target" },
+            { type: "RSI Oversold", desc: "Alert when RSI drops below 30" },
+            { type: "Volume Spike", desc: "Volume exceeds 2× 20-day average" },
           ].map((alert) => (
-            <div
-              key={alert.type}
-              className="surface-muted p-4"
-            >
+            <div key={alert.type} className="surface-muted p-4">
               <div className="text-sm font-semibold text-[var(--fg)]">{alert.type}</div>
               <div className="mt-1 text-xs text-muted">{alert.desc}</div>
             </div>
@@ -101,6 +77,7 @@ export default async function WatchlistPage() {
                 href={`/stocks/${s.symbol}`}
                 className="interactive-row flex items-center gap-3 px-3 py-2.5 ring-1 ring-[var(--border)] hover:ring-[var(--accent)]/25"
               >
+                <StockAvatar symbol={s.symbol} sector={s.sector} size="sm" />
                 <span className="font-semibold text-[var(--fg)]">{s.symbol}</span>
                 <span className="flex-1 truncate text-[10px] text-subtle">{s.sector}</span>
               </Link>

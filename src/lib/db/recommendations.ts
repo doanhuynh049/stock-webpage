@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { withDbRetry } from "@/lib/prisma-query";
 import { isPersistenceEnabled } from "@/lib/persistence";
 import { getStock } from "@/lib/market-service";
+import { analystTargetUpsidePercent, toVndPrice } from "@/lib/price-utils";
 import type { StockPick, PickHorizon } from "@/lib/stock-picks";
 import type { Stock } from "@/types/stock";
 
@@ -28,12 +29,13 @@ function minimalStock(row: {
   name: string | null;
   price_at_recommendation: number;
 }): Stock {
+  const price = toVndPrice(row.price_at_recommendation);
   return {
     symbol: row.symbol,
     name: row.name ?? row.symbol,
     exchange: "HOSE",
     sector: "Unknown",
-    price: row.price_at_recommendation,
+    price,
     change: 0,
     changePercent: 0,
     volume: 0,
@@ -44,10 +46,10 @@ function minimalStock(row: {
     dividendYield: 0,
     revenueGrowth: 0,
     rsi: 50,
-    high52w: row.price_at_recommendation,
-    low52w: row.price_at_recommendation,
+    high52w: price,
+    low52w: price,
     analystRating: "Hold",
-    analystTarget: row.price_at_recommendation,
+    analystTarget: price,
     profile: "",
     financials: { years: [], revenue: [], netProfit: [], totalDebt: [] },
   };
@@ -59,12 +61,7 @@ async function picksFromCache(limit: number): Promise<StockPick[] | null> {
   const picks: StockPick[] = [];
   for (const row of cached.slice(0, limit)) {
     const stock = (await getStock(row.symbol)) ?? minimalStock(row);
-    const upsidePercent =
-      row.price_at_recommendation > 0
-        ? ((stock.price - row.price_at_recommendation) /
-            row.price_at_recommendation) *
-          100
-        : 0;
+    const upsidePercent = analystTargetUpsidePercent(stock);
     picks.push({
       stock,
       score: row.combined_score,
@@ -119,12 +116,7 @@ export async function getDbRecommendations(
       const stock = await getStock(row.symbol);
       if (!stock) continue;
 
-      const upsidePercent =
-        row.priceAtRecommendation > 0
-          ? ((stock.price - row.priceAtRecommendation) /
-              row.priceAtRecommendation) *
-            100
-          : 0;
+      const upsidePercent = analystTargetUpsidePercent(stock);
 
       picks.push({
         stock,

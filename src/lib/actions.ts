@@ -169,27 +169,52 @@ export async function registerAndSignIn(
 
 export async function addToWatchlist(symbol: string) {
   const userId = await requireUser();
-  const sym = symbol.toUpperCase();
+  const sym = symbol.trim().toUpperCase();
+  if (!sym || !/^[A-Z0-9]{2,8}$/.test(sym)) {
+    throw new Error("Enter a valid ticker symbol (e.g. FPT, VPB)");
+  }
 
-  await prisma.watchlistItem.upsert({
-    where: { userId_symbol: { userId, symbol: sym } },
-    create: { userId, symbol: sym },
-    update: {},
-  });
+  try {
+    await withDbRetry(
+      () =>
+        prisma.watchlistItem.upsert({
+          where: { userId_symbol: { userId, symbol: sym } },
+          create: { userId, symbol: sym },
+          update: {},
+        }),
+      "watchlist-add",
+      0,
+    );
+  } catch (error) {
+    console.error("[addToWatchlist]", error);
+    throw new Error(dbErrorMessage(error));
+  }
 
-  revalidatePath("/watchlist");
+  revalidatePath("/");
   revalidatePath(`/stocks/${sym}`);
   return { success: true };
 }
 
 export async function removeFromWatchlist(symbol: string) {
   const userId = await requireUser();
+  const sym = symbol.toUpperCase();
 
-  await prisma.watchlistItem.deleteMany({
-    where: { userId, symbol: symbol.toUpperCase() },
-  });
+  try {
+    await withDbRetry(
+      () =>
+        prisma.watchlistItem.deleteMany({
+          where: { userId, symbol: sym },
+        }),
+      "watchlist-remove",
+      0,
+    );
+  } catch (error) {
+    console.error("[removeFromWatchlist]", error);
+    throw new Error(dbErrorMessage(error));
+  }
 
   revalidatePath("/watchlist");
+  revalidatePath("/");
   return { success: true };
 }
 

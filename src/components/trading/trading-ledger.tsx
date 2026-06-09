@@ -1,15 +1,30 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
-import { Pencil, Plus, Trash2, X } from "lucide-react";
+import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Pencil, Plus, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import {
+  FormModal,
+  ModalCheckbox,
+  modalFieldClass,
+  modalLabelClass,
+} from "@/components/ui/form-modal";
 import { StatCard } from "@/components/ui/stat-card";
+import { StockAvatar } from "@/components/ui/stock-avatar";
+import { SortableTableHeader } from "@/components/ui/sortable-table-header";
+import { useTableSort } from "@/hooks/use-table-sort";
+import { applySortDir, compareNumbers, compareStrings } from "@/lib/table-sort";
 import {
   formatPortfolioAmount,
   formatPortfolioPercent,
   changeColor,
 } from "@/lib/utils";
 import type { TradeRecord, TradeSummary, TradeType } from "@/lib/db/trading-types";
+import {
+  readTradingCache,
+  writeTradingCache,
+} from "@/lib/client/trading-cache";
 
 type TradeForm = {
   transactionDate: string;
@@ -36,63 +51,196 @@ const emptyForm: TradeForm = {
 };
 
 export function TradingLedger() {
-  const [trades, setTrades] = useState<TradeRecord[]>([]);
-  const [summary, setSummary] = useState<TradeSummary | null>(null);
-  const [prices, setPrices] = useState<Record<string, number>>({});
+  const searchParams = useSearchParams();
   const [filters, setFilters] = useState({ year: "", month: "", type: "", symbol: "" });
+  const cachedInitial = readTradingCache(filters);
+
+  const [trades, setTrades] = useState<TradeRecord[]>(() => cachedInitial?.trades ?? []);
+  type SortKey = "date" | "type" | "symbol" | "qty" | "price" | "total" | "vsNow" | "profit" | "exchange";
+  const { sortKey, sortDir, toggleSort } = useTableSort<SortKey>("date", "desc");
+  const [summary, setSummary] = useState<TradeSummary | null>(() => cachedInitial?.summary ?? null);
+  const [prices, setPrices] = useState<Record<string, number>>(() => cachedInitial?.prices ?? {});
   const [formOpen, setFormOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<TradeForm>(emptyForm);
-  const [loading, setLoading] = useState(true);
+  const [addAnother, setAddAnother] = useState(false);
+  const [symbolLookup, setSymbolLookup] = useState(false);
+  const [loading, setLoading] = useState(() => !cachedInitial);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const q = new URLSearchParams();
-      if (filters.year) q.set("year", filters.year);
-      if (filters.month) q.set("month", filters.month);
-      if (filters.type) q.set("type", filters.type);
-      if (filters.symbol) q.set("symbol", filters.symbol.toUpperCase());
-      const res = await fetch(`/api/trading?${q}`);
-      const text = await res.text();
-      if (!text.trim()) {
-        setTrades([]);
-        setSummary(null);
-        setPrices({});
-        return;
+  const load = useCallback(
+    async (background = false) => {
+      if (background) {
+        setRefreshing(true);
+      } else if (!readTradingCache(filters)) {
+        setLoading(true);
       }
-      let data: {
-        trades?: TradeRecord[];
-        summary?: TradeSummary;
-        currentPrices?: Record<string, number>;
-        error?: string;
-      };
       try {
-        data = JSON.parse(text) as typeof data;
-      } catch {
-        console.error("[trading] invalid JSON:", text.slice(0, 200));
-        setTrades([]);
-        setSummary(null);
-        setPrices({});
-        return;
+        const q = new URLSearchParams();
+        if (filters.year) q.set("year", filters.year);
+        if (filters.month) q.set("month", filters.month);
+        if (filters.type) q.set("type", filters.type);
+        if (filters.symbol) q.set("symbol", filters.symbol.toUpperCase());
+        const res = await fetch(`/api/trading?${q}`);
+        const text = await res.text();
+        if (!text.trim()) {
+          setTrades([]);
+          setSummary(null);
+          setPrices({});
+          return;
+        }
+        let data: {
+          trades?: TradeRecord[];
+          summary?: TradeSummary;
+          currentPrices?: Record<string, number>;
+          error?: string;
+        };
+        try {
+          data = JSON.parse(text) as typeof data;
+        } catch {
+          console.error("[trading] invalid JSON:", text.slice(0, 200));
+          return;
+        }
+        if (!res.ok && !data.trades) {
+          console.error("[trading] API error:", data.error);
+          return;
+        }
+        const nextTrades = data.trades ?? [];
+        const nextSummary = data.summary ?? null;
+        const nextPrices = data.currentPrices ?? {};
+        setTrades(nextTrades);
+        setSummary(nextSummary);
+        setPrices(nextPrices);
+        writeTradingCache(filters, {
+          trades: nextTrades,
+          summary: nextSummary,
+          prices: nextPrices,
+        });
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
       }
-      if (!res.ok && !data.trades) {
-        console.error("[trading] API error:", data.error);
-      }
-      setTrades(data.trades ?? []);
-      setSummary(data.summary ?? null);
-      setPrices(data.currentPrices ?? {});
-    } finally {
-      setLoading(false);
-    }
-  }, [filters]);
+    },
+    [filters],
+  );
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    const cached = readTradingCache(filters);
+    if (cached) {
+      setTrades(cached.trades);
+      setSummary(cached.summary);
+      setPrices(cached.prices);
+      setLoading(false);
+      void load(true);
+    } else {
+      void load(false);
+    }
+  }, [load, filters]);
+
+  useEffect(() => {
+    const add = searchParams.get("add");
+    const sym = searchParams.get("symbol")?.toUpperCase();
+    if (add !== "1" && !sym) return;
+
+    const price = Number(searchParams.get("price"));
+    setForm({
+      ...emptyForm,
+      itemName: sym ?? "",
+      unitPrice: Number.isFinite(price) && price > 0 ? price : 0,
+      exchange: searchParams.get("exchange") ?? "",
+      sector: searchParams.get("sector") ?? "",
+    });
+    setEditId(null);
+    setFormOpen(true);
+  }, [searchParams]);
+
+  useEffect(() => {
+    const sym = form.itemName.trim().toUpperCase();
+    if (sym.length < 2 || editId) return;
+
+    let cancelled = false;
+    setSymbolLookup(true);
+    const timer = window.setTimeout(() => {
+      void fetch(`/api/stocks/${sym}`)
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data: { stock?: { sector?: string; exchange?: string; price?: number } } | null) => {
+          if (cancelled || !data?.stock) return;
+          setForm((current) => ({
+            ...current,
+            sector: data.stock!.sector ?? current.sector,
+            exchange: data.stock!.exchange ?? current.exchange,
+            unitPrice:
+              current.unitPrice > 0
+                ? current.unitPrice
+                : data.stock!.price ?? current.unitPrice,
+          }));
+        })
+        .finally(() => {
+          if (!cancelled) setSymbolLookup(false);
+        });
+    }, 350);
+
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+      setSymbolLookup(false);
+    };
+  }, [form.itemName, editId]);
+
+  const sortedTrades = useMemo(() => {
+    if (!sortKey) return trades;
+    return [...trades].sort((a, b) => {
+      const nowA = prices[a.itemName];
+      const nowB = prices[b.itemName];
+      const vsNowA =
+        nowA != null && a.unitPrice > 0 ? ((nowA - a.unitPrice) / a.unitPrice) * 100 : null;
+      const vsNowB =
+        nowB != null && b.unitPrice > 0 ? ((nowB - b.unitPrice) / b.unitPrice) * 100 : null;
+
+      let cmp = 0;
+      switch (sortKey) {
+        case "date":
+          cmp = compareStrings(a.transactionDate, b.transactionDate);
+          break;
+        case "type":
+          cmp = compareStrings(a.transactionType, b.transactionType);
+          break;
+        case "symbol":
+          cmp = compareStrings(a.itemName, b.itemName);
+          break;
+        case "qty":
+          cmp = compareNumbers(a.quantity, b.quantity);
+          break;
+        case "price":
+          cmp = compareNumbers(a.unitPrice, b.unitPrice);
+          break;
+        case "total":
+          cmp = compareNumbers(a.totalAmount, b.totalAmount);
+          break;
+        case "vsNow":
+          cmp = compareNumbers(vsNowA, vsNowB);
+          break;
+        case "profit":
+          cmp = compareNumbers(a.profit, b.profit);
+          break;
+        case "exchange":
+          cmp = compareStrings(a.exchange, b.exchange);
+          break;
+      }
+      return applySortDir(cmp, sortDir);
+    });
+  }, [trades, sortKey, sortDir, prices]);
+
+  function closeForm() {
+    setFormOpen(false);
+    setEditId(null);
+    setAddAnother(false);
+    setForm(emptyForm);
+  }
 
   function saveTrade(e: FormEvent) {
     e.preventDefault();
+    const keepOpen = addAnother && !editId;
     const payload = {
       ...form,
       itemName: form.itemName.toUpperCase(),
@@ -125,9 +273,16 @@ export function TradingLedger() {
         ? current.map((t) => (t.id === editId ? optimistic : t))
         : [...current, optimistic],
     );
-    setForm(emptyForm);
-    setEditId(null);
-    setFormOpen(false);
+
+    if (keepOpen) {
+      setForm({
+        ...emptyForm,
+        transactionDate: form.transactionDate,
+        transactionType: form.transactionType,
+      });
+    } else {
+      closeForm();
+    }
 
     void (async () => {
       const res = await fetch(url, {
@@ -139,7 +294,7 @@ export function TradingLedger() {
         setTrades(prevTrades);
         return;
       }
-      void load();
+      void load(true);
     })();
   }
 
@@ -154,9 +309,112 @@ export function TradingLedger() {
         setTrades(prevTrades);
         return;
       }
-      void load();
+      void load(true);
     })();
   }
+
+  const tradeFormFields = (
+    <div className="grid gap-3 sm:grid-cols-2">
+      <label className="block sm:col-span-2">
+        <span className={modalLabelClass}>Symbol</span>
+        <input
+          required
+          autoFocus={!editId}
+          className={`${modalFieldClass} uppercase`}
+          value={form.itemName}
+          onChange={(e) => setForm({ ...form, itemName: e.target.value.toUpperCase() })}
+          placeholder="FPT, VCB, ACB…"
+        />
+        {symbolLookup && (
+          <span className="mt-1 block text-[10px] text-subtle">Looking up sector & exchange…</span>
+        )}
+      </label>
+      <label className="block">
+        <span className={modalLabelClass}>Date</span>
+        <input
+          type="date"
+          required
+          className={modalFieldClass}
+          value={form.transactionDate}
+          onChange={(e) => setForm({ ...form, transactionDate: e.target.value })}
+        />
+      </label>
+      <label className="block">
+        <span className={modalLabelClass}>Type</span>
+        <select
+          className={modalFieldClass}
+          value={form.transactionType}
+          onChange={(e) =>
+            setForm({ ...form, transactionType: e.target.value as TradeType })
+          }
+        >
+          <option value="BUY">BUY</option>
+          <option value="SELL">SELL</option>
+        </select>
+      </label>
+      <label className="block">
+        <span className={modalLabelClass}>Quantity</span>
+        <input
+          type="number"
+          required
+          min={1}
+          className={modalFieldClass}
+          value={form.quantity || ""}
+          onChange={(e) => setForm({ ...form, quantity: Number(e.target.value) })}
+        />
+      </label>
+      <label className="block">
+        <span className={modalLabelClass}>Unit price</span>
+        <input
+          type="number"
+          required
+          min={0.01}
+          step={0.01}
+          className={modalFieldClass}
+          value={form.unitPrice || ""}
+          onChange={(e) => setForm({ ...form, unitPrice: Number(e.target.value) })}
+        />
+      </label>
+      <label className="block">
+        <span className={modalLabelClass}>Exchange</span>
+        <input
+          readOnly
+          className={`${modalFieldClass} bg-[var(--bg-secondary)] text-muted`}
+          value={form.exchange || "—"}
+          tabIndex={-1}
+        />
+      </label>
+      <label className="block">
+        <span className={modalLabelClass}>Sector</span>
+        <input
+          readOnly
+          className={`${modalFieldClass} bg-[var(--bg-secondary)] text-muted`}
+          value={form.sector || "—"}
+          tabIndex={-1}
+        />
+      </label>
+      <label className="block">
+        <span className={modalLabelClass}>Fee</span>
+        <input
+          type="number"
+          className={modalFieldClass}
+          value={form.fee || ""}
+          onChange={(e) => setForm({ ...form, fee: Number(e.target.value) })}
+        />
+      </label>
+      {form.transactionType === "SELL" && (
+        <label className="block sm:col-span-2">
+          <span className={modalLabelClass}>Profit</span>
+          <input
+            type="number"
+            className={modalFieldClass}
+            value={form.profit || ""}
+            onChange={(e) => setForm({ ...form, profit: Number(e.target.value) })}
+          />
+        </label>
+      )}
+    </div>
+  );
 
   return (
     <div className="space-y-4">
@@ -193,6 +451,7 @@ export function TradingLedger() {
           onClick={() => {
             setForm(emptyForm);
             setEditId(null);
+            setAddAnother(false);
             setFormOpen(true);
           }}
           className="inline-flex items-center gap-1 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white"
@@ -228,107 +487,52 @@ export function TradingLedger() {
         </select>
       </div>
 
-      {formOpen && (
-        <form
-          onSubmit={saveTrade}
-          className="rounded-xl border border-[var(--border)] bg-[var(--bg-secondary)] p-4"
-        >
-          <div className="mb-2 flex items-center justify-between">
-            <h3 className="text-sm font-semibold">{editId ? "Edit trade" : "New trade"}</h3>
-            <button type="button" onClick={() => setFormOpen(false)}>
-              <X className="h-4 w-4 text-muted" />
+      <FormModal
+        open={formOpen}
+        title={editId ? "Edit trade" : "New trade"}
+        subtitle={
+          editId
+            ? "Update this ledger row — portfolio rebuilds automatically."
+            : "Log a BUY or SELL — sector & exchange fill from the ticker."
+        }
+        onClose={closeForm}
+        options={
+          !editId ? (
+            <ModalCheckbox
+              id="trade-add-another"
+              checked={addAnother}
+              onChange={setAddAnother}
+              label="Add another after saving"
+              description="Keep this dialog open for the next trade."
+            />
+          ) : undefined
+        }
+        footer={
+          <>
+            <button
+              type="submit"
+              form="trade-form"
+              className="flex-1 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:opacity-90 sm:flex-none"
+            >
+              {editId ? "Save changes" : "Save trade"}
             </button>
-          </div>
-          <div className="grid gap-2 sm:grid-cols-4">
-            <label className="text-xs">
-              <span className="text-subtle">Date</span>
-              <input
-                type="date"
-                required
-                className="mt-0.5 w-full rounded border border-[var(--border)] bg-[var(--card)] px-2 py-1 text-sm"
-                value={form.transactionDate}
-                onChange={(e) => setForm({ ...form, transactionDate: e.target.value })}
-              />
-            </label>
-            <label className="text-xs">
-              <span className="text-subtle">Symbol</span>
-              <input
-                required
-                className="mt-0.5 w-full rounded border border-[var(--border)] bg-[var(--card)] px-2 py-1 text-sm uppercase"
-                value={form.itemName}
-                onChange={(e) => setForm({ ...form, itemName: e.target.value })}
-              />
-            </label>
-            <label className="text-xs">
-              <span className="text-subtle">Type</span>
-              <select
-                className="mt-0.5 w-full rounded border border-[var(--border)] bg-[var(--card)] px-2 py-1 text-sm"
-                value={form.transactionType}
-                onChange={(e) =>
-                  setForm({ ...form, transactionType: e.target.value as TradeType })
-                }
-              >
-                <option value="BUY">BUY</option>
-                <option value="SELL">SELL</option>
-              </select>
-            </label>
-            <label className="text-xs">
-              <span className="text-subtle">Quantity</span>
-              <input
-                type="number"
-                required
-                min={1}
-                className="mt-0.5 w-full rounded border border-[var(--border)] bg-[var(--card)] px-2 py-1 text-sm"
-                value={form.quantity || ""}
-                onChange={(e) => setForm({ ...form, quantity: Number(e.target.value) })}
-              />
-            </label>
-            <label className="text-xs">
-              <span className="text-subtle">Unit price</span>
-              <input
-                type="number"
-                required
-                min={0.01}
-                step={0.01}
-                className="mt-0.5 w-full rounded border border-[var(--border)] bg-[var(--card)] px-2 py-1 text-sm"
-                value={form.unitPrice || ""}
-                onChange={(e) => setForm({ ...form, unitPrice: Number(e.target.value) })}
-              />
-            </label>
-            <label className="text-xs">
-              <span className="text-subtle">Fee</span>
-              <input
-                type="number"
-                className="mt-0.5 w-full rounded border border-[var(--border)] bg-[var(--card)] px-2 py-1 text-sm"
-                value={form.fee || ""}
-                onChange={(e) => setForm({ ...form, fee: Number(e.target.value) })}
-              />
-            </label>
-            {form.transactionType === "SELL" && (
-              <label className="text-xs">
-                <span className="text-subtle">Profit</span>
-                <input
-                  type="number"
-                  className="mt-0.5 w-full rounded border border-[var(--border)] bg-[var(--card)] px-2 py-1 text-sm"
-                  value={form.profit || ""}
-                  onChange={(e) => setForm({ ...form, profit: Number(e.target.value) })}
-                />
-              </label>
-            )}
-          </div>
-          <p className="mt-2 text-[10px] text-subtle">
-            Saves to ledger and rebuilds portfolio holdings (shares = ΣBUY − ΣSELL).
-          </p>
-          <button type="submit" className="mt-2 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white">
-            Save trade
-          </button>
+            <button type="button" onClick={closeForm} className="px-3 py-2 text-sm text-muted">
+              Cancel
+            </button>
+          </>
+        }
+      >
+        <form id="trade-form" onSubmit={saveTrade}>
+          {tradeFormFields}
         </form>
-      )}
+      </FormModal>
 
-      {!loading && trades.length > 0 && (
+      {(trades.length > 0 || !loading) && (
         <p className="text-xs text-muted">
           Showing <span className="font-mono font-semibold text-[var(--fg)]">{trades.length}</span>{" "}
-          trades{summary ? ` · ${summary.buys} buys · ${summary.sells} sells` : ""}
+          trades
+          {summary ? ` · ${summary.buys} buys · ${summary.sells} sells` : ""}
+          {refreshing && <span className="ml-2 text-subtle">· refreshing…</span>}
         </p>
       )}
 
@@ -336,15 +540,15 @@ export function TradingLedger() {
         <table className="w-full min-w-[960px] text-sm">
           <thead>
             <tr className="sticky top-0 z-10 border-b border-[var(--border)] bg-[var(--bg-secondary)] text-left text-[10px] uppercase text-subtle">
-              <th className="px-2 py-2">Date</th>
-              <th className="px-2 py-2">Type</th>
-              <th className="px-2 py-2">Symbol</th>
-              <th className="px-2 py-2 text-right">Qty</th>
-              <th className="px-2 py-2 text-right">Price</th>
-              <th className="px-2 py-2 text-right">Total</th>
-              <th className="px-2 py-2 text-right">vs Now</th>
-              <th className="px-2 py-2 text-right">Profit</th>
-              <th className="px-2 py-2">Exch</th>
+              <SortableTableHeader label="Date" column="date" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-2 py-2" />
+              <SortableTableHeader label="Type" column="type" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-2 py-2" />
+              <SortableTableHeader label="Symbol" column="symbol" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-2 py-2" />
+              <SortableTableHeader label="Qty" column="qty" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} align="right" className="px-2 py-2" />
+              <SortableTableHeader label="Price" column="price" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} align="right" className="px-2 py-2" />
+              <SortableTableHeader label="Total" column="total" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} align="right" className="px-2 py-2" />
+              <SortableTableHeader label="vs Now" column="vsNow" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} align="right" className="px-2 py-2" />
+              <SortableTableHeader label="Profit" column="profit" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} align="right" className="px-2 py-2" />
+              <SortableTableHeader label="Exch" column="exchange" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-2 py-2" />
               <th className="px-2 py-2 text-center"> </th>
             </tr>
           </thead>
@@ -362,7 +566,7 @@ export function TradingLedger() {
                 </td>
               </tr>
             ) : (
-              trades.map((t, i) => {
+              sortedTrades.map((t, i) => {
                 const now = prices[t.itemName];
                 const vsNow =
                   now != null && t.unitPrice > 0
@@ -376,7 +580,12 @@ export function TradingLedger() {
                         {t.transactionType}
                       </Badge>
                     </td>
-                    <td className="px-2 py-1.5 font-semibold">{t.itemName}</td>
+                    <td className="px-2 py-1.5">
+                      <div className="flex items-center gap-2">
+                        <StockAvatar symbol={t.itemName} sector={t.sector ?? undefined} size="sm" />
+                        <span className="font-semibold">{t.itemName}</span>
+                      </div>
+                    </td>
                     <td className="px-2 py-1.5 text-right font-mono">{t.quantity}</td>
                     <td className="px-2 py-1.5 text-right font-mono">{formatPortfolioAmount(t.unitPrice)}</td>
                     <td className="px-2 py-1.5 text-right font-mono">{formatPortfolioAmount(t.totalAmount, 0)}</td>

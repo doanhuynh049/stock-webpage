@@ -1,5 +1,4 @@
 import { BarChart3 } from "lucide-react";
-import { Card, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
 import { AnalysisView } from "@/components/analysis/analysis-view";
@@ -7,7 +6,6 @@ import { analyzeUniverseBundle } from "@/lib/analysis/combined-analysis";
 import { computeSectorAnalysis } from "@/lib/analysis/sector-analysis";
 import { getVN100Universe, getVN30Universe } from "@/lib/analysis/index-universe";
 import { auth } from "@/lib/auth";
-import { getDbRecommendations } from "@/lib/db/recommendations";
 import { getPortfolioWithStocks } from "@/lib/db/advisory-portfolio";
 import { enrichHoldings } from "@/lib/portfolio/holdings-enrichment";
 import { loadDefaultStrategyConfig } from "@/lib/strategy/strategy-config";
@@ -69,7 +67,7 @@ export default async function AnalysisPage() {
   const vn100 = getVN100Universe();
   const ownedSymbols = portfolio.holdings.map((h) => h.symbol);
 
-  const [portfolioBundle, vn30Bundle, vn100Bundle, sectorAnalysis, picks] =
+  const [portfolioBundle, vn30Bundle, vn100Bundle, sectorAnalysis] =
     await Promise.all([
       portfolioMeta.length
         ? pageCache(
@@ -111,11 +109,6 @@ export default async function AnalysisPage() {
           tags: [`analysis-${userId}`, `portfolio-${userId}`],
         },
       ),
-      pageCache(
-        ["analysis-picks"],
-        () => getDbRecommendations(15),
-        { revalidate: CACHE_TTL.analysis, tags: ["analysis-picks"] },
-      ),
     ]);
 
   return (
@@ -146,21 +139,6 @@ export default async function AnalysisPage() {
         sectorAnalysis={sectorAnalysis}
         ownedSymbols={ownedSymbols}
       />
-
-      {picks && picks.length > 0 && (
-        <Card className="!p-4">
-          <CardTitle className="!text-base">Market picks (Neon)</CardTitle>
-          <ul className="mt-2 space-y-1 text-sm">
-            {picks.map((p, i) => (
-              <li key={`${p.stock.symbol}-${i}`} className="text-muted">
-                <span className="font-semibold text-accent">{p.stock.symbol}</span>
-                <span className="ml-2 font-mono">{p.score}</span>
-                <span className="ml-2 text-xs">{p.reasons[0]}</span>
-              </li>
-            ))}
-          </ul>
-        </Card>
-      )}
     </div>
   );
 }

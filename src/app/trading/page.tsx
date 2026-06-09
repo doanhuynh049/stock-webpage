@@ -1,8 +1,10 @@
+import { Suspense } from "react";
 import Link from "next/link";
 import { ArrowLeftRight } from "lucide-react";
 import { Card, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
+import { LogTradeLink } from "@/components/trading/log-trade-link";
 import { TradingLedger } from "@/components/trading/trading-ledger";
 import { auth } from "@/lib/auth";
 
@@ -25,6 +27,7 @@ export default async function TradingPage() {
       <PageHeader
         title="Trading Records"
         description="Personal trade ledger — each save syncs to Neon and rebuilds portfolio_holding (like stock-service)"
+        action={<LogTradeLink label="Add trade" />}
         badge={
           <Link
             href="/portfolio"
@@ -37,7 +40,9 @@ export default async function TradingPage() {
 
       <Card className="!p-4">
         <CardTitle className="!mb-3 !text-base">Trade ledger</CardTitle>
-        <TradingLedger />
+        <Suspense fallback={<p className="text-sm text-muted">Loading ledger…</p>}>
+          <TradingLedger />
+        </Suspense>
       </Card>
     </div>
   );
