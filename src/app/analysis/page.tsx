@@ -5,6 +5,7 @@ import { AnalysisView } from "@/components/analysis/analysis-view";
 import { analyzeUniverseBundle } from "@/lib/analysis/combined-analysis";
 import { computeSectorAnalysis } from "@/lib/analysis/sector-analysis";
 import { getVN100Universe, getVN30Universe } from "@/lib/analysis/index-universe";
+import { analyzeEtfUniverse } from "@/lib/analysis/etf-analysis";
 import { auth } from "@/lib/auth";
 import { getPortfolioWithStocks } from "@/lib/db/advisory-portfolio";
 import { enrichHoldings } from "@/lib/portfolio/holdings-enrichment";
@@ -67,7 +68,7 @@ export default async function AnalysisPage() {
   const vn100 = getVN100Universe();
   const ownedSymbols = portfolio.holdings.map((h) => h.symbol);
 
-  const [portfolioBundle, vn30Bundle, vn100Bundle, sectorAnalysis] =
+  const [portfolioBundle, vn30Bundle, vn100Bundle, sectorAnalysis, etfBundle] =
     await Promise.all([
       portfolioMeta.length
         ? pageCache(
@@ -109,6 +110,11 @@ export default async function AnalysisPage() {
           tags: [`analysis-${userId}`, `portfolio-${userId}`],
         },
       ),
+      pageCache(
+        ["analysis-etf"],
+        () => analyzeEtfUniverse(),
+        { revalidate: CACHE_TTL.analysis, tags: ["analysis-etf"] },
+      ),
     ]);
 
   return (
@@ -120,7 +126,8 @@ export default async function AnalysisPage() {
           <span className="rounded-md bg-[var(--bg-secondary)] px-2.5 py-1 text-xs ring-1 ring-[var(--border)]">
             {portfolioBundle.fundamental.length} holdings · VN30{" "}
             {vn30Bundle.fundamental.length} · VN100 top{" "}
-            {vn100Bundle.fundamental.length}
+            {vn100Bundle.fundamental.length} · ETF{" "}
+            {etfBundle.length}
           </span>
         }
       />
@@ -137,6 +144,7 @@ export default async function AnalysisPage() {
         vn30={vn30Bundle}
         vn100={vn100Bundle}
         sectorAnalysis={sectorAnalysis}
+        etfBundle={etfBundle}
         ownedSymbols={ownedSymbols}
       />
     </div>

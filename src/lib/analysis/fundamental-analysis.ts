@@ -6,6 +6,7 @@ import {
   type AnalysisSnapshotStore,
 } from "@/lib/db/analysis-snapshots";
 import { getStock } from "@/lib/market-service";
+import { isEtfSymbol } from "@/lib/analysis/etf-utils";
 
 export type FundamentalAnalysisRow = {
   symbol: string;
@@ -19,6 +20,16 @@ export type FundamentalAnalysisRow = {
   revenueGrowth: number | null;
   breakdown: FundamentalBreakdown;
   source: "neon" | "cache" | "market";
+  isEtf: boolean;
+};
+
+const ETF_BREAKDOWN: FundamentalBreakdown = {
+  qualityScore: 0,
+  growthScore: 0,
+  valuationScore: 0,
+  stabilityScore: 0,
+  penalties: 0,
+  finalScore: 0,
 };
 
 type StockMeta = IndexStock | {
@@ -77,6 +88,32 @@ export async function analyzeFundamentalRow(
 ): Promise<FundamentalAnalysisRow> {
   const sym = meta.symbol.toUpperCase();
   const sector = ("sector" in meta && meta.sector) || "Unknown";
+  const name = ("name" in meta && meta.name) || sym;
+
+  if (isEtfSymbol(sym)) {
+    const snapshotStore = store ?? (await loadAnalysisSnapshotStore([sym]));
+    const techPrice = snapshotStore.resolve(sym).techPrice;
+    let price = techPrice ?? 0;
+    if (!price) {
+      const stock = await getStock(sym);
+      price = stock?.price ?? 0;
+    }
+    return {
+      symbol: sym,
+      name,
+      sector,
+      currentPrice: price,
+      pe: null,
+      pb: null,
+      roe: null,
+      roa: null,
+      revenueGrowth: null,
+      breakdown: ETF_BREAKDOWN,
+      source: "market",
+      isEtf: true,
+    };
+  }
+
   const snapshotStore =
     store ?? (await loadAnalysisSnapshotStore([sym]));
   const { inputs, source, techPrice } = await resolveFundInputs(sym, snapshotStore);
@@ -90,7 +127,7 @@ export async function analyzeFundamentalRow(
 
   return {
     symbol: sym,
-    name: ("name" in meta && meta.name) || sym,
+    name,
     sector,
     currentPrice: price,
     pe: inputs.peRatio ?? null,
@@ -100,6 +137,7 @@ export async function analyzeFundamentalRow(
     revenueGrowth: inputs.revenueGrowth ?? null,
     breakdown,
     source,
+    isEtf: false,
   };
 }
 

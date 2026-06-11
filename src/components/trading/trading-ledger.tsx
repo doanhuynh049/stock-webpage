@@ -18,6 +18,10 @@ import { applySortDir, compareNumbers, compareStrings } from "@/lib/table-sort";
 import {
   formatPortfolioAmount,
   formatPortfolioPercent,
+  formatDateDMY,
+  parseDateDMY,
+  parseFormattedNumber,
+  todayISO,
   changeColor,
 } from "@/lib/utils";
 import type { TradeRecord, TradeSummary, TradeType } from "@/lib/db/trading-types";
@@ -53,19 +57,23 @@ const emptyForm: TradeForm = {
 export function TradingLedger() {
   const searchParams = useSearchParams();
   const [filters, setFilters] = useState({ year: "", month: "", type: "", symbol: "" });
-  const cachedInitial = readTradingCache(filters);
 
-  const [trades, setTrades] = useState<TradeRecord[]>(() => cachedInitial?.trades ?? []);
+  // Do NOT read localStorage in useState initializers — they run during SSR
+  // and differ from the client, causing React hydration mismatches.
+  // Instead, seed state from cache inside useEffect (client-only).
+  const [trades, setTrades] = useState<TradeRecord[]>([]);
   type SortKey = "date" | "type" | "symbol" | "qty" | "price" | "total" | "vsNow" | "profit" | "exchange";
   const { sortKey, sortDir, toggleSort } = useTableSort<SortKey>("date", "desc");
-  const [summary, setSummary] = useState<TradeSummary | null>(() => cachedInitial?.summary ?? null);
-  const [prices, setPrices] = useState<Record<string, number>>(() => cachedInitial?.prices ?? {});
+  const [summary, setSummary] = useState<TradeSummary | null>(null);
+  const [prices, setPrices] = useState<Record<string, number>>({});
   const [formOpen, setFormOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<TradeForm>(emptyForm);
   const [addAnother, setAddAnother] = useState(false);
+  const [dateInput, setDateInput] = useState("");
+  const [unitPriceInput, setUnitPriceInput] = useState("");
   const [symbolLookup, setSymbolLookup] = useState(false);
-  const [loading, setLoading] = useState(() => !cachedInitial);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const load = useCallback(
@@ -143,15 +151,13 @@ export function TradingLedger() {
     if (add !== "1" && !sym) return;
 
     const price = Number(searchParams.get("price"));
-    setForm({
+    openForm({
       ...emptyForm,
       itemName: sym ?? "",
       unitPrice: Number.isFinite(price) && price > 0 ? price : 0,
       exchange: searchParams.get("exchange") ?? "",
       sector: searchParams.get("sector") ?? "",
     });
-    setEditId(null);
-    setFormOpen(true);
   }, [searchParams]);
 
   useEffect(() => {
@@ -165,15 +171,21 @@ export function TradingLedger() {
         .then((r) => (r.ok ? r.json() : null))
         .then((data: { stock?: { sector?: string; exchange?: string; price?: number } } | null) => {
           if (cancelled || !data?.stock) return;
-          setForm((current) => ({
-            ...current,
-            sector: data.stock!.sector ?? current.sector,
-            exchange: data.stock!.exchange ?? current.exchange,
-            unitPrice:
+          setForm((current) => {
+            const nextPrice =
               current.unitPrice > 0
                 ? current.unitPrice
-                : data.stock!.price ?? current.unitPrice,
-          }));
+                : data.stock!.price ?? current.unitPrice;
+            if (current.unitPrice <= 0 && data.stock!.price) {
+              setUnitPriceInput(formatPortfolioAmount(data.stock!.price));
+            }
+            return {
+              ...current,
+              sector: data.stock!.sector ?? current.sector,
+              exchange: data.stock!.exchange ?? current.exchange,
+              unitPrice: nextPrice,
+            };
+          });
         })
         .finally(() => {
           if (!cancelled) setSymbolLookup(false);
@@ -231,21 +243,38 @@ export function TradingLedger() {
     });
   }, [trades, sortKey, sortDir, prices]);
 
+  function openForm(nextForm: TradeForm, editingId: string | null = null) {
+    setForm(nextForm);
+    setEditId(editingId);
+    setDateInput(formatDateDMY(nextForm.transactionDate));
+    setUnitPriceInput(nextForm.unitPrice > 0 ? formatPortfolioAmount(nextForm.unitPrice) : "");
+    setAddAnother(false);
+    setFormOpen(true);
+  }
+
   function closeForm() {
     setFormOpen(false);
     setEditId(null);
     setAddAnother(false);
+    setDateInput("");
+    setUnitPriceInput("");
     setForm(emptyForm);
   }
 
   function saveTrade(e: FormEvent) {
     e.preventDefault();
+    const parsedDate = parseDateDMY(dateInput);
+    if (!parsedDate) {
+      alert("Enter a valid date (dd/mm/yyyy).");
+      return;
+    }
+    const tradeForm = { ...form, transactionDate: parsedDate };
     const keepOpen = addAnother && !editId;
     const payload = {
-      ...form,
-      itemName: form.itemName.toUpperCase(),
-      transactionType: form.transactionType,
-      profit: form.transactionType === "SELL" ? form.profit : null,
+      ...tradeForm,
+      itemName: tradeForm.itemName.toUpperCase(),
+      transactionType: tradeForm.transactionType,
+      profit: tradeForm.transactionType === "SELL" ? tradeForm.profit : null,
     };
     const url = editId ? `/api/trading/${editId}` : "/api/trading";
     const method = editId ? "PUT" : "POST";
@@ -275,11 +304,14 @@ export function TradingLedger() {
     );
 
     if (keepOpen) {
-      setForm({
+      const nextForm = {
         ...emptyForm,
-        transactionDate: form.transactionDate,
-        transactionType: form.transactionType,
-      });
+        transactionDate: tradeForm.transactionDate,
+        transactionType: tradeForm.transactionType,
+      };
+      setForm(nextForm);
+      setDateInput(formatDateDMY(nextForm.transactionDate));
+      setUnitPriceInput("");
     } else {
       closeForm();
     }
@@ -332,11 +364,17 @@ export function TradingLedger() {
       <label className="block">
         <span className={modalLabelClass}>Date</span>
         <input
-          type="date"
+          type="text"
           required
+          inputMode="numeric"
+          placeholder="dd/mm/yyyy"
           className={modalFieldClass}
-          value={form.transactionDate}
-          onChange={(e) => setForm({ ...form, transactionDate: e.target.value })}
+          value={dateInput}
+          onChange={(e) => {
+            setDateInput(e.target.value);
+            const iso = parseDateDMY(e.target.value);
+            if (iso) setForm({ ...form, transactionDate: iso });
+          }}
         />
       </label>
       <label className="block">
@@ -366,13 +404,22 @@ export function TradingLedger() {
       <label className="block">
         <span className={modalLabelClass}>Unit price</span>
         <input
-          type="number"
+          type="text"
           required
-          min={0.01}
-          step={0.01}
-          className={modalFieldClass}
-          value={form.unitPrice || ""}
-          onChange={(e) => setForm({ ...form, unitPrice: Number(e.target.value) })}
+          inputMode="decimal"
+          className={`${modalFieldClass} font-mono`}
+          value={unitPriceInput}
+          onChange={(e) => {
+            const raw = e.target.value;
+            setUnitPriceInput(raw);
+            setForm({ ...form, unitPrice: parseFormattedNumber(raw) });
+          }}
+          onBlur={() => {
+            if (form.unitPrice > 0) {
+              setUnitPriceInput(formatPortfolioAmount(form.unitPrice));
+            }
+          }}
+          placeholder="0"
         />
       </label>
       <label className="block">
@@ -436,8 +483,8 @@ export function TradingLedger() {
           <StatCard
             label="Range"
             value={
-              summary.firstDate && summary.lastDate
-                ? `${summary.firstDate} → ${summary.lastDate}`
+              summary.firstDate
+                ? `${formatDateDMY(summary.firstDate)} → ${formatDateDMY(todayISO())}`
                 : "—"
             }
             accent="cyan"
@@ -448,15 +495,10 @@ export function TradingLedger() {
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
-          onClick={() => {
-            setForm(emptyForm);
-            setEditId(null);
-            setAddAnother(false);
-            setFormOpen(true);
-          }}
-          className="inline-flex items-center gap-1 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white"
+          onClick={() => openForm(emptyForm)}
+          className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-sm font-bold text-white shadow-md ring-2 ring-accent/30 transition hover:opacity-90 hover:shadow-lg"
         >
-          <Plus className="h-3.5 w-3.5" /> Add trade
+          <Plus className="h-4 w-4" /> Add trade
         </button>
         <input
           placeholder="Year"
@@ -503,7 +545,6 @@ export function TradingLedger() {
               checked={addAnother}
               onChange={setAddAnother}
               label="Add another after saving"
-              description="Keep this dialog open for the next trade."
             />
           ) : undefined
         }
@@ -512,11 +553,15 @@ export function TradingLedger() {
             <button
               type="submit"
               form="trade-form"
-              className="flex-1 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:opacity-90 sm:flex-none"
+              className="flex-1 rounded-lg bg-accent px-5 py-3 text-sm font-bold text-white shadow-md ring-2 ring-accent/30 transition hover:opacity-90 hover:shadow-lg sm:flex-none sm:min-w-[140px]"
             >
               {editId ? "Save changes" : "Save trade"}
             </button>
-            <button type="button" onClick={closeForm} className="px-3 py-2 text-sm text-muted">
+            <button
+              type="button"
+              onClick={closeForm}
+              className="flex-1 rounded-lg bg-[var(--card)] px-5 py-3 text-sm font-semibold text-[var(--fg)] shadow-sm ring-2 ring-[var(--border)] transition hover:bg-[var(--bg-secondary)] sm:flex-none sm:min-w-[100px]"
+            >
               Cancel
             </button>
           </>
@@ -574,7 +619,7 @@ export function TradingLedger() {
                     : null;
                 return (
                   <tr key={`${t.id}-${i}`} className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--card-hover)]">
-                    <td className="px-2 py-1.5 text-xs text-muted">{t.transactionDate}</td>
+                    <td className="px-2 py-1.5 text-xs text-muted">{formatDateDMY(t.transactionDate)}</td>
                     <td className="px-2 py-1.5">
                       <Badge variant={t.transactionType === "BUY" ? "success" : "danger"} className="text-[10px]">
                         {t.transactionType}
@@ -601,8 +646,7 @@ export function TradingLedger() {
                         type="button"
                         className="rounded p-1 text-accent hover:bg-[var(--bg-secondary)]"
                         onClick={() => {
-                          setEditId(t.id);
-                          setForm({
+                          openForm({
                             transactionDate: t.transactionDate,
                             itemName: t.itemName,
                             quantity: t.quantity,
@@ -612,8 +656,7 @@ export function TradingLedger() {
                             profit: t.profit ?? 0,
                             exchange: t.exchange ?? "",
                             sector: t.sector ?? "",
-                          });
-                          setFormOpen(true);
+                          }, t.id);
                         }}
                       >
                         <Pencil className="h-3.5 w-3.5" />

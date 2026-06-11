@@ -4,6 +4,7 @@ import { analyzeFundamentalRow } from "@/lib/analysis/fundamental-analysis";
 import type { IndexStock } from "@/lib/analysis/index-universe";
 import { loadAnalysisSnapshotStore } from "@/lib/db/analysis-snapshots";
 import { getStock } from "@/lib/market-service";
+import { isEtfSymbol } from "@/lib/analysis/etf-utils";
 import type { Stock } from "@/types/stock";
 
 export type TechnicalAnalysisRow = {
@@ -17,6 +18,7 @@ export type TechnicalAnalysisRow = {
   momentum: string;
   supportResistance: string;
   source: string;
+  isEtf?: boolean;
 };
 
 export type CombinedAnalysisRow = {
@@ -28,6 +30,7 @@ export type CombinedAnalysisRow = {
   combinedScore: number;
   recommendation: string;
   source: string;
+  isEtf?: boolean;
 };
 
 type StockMeta = IndexStock | {
@@ -70,6 +73,7 @@ export async function analyzeTechnicalRow(
   store?: Awaited<ReturnType<typeof loadAnalysisSnapshotStore>>,
 ): Promise<TechnicalAnalysisRow> {
   const stock = await stockForSymbol(meta);
+  const etf = isEtfSymbol(stock.symbol);
   const a = await analyzeStock(stock, store);
   return {
     symbol: a.symbol,
@@ -82,6 +86,7 @@ export async function analyzeTechnicalRow(
     momentum: a.momentum,
     supportResistance: a.supportResistance,
     source: a.source,
+    isEtf: etf,
   };
 }
 
@@ -90,16 +95,20 @@ export async function analyzeCombinedRow(
   store?: Awaited<ReturnType<typeof loadAnalysisSnapshotStore>>,
 ): Promise<CombinedAnalysisRow> {
   const stock = await stockForSymbol(meta);
+  const etf = isEtfSymbol(stock.symbol);
   const a = await analyzeStock(stock, store);
+  // ETFs have no fundamentals — combined score is purely technical
+  const combinedScore = etf ? a.technicalScore : a.combinedScore;
   return {
     symbol: a.symbol,
     name: stock.name,
     sector: stock.sector,
     technicalScore: a.technicalScore,
-    fundamentalScore: a.fundamentalScore,
-    combinedScore: a.combinedScore,
+    fundamentalScore: etf ? 0 : a.fundamentalScore,
+    combinedScore,
     recommendation: a.recommendation,
     source: a.source,
+    isEtf: etf,
   };
 }
 

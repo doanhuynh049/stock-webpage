@@ -52,3 +52,37 @@ export function changeColor(value: number): string {
   if (value < 0) return "text-danger";
   return "text-subtle";
 }
+
+/** ISO yyyy-mm-dd → dd/mm/yyyy */
+export function formatDateDMY(iso: string): string {
+  const [y, m, d] = iso.slice(0, 10).split("-");
+  if (!y || !m || !d) return iso;
+  return `${d}/${m}/${y}`;
+}
+
+/** dd/mm/yyyy → ISO yyyy-mm-dd (null if invalid) */
+export function parseDateDMY(dmy: string): string | null {
+  const match = dmy.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!match) return null;
+  const [, d, m, y] = match;
+  const day = Number(d);
+  const month = Number(m);
+  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
+  return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+}
+
+export function todayISO(): string {
+  return new Date().toISOString().slice(0, 10);
+}
+
+/** Parse user-typed amounts with vi-VN thousand separators (e.g. 25.000 or 25.000,5). */
+export function parseFormattedNumber(raw: string): number {
+  const trimmed = raw.trim();
+  if (!trimmed) return 0;
+  const normalized = trimmed
+    .replace(/\s/g, "")
+    .replace(/\.(?=\d{3}(?:[.,]|$))/g, "")
+    .replace(",", ".");
+  const n = Number(normalized);
+  return Number.isFinite(n) ? n : 0;
+}

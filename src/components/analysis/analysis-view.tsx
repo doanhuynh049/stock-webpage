@@ -20,19 +20,22 @@ import type {
 } from "@/lib/analysis/combined-analysis";
 import type { SectorAnalysisResult } from "@/lib/analysis/sector-analysis";
 import { SectorAnalysisView } from "@/components/analysis/sector-analysis-view";
+import { EtfAnalysisView } from "@/components/analysis/etf-analysis-view";
 import { FUNDAMENTAL_RULES, INDEX_RULES, TECHNICAL_RULES, COMBINED_RULES } from "@/lib/analysis/scoring-rules";
+import type { EtfAnalysisRow } from "@/lib/analysis/etf-universe";
 import {
   INVESTMENT_MOTTO,
   INVESTMENT_PRINCIPLES,
   PRINCIPLES_IN_APP,
 } from "@/lib/content/investment-principles";
 
-type MainTab = "portfolio" | "sector" | "vn30" | "vn100" | "rules" | "principles";
+type MainTab = "portfolio" | "sector" | "etf" | "vn30" | "vn100" | "rules" | "principles";
 type SubTab = "fundamental" | "technical" | "combined";
 
 const MAIN_TABS: { id: MainTab; label: string }[] = [
   { id: "portfolio", label: "Portfolio" },
   { id: "sector", label: "Sector" },
+  { id: "etf", label: "ETF" },
   { id: "vn30", label: "VN30" },
   { id: "vn100", label: "VN100" },
   { id: "rules", label: "Scoring rules" },
@@ -66,29 +69,38 @@ function SymbolCell({
   name,
   sector,
   owned,
+  isEtf,
 }: {
   symbol: string;
   name?: string;
   sector?: string;
   owned?: Set<string>;
+  isEtf?: boolean;
 }) {
   const sym = symbol.toUpperCase();
   return (
     <div className="flex items-center gap-2">
       <StockAvatar symbol={sym} sector={sector} size="sm" />
       <div className="min-w-0">
-        <Link
-          href={`/stocks/${sym}`}
-          className="font-semibold text-accent hover:underline"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {sym}
-        </Link>
-        {owned?.has(sym) && (
-          <Badge variant="info" className="ml-1 text-[9px]">
-            owned
-          </Badge>
-        )}
+        <div className="flex items-center gap-1 flex-wrap">
+          <Link
+            href={`/stocks/${sym}`}
+            className="font-semibold text-accent hover:underline"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {sym}
+          </Link>
+          {isEtf && (
+            <Badge variant="info" className="text-[9px] px-1 py-0">
+              ETF
+            </Badge>
+          )}
+          {owned?.has(sym) && (
+            <Badge variant="default" className="text-[9px] px-1 py-0">
+              owned
+            </Badge>
+          )}
+        </div>
         {name && <div className="text-[10px] text-muted">{name}</div>}
       </div>
     </div>
@@ -190,19 +202,27 @@ function FundamentalTable({
           >
             <td className="px-2 py-1.5 text-subtle">{i + 1}</td>
             <td className="px-2 py-1.5">
-              <SymbolCell symbol={r.symbol} name={r.name} sector={r.sector} owned={owned} />
+              <SymbolCell symbol={r.symbol} name={r.name} sector={r.sector} owned={owned} isEtf={r.isEtf} />
             </td>
             <td className="px-2 py-1.5 text-xs text-muted">{r.sector}</td>
-            <td className="px-2 py-1.5 text-center">
-              <Badge variant={scoreVariant(r.breakdown.finalScore)} className="font-mono text-[10px]">{r.breakdown.finalScore}</Badge>
-            </td>
-            <td className="px-2 py-1.5 text-center font-mono text-xs">{r.breakdown.qualityScore}</td>
-            <td className="px-2 py-1.5 text-center font-mono text-xs">{r.breakdown.growthScore}</td>
-            <td className="px-2 py-1.5 text-center font-mono text-xs">{r.breakdown.valuationScore}</td>
-            <td className="px-2 py-1.5 text-center font-mono text-xs">{r.breakdown.stabilityScore}</td>
-            <td className="px-2 py-1.5 text-center font-mono text-xs">{r.roe != null ? `${r.roe.toFixed(1)}%` : "—"}</td>
-            <td className="px-2 py-1.5 text-center font-mono text-xs">{r.pe != null ? r.pe.toFixed(1) : "—"}</td>
-            <td className="px-2 py-1.5 text-center font-mono text-xs">{r.pb != null ? r.pb.toFixed(2) : "—"}</td>
+            {r.isEtf ? (
+              <td colSpan={8} className="px-2 py-1.5 text-center text-xs text-subtle italic">
+                No fundamental data — ETF tracks an index
+              </td>
+            ) : (
+              <>
+                <td className="px-2 py-1.5 text-center">
+                  <Badge variant={scoreVariant(r.breakdown.finalScore)} className="font-mono text-[10px]">{r.breakdown.finalScore}</Badge>
+                </td>
+                <td className="px-2 py-1.5 text-center font-mono text-xs">{r.breakdown.qualityScore}</td>
+                <td className="px-2 py-1.5 text-center font-mono text-xs">{r.breakdown.growthScore}</td>
+                <td className="px-2 py-1.5 text-center font-mono text-xs">{r.breakdown.valuationScore}</td>
+                <td className="px-2 py-1.5 text-center font-mono text-xs">{r.breakdown.stabilityScore}</td>
+                <td className="px-2 py-1.5 text-center font-mono text-xs">{r.roe != null ? `${r.roe.toFixed(1)}%` : "—"}</td>
+                <td className="px-2 py-1.5 text-center font-mono text-xs">{r.pe != null ? r.pe.toFixed(1) : "—"}</td>
+                <td className="px-2 py-1.5 text-center font-mono text-xs">{r.pb != null ? r.pb.toFixed(2) : "—"}</td>
+              </>
+            )}
           </tr>
         ))}
       </tbody>
@@ -279,7 +299,7 @@ function TechnicalTable({
           >
             <td className="px-2 py-1.5 text-subtle">{i + 1}</td>
             <td className="px-2 py-1.5">
-              <SymbolCell symbol={r.symbol} name={r.name} sector={r.sector} owned={owned} />
+              <SymbolCell symbol={r.symbol} name={r.name} sector={r.sector} owned={owned} isEtf={r.isEtf} />
             </td>
             <td className="px-2 py-1.5 text-center font-mono font-semibold">{r.technicalScore}</td>
             <td className="px-2 py-1.5 text-xs text-muted">{r.technicalRating}</td>
@@ -358,11 +378,16 @@ function CombinedTable({
           >
             <td className="px-2 py-1.5 text-subtle">{i + 1}</td>
             <td className="px-2 py-1.5">
-              <SymbolCell symbol={r.symbol} name={r.name} sector={r.sector} owned={owned} />
+              <SymbolCell symbol={r.symbol} name={r.name} sector={r.sector} owned={owned} isEtf={r.isEtf} />
             </td>
             <td className="px-2 py-1.5 text-center font-mono">{r.technicalScore}</td>
-            <td className="px-2 py-1.5 text-center font-mono">{r.fundamentalScore}</td>
-            <td className="px-2 py-1.5 text-center font-mono font-semibold">{r.combinedScore}</td>
+            <td className="px-2 py-1.5 text-center font-mono text-subtle">
+              {r.isEtf ? <span className="text-[10px] italic">N/A</span> : r.fundamentalScore}
+            </td>
+            <td className="px-2 py-1.5 text-center font-mono font-semibold">
+              {r.combinedScore}
+              {r.isEtf && <span className="ml-1 text-[9px] text-subtle">(tech)</span>}
+            </td>
             <td className="px-2 py-1.5">
               <Badge variant={recVariant(r.recommendation)} className="text-[10px]">{r.recommendation}</Badge>
             </td>
@@ -488,12 +513,14 @@ export function AnalysisView({
   vn30,
   vn100,
   sectorAnalysis,
+  etfBundle,
   ownedSymbols,
 }: {
   portfolio: UniverseAnalysisBundle;
   vn30: UniverseAnalysisBundle;
   vn100: UniverseAnalysisBundle;
   sectorAnalysis?: SectorAnalysisResult;
+  etfBundle?: EtfAnalysisRow[];
   ownedSymbols?: string[];
 }) {
   const [mainTab, setMainTab] = useState<MainTab>("portfolio");
@@ -519,6 +546,8 @@ export function AnalysisView({
           ? INDEX_RULES.vn100
           : "";
 
+  const noSubTabs = mainTab === "rules" || mainTab === "principles" || mainTab === "sector" || mainTab === "etf";
+
   const selectedSymbol = selection?.row.symbol.toUpperCase() ?? null;
 
   return (
@@ -541,7 +570,7 @@ export function AnalysisView({
         ))}
       </div>
 
-      {mainTab !== "rules" && mainTab !== "principles" && mainTab !== "sector" && (
+      {!noSubTabs && (
         <div className="tab-scroll -mx-1 flex gap-1 overflow-x-auto pb-0.5">
           {SUB_TABS.map((t) => (
             <button
@@ -568,18 +597,19 @@ export function AnalysisView({
         />
       )}
 
-      <Card className="!p-4">
-        {mainTab === "sector" && sectorAnalysis ? (
-          <SectorAnalysisView data={sectorAnalysis} />
-        ) : (
+      {mainTab === "sector" && sectorAnalysis ? (
+        <SectorAnalysisView data={sectorAnalysis} />
+      ) : mainTab === "etf" ? (
+        <EtfAnalysisView rows={etfBundle ?? []} />
+      ) : (
+        <Card className="!p-4">
           <>
             <CardTitle className="!mb-1 !text-base">
               {MAIN_TABS.find((t) => t.id === mainTab)?.label}
-              {mainTab !== "rules" &&
-                mainTab !== "principles" &&
+              {!noSubTabs &&
                 ` — ${SUB_TABS.find((t) => t.id === subTab)?.label}`}
             </CardTitle>
-            {mainTab !== "rules" && mainTab !== "principles" && bundle && (
+            {!noSubTabs && bundle && (
               <p className="mb-3 text-xs text-muted">
                 {description} · Click a row for analysis detail · Click symbol for stock page
               </p>
@@ -617,8 +647,8 @@ export function AnalysisView({
               )}
             </div>
           </>
-        )}
-      </Card>
+        </Card>
+      )}
     </div>
   );
 }
