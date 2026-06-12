@@ -33,7 +33,8 @@ export async function GET(request: Request) {
     const quotes = await getQuotesForSymbols(symbols);
     const currentPrices: Record<string, number> = {};
     for (const [sym, price] of Object.entries(quotes)) {
-      if (price > 0) currentPrices[sym] = price / 1000;
+      // getQuotesForSymbols returns full VND — keep in full VND to match stored unitPrice
+      if (price > 0) currentPrices[sym] = price;
     }
 
     return NextResponse.json({

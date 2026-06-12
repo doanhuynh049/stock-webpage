@@ -14,7 +14,9 @@ export function RemoveWatchlistButton({
 }) {
   function handleClick() {
     onRemoved?.();
-    void removeFromWatchlist(symbol).catch(() => onRestore?.());
+    void removeFromWatchlist(symbol).then((result) => {
+      if ("error" in result) onRestore?.();
+    });
   }
 
   return (

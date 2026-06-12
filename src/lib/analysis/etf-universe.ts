@@ -28,6 +28,11 @@ export type EtfAnalysisRow = EtfInfo & {
   source: string;
   /** false when the snapshot DB has no technical data for this ETF (score/indicators are defaults) */
   hasData: boolean;
+  /**
+   * 1-year price return (%) calculated from Yahoo Finance history.
+   * null when fewer than 200 trading-day candles are available.
+   */
+  oneYearReturn: number | null;
 };
 
 /** Canonical list sorted by AUM descending (largest fund first). */

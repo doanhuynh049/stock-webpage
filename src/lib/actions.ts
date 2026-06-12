@@ -167,11 +167,19 @@ export async function registerAndSignIn(
   }
 }
 
-export async function addToWatchlist(symbol: string) {
-  const userId = await requireUser();
+export type WatchlistResult = { success: true } | { error: string };
+
+export async function addToWatchlist(symbol: string): Promise<WatchlistResult> {
+  let userId: string;
+  try {
+    userId = await requireUser();
+  } catch {
+    return { error: "You must be signed in to use your watchlist." };
+  }
+
   const sym = symbol.trim().toUpperCase();
-  if (!sym || !/^[A-Z0-9]{2,8}$/.test(sym)) {
-    throw new Error("Enter a valid ticker symbol (e.g. FPT, VPB)");
+  if (!sym || !/^[A-Z0-9]{2,10}$/.test(sym)) {
+    return { error: "Enter a valid ticker symbol (e.g. FPT, VPB, FUEMAV30)" };
   }
 
   try {
@@ -187,16 +195,23 @@ export async function addToWatchlist(symbol: string) {
     );
   } catch (error) {
     console.error("[addToWatchlist]", error);
-    throw new Error(dbErrorMessage(error));
+    return { error: dbErrorMessage(error) };
   }
 
+  revalidatePath("/watchlist");
   revalidatePath("/");
   revalidatePath(`/stocks/${sym}`);
   return { success: true };
 }
 
-export async function removeFromWatchlist(symbol: string) {
-  const userId = await requireUser();
+export async function removeFromWatchlist(symbol: string): Promise<WatchlistResult> {
+  let userId: string;
+  try {
+    userId = await requireUser();
+  } catch {
+    return { error: "You must be signed in to use your watchlist." };
+  }
+
   const sym = symbol.toUpperCase();
 
   try {
@@ -210,7 +225,7 @@ export async function removeFromWatchlist(symbol: string) {
     );
   } catch (error) {
     console.error("[removeFromWatchlist]", error);
-    throw new Error(dbErrorMessage(error));
+    return { error: dbErrorMessage(error) };
   }
 
   revalidatePath("/watchlist");

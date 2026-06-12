@@ -107,7 +107,7 @@ function SummaryCards({ rows }: { rows: EtfAnalysisRow[] }) {
 export function EtfAnalysisView({ rows }: { rows: EtfAnalysisRow[] }) {
   const [benchmarkFilter, setBenchmarkFilter] = useState<BenchmarkFilter>("All");
 
-  type SortKey = "symbol" | "benchmark" | "manager" | "aum" | "price" | "tech" | "rating" | "trend" | "momentum";
+  type SortKey = "symbol" | "benchmark" | "manager" | "aum" | "price" | "tech" | "rating" | "trend" | "momentum" | "return1y";
 
   const { sortKey, sortDir, toggleSort } = useTableSort<SortKey>("tech", "desc");
 
@@ -152,6 +152,9 @@ export function EtfAnalysisView({ rows }: { rows: EtfAnalysisRow[] }) {
           break;
         case "momentum":
           cmp = compareStrings(a.momentum, b.momentum);
+          break;
+        case "return1y":
+          cmp = compareNumbers(a.oneYearReturn ?? -Infinity, b.oneYearReturn ?? -Infinity);
           break;
       }
       return applySortDir(cmp, sortDir);
@@ -238,7 +241,7 @@ export function EtfAnalysisView({ rows }: { rows: EtfAnalysisRow[] }) {
           </CardTitle>
         </div>
         <div className="table-scroll overflow-x-auto">
-          <table className="w-full min-w-[900px] text-sm">
+          <table className="w-full min-w-[1020px] text-sm">
             <thead>
               <tr className="border-b border-[var(--border)] bg-[var(--bg-secondary)] text-left text-[10px] uppercase text-subtle">
                 <th className="px-2 py-1.5">#</th>
@@ -251,6 +254,7 @@ export function EtfAnalysisView({ rows }: { rows: EtfAnalysisRow[] }) {
                 <SortableTableHeader label="Rating" column="rating" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-2 py-1.5" />
                 <SortableTableHeader label="Trend" column="trend" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-2 py-1.5" />
                 <SortableTableHeader label="Momentum" column="momentum" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-2 py-1.5" />
+                <SortableTableHeader label="1Y Return" column="return1y" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} align="right" className="px-2 py-1.5" />
               </tr>
             </thead>
             <tbody>
@@ -272,6 +276,7 @@ export function EtfAnalysisView({ rows }: { rows: EtfAnalysisRow[] }) {
       <p className="text-[10px] text-subtle">
         AUM figures are approximate snapshots (mid-2025) in billion (B) / trillion (T) VND.
         Technical analysis uses RSI, MA20/50, MACD, volume, and support/resistance from snapshot DB.
+        1Y Return is calculated from Yahoo Finance price history (first vs last close over 365 days).
         ETFs track indices — no fundamental scoring applies.
       </p>
     </div>
@@ -305,7 +310,7 @@ function EtfRow({ row, rank }: { row: EtfAnalysisRow; rank: number }) {
         <td className="px-2 py-1.5 text-xs text-muted">{row.manager}</td>
         <td className="px-2 py-1.5 text-right font-mono text-xs text-muted">{formatAum(row.aumBnVnd)}</td>
         <td className="px-2 py-1.5 text-right font-mono text-xs text-muted">{priceDisplay}</td>
-        <td colSpan={4} className="px-2 py-1.5 text-center text-xs text-subtle italic">
+        <td colSpan={5} className="px-2 py-1.5 text-center text-xs text-subtle italic">
           No snapshot data in DB — technical indicators unavailable
         </td>
       </tr>
@@ -344,6 +349,19 @@ function EtfRow({ row, rank }: { row: EtfAnalysisRow; rank: number }) {
       </td>
       <td className="max-w-[130px] truncate px-2 py-1.5 text-xs text-muted" title={row.momentum}>
         {row.momentum}
+      </td>
+      <td className={`px-2 py-1.5 text-right font-mono text-xs font-semibold ${
+        row.oneYearReturn == null
+          ? "text-subtle"
+          : row.oneYearReturn > 0
+            ? "text-[var(--success)]"
+            : row.oneYearReturn < 0
+              ? "text-[var(--danger)]"
+              : "text-subtle"
+      }`}>
+        {row.oneYearReturn == null
+          ? "—"
+          : `${row.oneYearReturn > 0 ? "+" : ""}${row.oneYearReturn.toFixed(1)}%`}
       </td>
     </tr>
   );

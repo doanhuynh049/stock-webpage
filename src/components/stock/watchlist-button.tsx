@@ -32,13 +32,10 @@ export function WatchlistButton({
   async function toggle() {
     const wasInWatchlist = inWatchlist;
     setInWatchlist(!wasInWatchlist);
-    try {
-      if (wasInWatchlist) {
-        await removeFromWatchlist(symbol);
-      } else {
-        await addToWatchlist(symbol);
-      }
-    } catch {
+    const result = wasInWatchlist
+      ? await removeFromWatchlist(symbol)
+      : await addToWatchlist(symbol);
+    if ("error" in result) {
       setInWatchlist(wasInWatchlist);
     }
   }

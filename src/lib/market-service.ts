@@ -17,6 +17,8 @@ import {
 } from "@/lib/db/neon-cache";
 import { canWriteLocalCache } from "@/lib/serverless";
 import { extractLastMentionedSymbol, extractTickersFromQuestion, isFollowUpQuestion } from "@/lib/symbol-utils";
+import { isEtfSymbol } from "@/lib/analysis/etf-utils";
+import { getEtfMeta, type EtfInfo } from "@/lib/analysis/etf-universe";
 import { lookupIndexStock } from "@/lib/stock-metadata";
 import type {
   MarketSnapshot,
@@ -638,21 +640,48 @@ export async function buildAiContext(
   if (mentioned.length) {
     const { analyzeStock } = await import("@/lib/analysis/stock-analysis");
     for (const s of mentioned) {
-      ctx += `--- ${s.symbol} (${s.name}) ---\n`;
-      ctx += `Price: ${s.price.toLocaleString()} VND (${s.changePercent}%)\n`;
-      ctx += `Sector: ${s.sector} | Exchange: ${s.exchange}\n`;
-      ctx += `PE: ${s.pe || "N/A"} | PB: ${s.pb} | ROE: ${s.roe}% | RSI: ${s.rsi}\n`;
-      ctx += `Revenue Growth: ${s.revenueGrowth}% | Div Yield: ${s.dividendYield}%\n`;
-      ctx += `Analyst: ${s.analystRating} | Target: ${s.analystTarget.toLocaleString()} VND\n`;
-      ctx += `Profile: ${s.profile}\n`;
-      try {
-        const a = await analyzeStock(s);
-        ctx += `Technical: ${a.technicalScore} (${a.technicalRating}) | Fundamental: ${a.fundamentalScore}\n`;
-        ctx += `Combined: ${a.combinedScore} — ${a.recommendation}\n`;
-        ctx += `Trend: ${a.maTrend} | Momentum: ${a.momentum}\n`;
-        ctx += `Levels: ${a.supportResistance}\n`;
-      } catch {
-        /* analysis optional */
+      if (isEtfSymbol(s.symbol)) {
+        const meta = getEtfMeta(s.symbol);
+        ctx += `--- ${s.symbol} (${meta?.name ?? s.name}) --- [ETF]\n`;
+        ctx += `Type: Exchange-Traded Fund — tracks ${meta?.benchmark ?? "index"}\n`;
+        ctx += `Manager: ${meta?.manager ?? "N/A"} | AUM: ${meta?.aumBnVnd != null ? `${meta.aumBnVnd}B VND` : "N/A"}\n`;
+        if (s.price > 0) {
+          ctx += `Price: ${s.price.toLocaleString()} VND (${s.changePercent > 0 ? "+" : ""}${s.changePercent}%)\n`;
+        }
+        try {
+          const { fetchYahooHistory } = await import("@/lib/providers/yahoo");
+          const hist = await fetchYahooHistory(s.symbol, 365);
+          if (hist.length >= 200) {
+            const ret = ((hist[hist.length - 1].close - hist[0].close) / hist[0].close) * 100;
+            ctx += `1-Year Return: ${ret >= 0 ? "+" : ""}${ret.toFixed(1)}% (from Yahoo price history)\n`;
+          }
+        } catch { /* optional */ }
+        ctx += `Note: ETFs have NO individual fundamentals (no PE/ROE/revenue growth). Evaluate by: AUM, benchmark tracking, expense ratio, and technical momentum.\n`;
+        try {
+          const a = await analyzeStock(s);
+          ctx += `Technical Score: ${a.technicalScore} (${a.technicalRating})\n`;
+          ctx += `Trend: ${a.maTrend} | Momentum: ${a.momentum}\n`;
+          ctx += `Levels: ${a.supportResistance}\n`;
+        } catch {
+          /* analysis optional */
+        }
+      } else {
+        ctx += `--- ${s.symbol} (${s.name}) ---\n`;
+        ctx += `Price: ${s.price.toLocaleString()} VND (${s.changePercent}%)\n`;
+        ctx += `Sector: ${s.sector} | Exchange: ${s.exchange}\n`;
+        ctx += `PE: ${s.pe || "N/A"} | PB: ${s.pb} | ROE: ${s.roe}% | RSI: ${s.rsi}\n`;
+        ctx += `Revenue Growth: ${s.revenueGrowth}% | Div Yield: ${s.dividendYield}%\n`;
+        ctx += `Analyst: ${s.analystRating} | Target: ${s.analystTarget.toLocaleString()} VND\n`;
+        ctx += `Profile: ${s.profile}\n`;
+        try {
+          const a = await analyzeStock(s);
+          ctx += `Technical: ${a.technicalScore} (${a.technicalRating}) | Fundamental: ${a.fundamentalScore}\n`;
+          ctx += `Combined: ${a.combinedScore} — ${a.recommendation}\n`;
+          ctx += `Trend: ${a.maTrend} | Momentum: ${a.momentum}\n`;
+          ctx += `Levels: ${a.supportResistance}\n`;
+        } catch {
+          /* analysis optional */
+        }
       }
       ctx += "\n";
     }
@@ -667,7 +696,18 @@ export async function buildAiContext(
     }
     const tickers = extractTickersFromQuestion(searchText);
     if (tickers.length) {
-      ctx += `\nNote: Could not load live data for: ${tickers.join(", ")}. Check ticker spelling or try again.\n`;
+      // Provide metadata for known ETFs even when live price is unavailable
+      const knownEtfs = tickers.filter(isEtfSymbol).map(getEtfMeta).filter(Boolean);
+      if (knownEtfs.length) {
+        ctx += "\nETF metadata (no live price available):\n";
+        for (const meta of knownEtfs) {
+          ctx += `- ${meta!.symbol} (${meta!.name}): tracks ${meta!.benchmark}, managed by ${meta!.manager}, AUM ~${meta!.aumBnVnd != null ? `${meta!.aumBnVnd}B VND` : "N/A"}. ETFs have no PE/ROE/revenue fundamentals — evaluate by AUM, benchmark, and technical trend.\n`;
+        }
+      }
+      const unknown = tickers.filter((t) => !isEtfSymbol(t));
+      if (unknown.length) {
+        ctx += `\nNote: Could not load live data for: ${unknown.join(", ")}. Check ticker spelling or try again.\n`;
+      }
     }
     if (priorContext?.trim() && isFollowUpQuestion(question)) {
       const lastSym = extractLastMentionedSymbol(priorContext);

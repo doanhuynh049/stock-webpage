@@ -1,5 +1,7 @@
 import { getAllStocks, getStock, resolveStocksFromQuestion } from "@/lib/market-service";
 import { extractLastMentionedSymbol, extractTickersFromQuestion } from "@/lib/symbol-utils";
+import { isEtfSymbol } from "@/lib/analysis/etf-utils";
+import { getEtfMeta } from "@/lib/analysis/etf-universe";
 import type { Stock } from "@/types/stock";
 
 async function extractSymbol(question: string, priorContext?: string): Promise<string | null> {
@@ -18,7 +20,52 @@ async function extractSymbol(question: string, priorContext?: string): Promise<s
   return null;
 }
 
+function buildEtfAnalysis(stock: Stock): string {
+  const meta = getEtfMeta(stock.symbol);
+  const positives: string[] = [];
+  const cautions: string[] = [];
+
+  if (meta?.aumBnVnd != null && meta.aumBnVnd >= 500)
+    positives.push(`Large AUM (~${meta.aumBnVnd}B VND) — high liquidity`);
+  else if (meta?.aumBnVnd != null)
+    cautions.push(`Smaller AUM (~${meta.aumBnVnd}B VND) — may have wider spreads`);
+
+  if (stock.changePercent > 0)
+    positives.push(`Positive momentum today (+${stock.changePercent}%)`);
+  else if (stock.changePercent < -1)
+    cautions.push(`Negative session (${stock.changePercent}%)`);
+
+  if (stock.rsi > 0 && stock.rsi < 35)
+    positives.push(`RSI oversold at ${stock.rsi} — possible accumulation zone`);
+  else if (stock.rsi > 70)
+    cautions.push(`RSI overbought at ${stock.rsi} — momentum may be stretched`);
+
+  if (positives.length === 0) positives.push("Passive index exposure with low cost");
+  if (cautions.length === 0) cautions.push("Tracks benchmark index — returns mirror the index, not individual alpha");
+
+  const priceStr = stock.price > 0
+    ? `${stock.price.toLocaleString()} ₫ (${stock.changePercent > 0 ? "+" : ""}${stock.changePercent}%)`
+    : "price unavailable";
+
+  return `**${meta?.name ?? stock.name} (${stock.symbol})** — ${priceStr} [ETF]
+
+**Benchmark:** ${meta?.benchmark ?? "index"} | **Manager:** ${meta?.manager ?? "N/A"} | **AUM:** ${meta?.aumBnVnd != null ? `~${meta.aumBnVnd}B VND` : "N/A"}
+
+**ETFs are evaluated differently from stocks.** Key metrics: AUM & liquidity, expense ratio, benchmark tracking error, technical momentum.
+PE / ROE / revenue growth do NOT apply to ETFs — they track an index, not a single company.
+
+**Positives:**
+${positives.map((s) => `- ${s}`).join("\n")}
+
+**Watch out for:**
+${cautions.map((r) => `- ${r}`).join("\n")}
+
+*Source: Entrade/Yahoo live price + static ETF metadata*`;
+}
+
 function buildStockAnalysis(stock: Stock): string {
+  if (isEtfSymbol(stock.symbol)) return buildEtfAnalysis(stock);
+
   const strengths: string[] = [];
   const risks: string[] = [];
 
@@ -165,6 +212,35 @@ See full rankings on the [Dashboard](/) or refine in the [Screener](/screener).`
   for (const sym of extractTickersFromQuestion(question)) {
     const stock = await getStock(sym);
     if (stock?.price) return buildStockAnalysis(stock);
+    // For known ETFs with no live price, still return metadata context
+    if (isEtfSymbol(sym)) {
+      const meta = getEtfMeta(sym);
+      if (meta) {
+        return buildEtfAnalysis({
+          symbol: sym,
+          name: meta.name,
+          sector: "ETF",
+          exchange: "HOSE",
+          price: 0,
+          change: 0,
+          changePercent: 0,
+          volume: 0,
+          marketCap: 0,
+          pe: 0,
+          pb: 0,
+          roe: 0,
+          revenueGrowth: 0,
+          rsi: 50,
+          dividendYield: 0,
+          high52w: 0,
+          low52w: 0,
+          analystRating: "Hold",
+          analystTarget: 0,
+          profile: "",
+          financials: { years: [], revenue: [], netProfit: [], totalDebt: [] },
+        });
+      }
+    }
   }
 
   return `## Vietnam Stock AI Analyst

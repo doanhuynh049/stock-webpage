@@ -6,14 +6,38 @@
 
 import { analyzeTechnicalRow } from "@/lib/analysis/combined-analysis";
 import { loadAnalysisSnapshotStore } from "@/lib/db/analysis-snapshots";
+import { fetchYahooHistory } from "@/lib/providers/yahoo";
 import { ETF_UNIVERSE, type EtfAnalysisRow } from "@/lib/analysis/etf-universe";
+
+/**
+ * Compute 1-year price return (%) from Yahoo history.
+ * Fetches 365 trading-day candles; uses first vs last close.
+ * Returns null when fewer than 200 candles are available (newly listed ETF).
+ */
+async function fetchOneYearReturn(symbol: string): Promise<number | null> {
+  try {
+    const history = await fetchYahooHistory(symbol, 365);
+    if (history.length < 200) return null;
+    const first = history[0].close;
+    const last = history[history.length - 1].close;
+    if (!first || !last) return null;
+    return Math.round(((last - first) / first) * 10000) / 100; // 2 decimal places
+  } catch {
+    return null;
+  }
+}
 
 export async function analyzeEtfUniverse(): Promise<EtfAnalysisRow[]> {
   const symbols = ETF_UNIVERSE.map((e) => e.symbol);
-  const snapshotStore = await loadAnalysisSnapshotStore(symbols);
+
+  // Run DB snapshot fetch and Yahoo 1yr returns in parallel
+  const [snapshotStore, yearReturns] = await Promise.all([
+    loadAnalysisSnapshotStore(symbols),
+    Promise.all(ETF_UNIVERSE.map((etf) => fetchOneYearReturn(etf.symbol))),
+  ]);
 
   const rows = await Promise.all(
-    ETF_UNIVERSE.map(async (etf) => {
+    ETF_UNIVERSE.map(async (etf, i) => {
       const techRow = await analyzeTechnicalRow(
         { symbol: etf.symbol, name: etf.name, sector: "ETF" },
         snapshotStore,
@@ -29,6 +53,7 @@ export async function analyzeEtfUniverse(): Promise<EtfAnalysisRow[]> {
         supportResistance: techRow.supportResistance,
         source: techRow.source,
         hasData,
+        oneYearReturn: yearReturns[i] ?? null,
       } satisfies EtfAnalysisRow;
     }),
   );

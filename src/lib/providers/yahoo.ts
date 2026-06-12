@@ -50,7 +50,11 @@ export async function fetchYahooHistory(
   ticker: string,
   days = 90,
 ): Promise<PricePoint[]> {
-  const range = days <= 30 ? "1mo" : days <= 90 ? "3mo" : "6mo";
+  const range =
+    days <= 30 ? "1mo" :
+    days <= 90 ? "3mo" :
+    days <= 180 ? "6mo" :
+    days <= 365 ? "1y" : "2y";
   const result = await fetchChart(`${ticker}.VN`, range);
   if (!result?.timestamp?.length) return [];
 

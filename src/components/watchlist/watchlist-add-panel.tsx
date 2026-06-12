@@ -25,12 +25,12 @@ export function WatchlistAddPanel({
     setError(null);
     onAdded?.(ticker);
     startTransition(async () => {
-      try {
-        await addToWatchlist(ticker);
-        setSymbol("");
-      } catch (e) {
+      const result = await addToWatchlist(ticker);
+      if ("error" in result) {
         onFailed?.(ticker);
-        setError((e as Error).message || "Could not add symbol");
+        setError(result.error);
+      } else {
+        setSymbol("");
       }
     });
   }
