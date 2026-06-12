@@ -2923,20 +2923,5 @@
     "transactionType": "BUY",
     "exchange": "HOSE",
     "sector": "Technology"
-  },
-  {
-    "id": "8a4c1033-10c7-426b-9a71-9bc09e9f8b03",
-    "userId": "148e4bc6-7f91-440e-b407-9f5e4a22706f",
-    "transactionDate": "2026-06-11",
-    "itemName": "FPT",
-    "quantity": 10,
-    "unitPrice": 74200,
-    "totalAmount": 742000,
-    "fee": 0,
-    "tax": 0,
-    "profit": null,
-    "transactionType": "BUY",
-    "exchange": "HOSE",
-    "sector": "Technology"
   }
 ]

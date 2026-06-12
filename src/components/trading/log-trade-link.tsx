@@ -65,7 +65,7 @@ export function LogTradeLink({
     <Link
       href={href}
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-sm font-bold text-white shadow-md ring-2 ring-accent/30 transition hover:opacity-90 hover:shadow-lg",
+        "inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-bold text-white shadow-md ring-2 ring-[var(--accent)]/30 transition hover:opacity-90 hover:shadow-lg",
         className,
       )}
     >

@@ -45,11 +45,17 @@ function fallbackStock(symbol: string): Stock {
 async function enrichWatchlist(
   items: Array<{ symbol: string }>,
 ): Promise<WatchlistItemView[]> {
+  // Use per-item try-catch so one failing getStock call doesn't abort the entire
+  // Promise.all and crash the page during revalidation.
   return Promise.all(
     items.map(async (item) => {
       const sym = item.symbol.toUpperCase();
-      const stock = (await getStock(sym)) ?? fallbackStock(sym);
-      return { symbol: sym, stock };
+      try {
+        const stock = (await getStock(sym)) ?? fallbackStock(sym);
+        return { symbol: sym, stock };
+      } catch {
+        return { symbol: sym, stock: fallbackStock(sym) };
+      }
     }),
   );
 }
@@ -98,7 +104,11 @@ export async function getWatchlistWithStocks() {
       items: await enrichWatchlist(items),
     };
   } catch {
-    return fromWatchlistCache(session.user.id);
+    try {
+      return await fromWatchlistCache(session.user.id);
+    } catch {
+      return { isAuthenticated: true, items: [] };
+    }
   }
 }
 

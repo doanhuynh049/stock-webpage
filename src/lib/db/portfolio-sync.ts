@@ -27,7 +27,14 @@ export async function listPortfolioHoldings(userId: string) {
   );
 }
 
-/** Full replace sync — mirrors stock-service replacePortfolioHoldings. */
+/**
+ * Full replace sync — mirrors stock-service replacePortfolioHoldings.
+ *
+ * Uses individual queries instead of prisma.$transaction() because the Neon
+ * HTTP driver used on Vercel (DB_DRIVER=http) does NOT support interactive
+ * transactions. Individual upserts + a trailing deleteMany achieve the same
+ * result without a transaction wrapper.
+ */
 export async function syncPortfolioHoldings(
   userId: string,
   incoming: PortfolioHoldingInput[],
@@ -37,56 +44,49 @@ export async function syncPortfolioHoldings(
   );
   const symbols = rows.map((h) => h.symbol.toUpperCase());
 
+  if (symbols.length === 0) {
+    await withDbRetry(
+      () => prisma.portfolioHolding.deleteMany({ where: { userId } }),
+      "portfolio-clear",
+      0,
+    );
+    return 0;
+  }
+
+  // Upsert each incoming holding individually
+  for (const h of rows) {
+    const sym = h.symbol.toUpperCase();
+    const fields = {
+      name: h.name ?? null,
+      exchange: h.exchange ?? null,
+      sector: h.sector ?? null,
+      industry: h.industry ?? null,
+      shares: h.shares,
+      avgBuyPrice: h.avgBuyPrice ?? null,
+      target3Month: h.target3Month ?? null,
+      targetLongTerm: h.targetLongTerm ?? null,
+      targetSetDate: h.targetSetDate ?? null,
+      platform: h.platform ?? null,
+    };
+    await withDbRetry(
+      () =>
+        prisma.portfolioHolding.upsert({
+          where: { userId_symbol: { userId, symbol: sym } },
+          create: { userId, symbol: sym, ...fields },
+          update: fields,
+        }),
+      "portfolio-upsert",
+      0,
+    );
+  }
+
+  // Remove any holdings that are no longer in the rebuilt list
   await withDbRetry(
-    async () => {
-      await prisma.$transaction(async (tx) => {
-        if (symbols.length === 0) {
-          await tx.portfolioHolding.deleteMany({ where: { userId } });
-          return;
-        }
-
-        for (const h of rows) {
-          const sym = h.symbol.toUpperCase();
-          await tx.portfolioHolding.upsert({
-            where: { userId_symbol: { userId, symbol: sym } },
-            create: {
-              userId,
-              symbol: sym,
-              name: h.name ?? null,
-              exchange: h.exchange ?? null,
-              sector: h.sector ?? null,
-              industry: h.industry ?? null,
-              shares: h.shares,
-              avgBuyPrice: h.avgBuyPrice ?? null,
-              target3Month: h.target3Month ?? null,
-              targetLongTerm: h.targetLongTerm ?? null,
-              targetSetDate: h.targetSetDate ?? null,
-              platform: h.platform ?? null,
-            },
-            update: {
-              name: h.name ?? null,
-              exchange: h.exchange ?? null,
-              sector: h.sector ?? null,
-              industry: h.industry ?? null,
-              shares: h.shares,
-              avgBuyPrice: h.avgBuyPrice ?? null,
-              target3Month: h.target3Month ?? null,
-              targetLongTerm: h.targetLongTerm ?? null,
-              targetSetDate: h.targetSetDate ?? null,
-              platform: h.platform ?? null,
-            },
-          });
-        }
-
-        await tx.portfolioHolding.deleteMany({
-          where: {
-            userId,
-            symbol: { notIn: symbols },
-          },
-        });
-      });
-    },
-    "portfolio-sync",
+    () =>
+      prisma.portfolioHolding.deleteMany({
+        where: { userId, symbol: { notIn: symbols } },
+      }),
+    "portfolio-delete-stale",
     0,
   );
 

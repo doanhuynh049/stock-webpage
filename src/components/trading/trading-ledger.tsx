@@ -21,6 +21,7 @@ import {
   formatDateDMY,
   parseDateDMY,
   parseFormattedNumber,
+  formatNumber,
   todayISO,
   changeColor,
 } from "@/lib/utils";
@@ -29,6 +30,30 @@ import {
   readTradingCache,
   writeTradingCache,
 } from "@/lib/client/trading-cache";
+
+/**
+ * Display a full-VND price as a K-format string for the unit price input.
+ * 74200 → "74,2"   (vi-VN locale: comma = decimal separator)
+ * 10000 → "10"
+ * 74250 → "74,25"
+ */
+function vndToKInput(vnd: number): string {
+  if (!vnd || vnd <= 0) return "";
+  const k = vnd / 1000;
+  const decimals = k % 1 === 0 ? 0 : k * 10 % 1 === 0 ? 1 : 2;
+  return formatNumber(k, decimals);
+}
+
+/**
+ * Parse the unit price input. Values are stored in K (thousands of VND) throughout
+ * the trading ledger, so no unit conversion is needed — just parse the locale-aware
+ * number string as-is.
+ *   "74,2"   → 74.2   "74.2"  → 74.2
+ *   "74.200" → 74200  (dot-separated thousands → full K value for large prices)
+ */
+function parseUnitPriceToVnd(raw: string): number {
+  return parseFormattedNumber(raw);
+}
 
 type TradeForm = {
   transactionDate: string;
@@ -150,11 +175,13 @@ export function TradingLedger() {
     const sym = searchParams.get("symbol")?.toUpperCase();
     if (add !== "1" && !sym) return;
 
-    const price = Number(searchParams.get("price"));
+    const priceVnd = Number(searchParams.get("price"));
+    // LogTradeLink passes full VND; form stores K (÷1000)
+    const priceK = Number.isFinite(priceVnd) && priceVnd > 0 ? priceVnd / 1000 : 0;
     openForm({
       ...emptyForm,
       itemName: sym ?? "",
-      unitPrice: Number.isFinite(price) && price > 0 ? price : 0,
+      unitPrice: priceK,
       exchange: searchParams.get("exchange") ?? "",
       sector: searchParams.get("sector") ?? "",
     });
@@ -172,12 +199,11 @@ export function TradingLedger() {
         .then((data: { stock?: { sector?: string; exchange?: string; price?: number } } | null) => {
           if (cancelled || !data?.stock) return;
           setForm((current) => {
-            const nextPrice =
-              current.unitPrice > 0
-                ? current.unitPrice
-                : data.stock!.price ?? current.unitPrice;
-            if (current.unitPrice <= 0 && data.stock!.price) {
-              setUnitPriceInput(formatPortfolioAmount(data.stock!.price));
+            // API price is full VND; form stores K (÷1000)
+            const priceK = data.stock!.price ? data.stock!.price / 1000 : 0;
+            const nextPrice = current.unitPrice > 0 ? current.unitPrice : priceK;
+            if (current.unitPrice <= 0 && priceK > 0) {
+              setUnitPriceInput(vndToKInput(data.stock!.price!));
             }
             return {
               ...current,
@@ -247,7 +273,7 @@ export function TradingLedger() {
     setForm(nextForm);
     setEditId(editingId);
     setDateInput(formatDateDMY(nextForm.transactionDate));
-    setUnitPriceInput(nextForm.unitPrice > 0 ? formatPortfolioAmount(nextForm.unitPrice) : "");
+    setUnitPriceInput(vndToKInput(nextForm.unitPrice));
     setAddAnother(false);
     setFormOpen(true);
   }
@@ -402,7 +428,10 @@ export function TradingLedger() {
         />
       </label>
       <label className="block">
-        <span className={modalLabelClass}>Unit price</span>
+        <span className={modalLabelClass}>
+          Unit price{" "}
+          <span className="font-normal text-subtle"></span>
+        </span>
         <input
           type="text"
           required
@@ -412,15 +441,20 @@ export function TradingLedger() {
           onChange={(e) => {
             const raw = e.target.value;
             setUnitPriceInput(raw);
-            setForm({ ...form, unitPrice: parseFormattedNumber(raw) });
+            setForm({ ...form, unitPrice: parseUnitPriceToVnd(raw) });
           }}
           onBlur={() => {
             if (form.unitPrice > 0) {
-              setUnitPriceInput(formatPortfolioAmount(form.unitPrice));
+              setUnitPriceInput(vndToKInput(form.unitPrice));
             }
           }}
           placeholder="0"
         />
+        {form.unitPrice > 0 && (
+          <span className="mt-0.5 block text-[10px] text-subtle">
+            = {Math.round(form.unitPrice * 1000).toLocaleString("vi-VN")} ₫
+          </span>
+        )}
       </label>
       <label className="block">
         <span className={modalLabelClass}>Exchange</span>
@@ -496,7 +530,7 @@ export function TradingLedger() {
         <button
           type="button"
           onClick={() => openForm(emptyForm)}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-accent px-4 py-2 text-sm font-bold text-white shadow-md ring-2 ring-accent/30 transition hover:opacity-90 hover:shadow-lg"
+          className="inline-flex items-center gap-1.5 rounded-lg bg-[var(--accent)] px-4 py-2 text-sm font-bold text-white shadow-md ring-2 ring-[var(--accent)]/30 transition hover:opacity-90 hover:shadow-lg"
         >
           <Plus className="h-4 w-4" /> Add trade
         </button>
@@ -553,7 +587,7 @@ export function TradingLedger() {
             <button
               type="submit"
               form="trade-form"
-              className="flex-1 rounded-lg bg-accent px-5 py-3 text-sm font-bold text-white shadow-md ring-2 ring-accent/30 transition hover:opacity-90 hover:shadow-lg sm:flex-none sm:min-w-[140px]"
+              className="flex-1 rounded-lg bg-[var(--accent)] px-5 py-3 text-sm font-bold text-white shadow-md ring-2 ring-[var(--accent)]/30 transition hover:opacity-90 hover:shadow-lg sm:flex-none sm:min-w-[140px]"
             >
               {editId ? "Save changes" : "Save trade"}
             </button>
