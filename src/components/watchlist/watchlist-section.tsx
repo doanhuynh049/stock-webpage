@@ -4,7 +4,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Card, CardTitle } from "@/components/ui/card";
 import { WatchlistGrid } from "@/components/watchlist/watchlist-grid";
 import { WatchlistAddPanel } from "@/components/watchlist/watchlist-add-panel";
+import type { WatchlistSuggestion } from "@/components/watchlist/watchlist-add-panel";
 import type { WatchlistItemView } from "@/lib/user-data";
+
+export type { WatchlistSuggestion };
 
 function mergeItems(
   local: WatchlistItemView[],
@@ -41,7 +44,7 @@ export function WatchlistSection({
   suggestions,
 }: {
   initialItems: WatchlistItemView[];
-  suggestions: string[];
+  suggestions: WatchlistSuggestion[];
 }) {
   const optimisticRef = useRef<Map<string, WatchlistItemView>>(new Map());
   const [items, setItems] = useState(() => initialItems);

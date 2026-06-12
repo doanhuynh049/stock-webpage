@@ -80,10 +80,9 @@ export async function getWatchlistWithStocks() {
   const session = await auth();
   if (!session?.user?.id) return { items: [], isAuthenticated: false };
 
-  if (shouldSkipDbReads()) {
-    return fromWatchlistCache(session.user.id);
-  }
-
+  // Watchlist is per-user live data — always read from DB when available.
+  // shouldSkipDbReads() is for bulk market data (recommendations, portfolio
+  // snapshots) not for user-specific rows that change on every add/remove.
   if (!isPersistenceEnabled()) {
     return fromWatchlistCache(session.user.id);
   }

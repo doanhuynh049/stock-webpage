@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Pencil, Plus, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -81,6 +81,7 @@ const emptyForm: TradeForm = {
 
 export function TradingLedger() {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const [filters, setFilters] = useState({ year: "", month: "", type: "", symbol: "" });
 
   // Do NOT read localStorage in useState initializers — they run during SSR
@@ -123,6 +124,7 @@ export function TradingLedger() {
           return;
         }
         let data: {
+          success?: boolean;
           trades?: TradeRecord[];
           summary?: TradeSummary;
           currentPrices?: Record<string, number>;
@@ -134,8 +136,10 @@ export function TradingLedger() {
           console.error("[trading] invalid JSON:", text.slice(0, 200));
           return;
         }
-        if (!res.ok && !data.trades) {
-          console.error("[trading] API error:", data.error);
+        // The GET handler returns HTTP 200 even on server errors (to avoid client-side
+        // uncaught exceptions). Guard explicitly so we never wipe the optimistic list.
+        if (!res.ok || data.success === false) {
+          console.error("[trading] GET error:", data.error);
           return;
         }
         const nextTrades = data.trades ?? [];
@@ -185,7 +189,9 @@ export function TradingLedger() {
       exchange: searchParams.get("exchange") ?? "",
       sector: searchParams.get("sector") ?? "",
     });
-  }, [searchParams]);
+    // Strip URL params so a page reload doesn't re-open the form
+    router.replace("/trading", { scroll: false });
+  }, [searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const sym = form.itemName.trim().toUpperCase();
@@ -351,6 +357,20 @@ export function TradingLedger() {
       if (!res.ok) {
         setTrades(prevTrades);
         return;
+      }
+      // Immediately replace the temp entry with the real server-returned trade so it
+      // survives even if the background load fails.
+      try {
+        const saved = (await res.clone().json()) as { trade?: TradeRecord };
+        if (saved.trade) {
+          setTrades((cur) =>
+            editId
+              ? cur.map((t) => (t.id === editId ? { ...saved.trade!, userId: t.userId } : t))
+              : cur.map((t) => (t.id === tempId ? { ...saved.trade!, userId: t.userId } : t)),
+          );
+        }
+      } catch {
+        /* ignore — background load will sync */
       }
       void load(true);
     })();
@@ -534,6 +554,42 @@ export function TradingLedger() {
         >
           <Plus className="h-4 w-4" /> Add trade
         </button>
+
+        {/* Type filter — BUY / ALL / SELL toggle chips */}
+        <div className="flex items-center rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] p-0.5">
+          {(["", "BUY", "SELL"] as const).map((t) => {
+            const label = t === "" ? "All" : t;
+            const active = filters.type === t;
+            const color =
+              t === "BUY"
+                ? "text-emerald-600 dark:text-emerald-400"
+                : t === "SELL"
+                  ? "text-red-500 dark:text-red-400"
+                  : "";
+            return (
+              <button
+                key={label}
+                type="button"
+                onClick={() => setFilters({ ...filters, type: t })}
+                className={[
+                  "rounded-md px-3 py-1 text-xs font-semibold transition",
+                  active
+                    ? `bg-[var(--card)] shadow-sm ${color || "text-[var(--fg)]"}`
+                    : "text-subtle hover:text-[var(--fg)]",
+                ].join(" ")}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
+
+        <input
+          placeholder="Symbol"
+          className="w-24 rounded border border-[var(--border)] bg-[var(--card)] px-2 py-1 text-xs uppercase"
+          value={filters.symbol}
+          onChange={(e) => setFilters({ ...filters, symbol: e.target.value })}
+        />
         <input
           placeholder="Year"
           className="w-20 rounded border border-[var(--border)] bg-[var(--card)] px-2 py-1 text-xs"
@@ -546,21 +602,6 @@ export function TradingLedger() {
           value={filters.month}
           onChange={(e) => setFilters({ ...filters, month: e.target.value })}
         />
-        <input
-          placeholder="Symbol"
-          className="w-24 rounded border border-[var(--border)] bg-[var(--card)] px-2 py-1 text-xs uppercase"
-          value={filters.symbol}
-          onChange={(e) => setFilters({ ...filters, symbol: e.target.value })}
-        />
-        <select
-          className="rounded border border-[var(--border)] bg-[var(--card)] px-2 py-1 text-xs"
-          value={filters.type}
-          onChange={(e) => setFilters({ ...filters, type: e.target.value })}
-        >
-          <option value="">All</option>
-          <option value="BUY">BUY</option>
-          <option value="SELL">SELL</option>
-        </select>
       </div>
 
       <FormModal
@@ -615,10 +656,10 @@ export function TradingLedger() {
         </p>
       )}
 
-      <div className="max-h-[70vh] overflow-auto rounded-xl ring-1 ring-[var(--border)]">
-        <table className="w-full min-w-[960px] text-sm">
+      <div className="overflow-x-auto rounded-xl ring-1 ring-[var(--border)]">
+        <table className="w-full min-w-[900px] border-collapse text-sm">
           <thead>
-            <tr className="sticky top-0 z-10 border-b border-[var(--border)] bg-[var(--bg-secondary)] text-left text-[10px] uppercase text-subtle">
+            <tr className="border-b border-[var(--border)] bg-[var(--bg-secondary)] text-left text-[10px] font-semibold uppercase tracking-wider text-subtle">
               <SortableTableHeader label="Date" column="date" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-2 py-2" />
               <SortableTableHeader label="Type" column="type" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-2 py-2" />
               <SortableTableHeader label="Symbol" column="symbol" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-2 py-2" />

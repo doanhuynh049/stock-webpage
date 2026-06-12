@@ -8,6 +8,7 @@ import {
   summarizeTrades,
 } from "@/lib/db/trading-store";
 import type { TradeInput } from "@/lib/db/trading-types";
+import { log } from "@/lib/logger";
 
 export async function GET(request: Request) {
   const session = await auth();
@@ -45,7 +46,7 @@ export async function GET(request: Request) {
       totalForUser: trades.length,
     });
   } catch (error) {
-    console.error("[api/trading] GET failed:", error);
+    log.error("trading-api", "GET failed", { error: (error as Error).message });
     return NextResponse.json(
       {
         success: false,
@@ -79,11 +80,13 @@ export async function POST(request: Request) {
 
   try {
     const trade = await addTrade(session.user.id, body);
+    log.info("trading-api", "trade saved", { symbol: body.itemName, type: body.transactionType, qty: body.quantity });
     revalidatePath("/portfolio");
     revalidateTag(`portfolio-${session.user.id}`, { expire: 0 });
     revalidateTag(`analysis-${session.user.id}`, { expire: 0 });
     return NextResponse.json({ success: true, trade, portfolioSynced: true });
   } catch (error) {
+    log.error("trading-api", "POST failed", { error: (error as Error).message, symbol: body.itemName });
     return NextResponse.json(
       { success: false, error: (error as Error).message },
       { status: 500 },

@@ -2923,5 +2923,35 @@
     "transactionType": "BUY",
     "exchange": "HOSE",
     "sector": "Technology"
+  },
+  {
+    "id": "5597d924-8022-4952-af4d-993b3bdaf942",
+    "userId": "148e4bc6-7f91-440e-b407-9f5e4a22706f",
+    "transactionDate": "2026-06-12",
+    "itemName": "BMP",
+    "quantity": 10,
+    "unitPrice": 135.2,
+    "totalAmount": 1352,
+    "fee": 0,
+    "tax": 0,
+    "profit": null,
+    "transactionType": "BUY",
+    "exchange": "HOSE",
+    "sector": "Plastics"
+  },
+  {
+    "id": "448bb382-2bc6-464f-810e-d5edc613b418",
+    "userId": "148e4bc6-7f91-440e-b407-9f5e4a22706f",
+    "transactionDate": "2026-06-12",
+    "itemName": "FPT",
+    "quantity": 10,
+    "unitPrice": 73.1,
+    "totalAmount": 731,
+    "fee": 0,
+    "tax": 0,
+    "profit": null,
+    "transactionType": "BUY",
+    "exchange": "HOSE",
+    "sector": "Technology"
   }
 ]

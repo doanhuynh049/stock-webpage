@@ -2,8 +2,6 @@ import { Bell, Star } from "lucide-react";
 import { Card, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/ui/page-header";
 import { EmptyState } from "@/components/ui/empty-state";
-import { StockAvatar } from "@/components/ui/stock-avatar";
-import Link from "next/link";
 import { WatchlistSection } from "@/components/watchlist/watchlist-section";
 import { getVN30Universe } from "@/lib/analysis/index-universe";
 import { getWatchlistWithStocks } from "@/lib/user-data";
@@ -26,7 +24,11 @@ export default async function WatchlistPage() {
 
   const watched = new Set(watchlist.items.map((w) => w.symbol.toUpperCase()));
   const notWatched = vn30.filter((s) => !watched.has(s.symbol.toUpperCase()));
-  const suggestions = notWatched.map((s) => s.symbol);
+  const suggestions = notWatched.map((s) => ({
+    symbol: s.symbol,
+    name: s.name ?? s.symbol,
+    sector: s.sector ?? "",
+  }));
 
   return (
     <div className="space-y-8">
@@ -67,24 +69,6 @@ export default async function WatchlistPage() {
         </p>
       </Card>
 
-      {notWatched.length > 0 && (
-        <Card>
-          <CardTitle>Discover stocks</CardTitle>
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-            {notWatched.slice(0, 9).map((s) => (
-              <Link
-                key={s.symbol}
-                href={`/stocks/${s.symbol}`}
-                className="interactive-row flex items-center gap-3 px-3 py-2.5 ring-1 ring-[var(--border)] hover:ring-[var(--accent)]/25"
-              >
-                <StockAvatar symbol={s.symbol} sector={s.sector} size="sm" />
-                <span className="font-semibold text-[var(--fg)]">{s.symbol}</span>
-                <span className="flex-1 truncate text-[10px] text-subtle">{s.sector}</span>
-              </Link>
-            ))}
-          </div>
-        </Card>
-      )}
     </div>
   );
 }

@@ -14,6 +14,7 @@ import {
   isConnectivityError,
   withDbRetry,
 } from "@/lib/prisma-query";
+import { log } from "@/lib/logger";
 
 async function uniqueUsername(
   email: string,
@@ -183,21 +184,24 @@ export async function addToWatchlist(symbol: string): Promise<WatchlistResult> {
   }
 
   try {
+    // upsert() uses an interactive transaction internally, which is forbidden by
+    // Neon's HTTP driver (DB_DRIVER=http). Use createMany with skipDuplicates
+    // instead — it maps to a single "INSERT … ON CONFLICT DO NOTHING" statement.
     await withDbRetry(
       () =>
-        prisma.watchlistItem.upsert({
-          where: { userId_symbol: { userId, symbol: sym } },
-          create: { userId, symbol: sym },
-          update: {},
+        prisma.watchlistItem.createMany({
+          data: [{ userId, symbol: sym }],
+          skipDuplicates: true,
         }),
       "watchlist-add",
       0,
     );
   } catch (error) {
-    console.error("[addToWatchlist]", error);
+    log.error("watchlist", "addToWatchlist DB error", { userId, symbol: sym, error: (error as Error).message });
     return { error: dbErrorMessage(error) };
   }
 
+  log.info("watchlist", "addToWatchlist ok", { userId, symbol: sym });
   revalidatePath("/watchlist");
   revalidatePath("/");
   revalidatePath(`/stocks/${sym}`);
@@ -224,10 +228,11 @@ export async function removeFromWatchlist(symbol: string): Promise<WatchlistResu
       0,
     );
   } catch (error) {
-    console.error("[removeFromWatchlist]", error);
+    log.error("watchlist", "removeFromWatchlist DB error", { userId, symbol: sym, error: (error as Error).message });
     return { error: dbErrorMessage(error) };
   }
 
+  log.info("watchlist", "removeFromWatchlist ok", { userId, symbol: sym });
   revalidatePath("/watchlist");
   revalidatePath("/");
   return { success: true };
