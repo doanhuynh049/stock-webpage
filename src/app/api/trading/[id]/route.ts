@@ -3,6 +3,10 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { removeTrade, updateTrade } from "@/lib/db/trading-store";
 import type { TradeInput } from "@/lib/db/trading-types";
+import { log } from "@/lib/logger";
+
+// Never cache — per-user, changes on every mutation.
+export const dynamic = "force-dynamic";
 
 type Params = { params: Promise<{ id: string }> };
 
@@ -22,11 +26,13 @@ export async function PUT(request: Request, { params }: Params) {
 
   try {
     const trade = await updateTrade(session.user.id, id, body);
+    log.info("trading-api", "trade updated", { id, symbol: body.itemName, type: body.transactionType });
     revalidatePath("/portfolio");
     revalidateTag(`portfolio-${session.user.id}`, { expire: 0 });
     revalidateTag(`analysis-${session.user.id}`, { expire: 0 });
     return NextResponse.json({ success: true, trade, portfolioSynced: true });
   } catch (error) {
+    log.error("trading-api", "PUT failed", { id, error: (error as Error).message });
     return NextResponse.json(
       { success: false, error: (error as Error).message },
       { status: 500 },
@@ -43,11 +49,13 @@ export async function DELETE(_request: Request, { params }: Params) {
   const { id } = await params;
   try {
     await removeTrade(session.user.id, id);
+    log.info("trading-api", "trade deleted", { id });
     revalidatePath("/portfolio");
     revalidateTag(`portfolio-${session.user.id}`, { expire: 0 });
     revalidateTag(`analysis-${session.user.id}`, { expire: 0 });
     return NextResponse.json({ success: true, portfolioSynced: true });
   } catch (error) {
+    log.error("trading-api", "DELETE failed", { id, error: (error as Error).message });
     return NextResponse.json(
       { success: false, error: (error as Error).message },
       { status: 500 },

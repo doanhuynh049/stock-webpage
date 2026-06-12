@@ -25,7 +25,12 @@ import {
   todayISO,
   changeColor,
 } from "@/lib/utils";
-import type { TradeRecord, TradeSummary, TradeType } from "@/lib/db/trading-types";
+import {
+  summarizeTrades,
+  type TradeRecord,
+  type TradeSummary,
+  type TradeType,
+} from "@/lib/db/trading-types";
 import {
   readTradingCache,
   writeTradingCache,
@@ -79,7 +84,7 @@ const emptyForm: TradeForm = {
   sector: "",
 };
 
-export function TradingLedger() {
+export function TradingLedger({ userId }: { userId?: string }) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [filters, setFilters] = useState({ year: "", month: "", type: "", symbol: "" });
@@ -90,7 +95,12 @@ export function TradingLedger() {
   const [trades, setTrades] = useState<TradeRecord[]>([]);
   type SortKey = "date" | "type" | "symbol" | "qty" | "price" | "total" | "vsNow" | "profit" | "exchange";
   const { sortKey, sortDir, toggleSort } = useTableSort<SortKey>("date", "desc");
-  const [summary, setSummary] = useState<TradeSummary | null>(null);
+  // Derive summary directly from trades so stat cards update instantly on
+  // optimistic add/edit/remove — no wait for the background GET to complete.
+  const summary: TradeSummary | null = useMemo(
+    () => (trades.length > 0 ? summarizeTrades(trades) : null),
+    [trades],
+  );
   const [prices, setPrices] = useState<Record<string, number>>({});
   const [formOpen, setFormOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
@@ -106,7 +116,7 @@ export function TradingLedger() {
     async (background = false) => {
       if (background) {
         setRefreshing(true);
-      } else if (!readTradingCache(filters)) {
+      } else if (!readTradingCache(filters, userId)) {
         setLoading(true);
       }
       try {
@@ -115,11 +125,10 @@ export function TradingLedger() {
         if (filters.month) q.set("month", filters.month);
         if (filters.type) q.set("type", filters.type);
         if (filters.symbol) q.set("symbol", filters.symbol.toUpperCase());
-        const res = await fetch(`/api/trading?${q}`);
+        const res = await fetch(`/api/trading?${q}`, { cache: "no-store" });
         const text = await res.text();
         if (!text.trim()) {
           setTrades([]);
-          setSummary(null);
           setPrices({});
           return;
         }
@@ -143,29 +152,26 @@ export function TradingLedger() {
           return;
         }
         const nextTrades = data.trades ?? [];
-        const nextSummary = data.summary ?? null;
         const nextPrices = data.currentPrices ?? {};
         setTrades(nextTrades);
-        setSummary(nextSummary);
         setPrices(nextPrices);
         writeTradingCache(filters, {
           trades: nextTrades,
-          summary: nextSummary,
+          summary: data.summary ?? null,
           prices: nextPrices,
-        });
+        }, userId);
       } finally {
         setLoading(false);
         setRefreshing(false);
       }
     },
-    [filters],
+    [filters, userId],
   );
 
   useEffect(() => {
-    const cached = readTradingCache(filters);
+    const cached = readTradingCache(filters, userId);
     if (cached) {
       setTrades(cached.trades);
-      setSummary(cached.summary);
       setPrices(cached.prices);
       setLoading(false);
       void load(true);

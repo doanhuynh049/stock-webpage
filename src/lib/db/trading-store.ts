@@ -10,6 +10,7 @@ import type {
   TradeSummary,
   TradeType,
 } from "@/lib/db/trading-types";
+export { summarizeTrades } from "@/lib/db/trading-types";
 import { rebuildPortfolioFromTrades } from "@/lib/portfolio/from-trades";
 import {
   listPortfolioHoldings,
@@ -248,39 +249,6 @@ async function deleteTradeDb(userId: string, id: string) {
   );
 }
 
-export function summarizeTrades(trades: TradeRecord[]): TradeSummary {
-  let buys = 0;
-  let sells = 0;
-  let totalProfit = 0;
-  let evaluatedSells = 0;
-  let winningSells = 0;
-  const dates: string[] = [];
-
-  for (const t of trades) {
-    dates.push(t.transactionDate);
-    if (t.transactionType === "SELL") {
-      sells++;
-      if (t.profit != null) {
-        totalProfit += t.profit;
-        evaluatedSells++;
-        if (t.profit > 0) winningSells++;
-      }
-    } else {
-      buys++;
-    }
-  }
-
-  dates.sort();
-  return {
-    total: trades.length,
-    buys,
-    sells,
-    totalProfit,
-    winRate: evaluatedSells > 0 ? (winningSells / evaluatedSells) * 100 : null,
-    firstDate: dates[0] ?? null,
-    lastDate: dates.at(-1) ?? null,
-  };
-}
 
 /** Bootstrap ledger from portfolio holdings when no trades exist (one BUY per position). */
 export async function seedTradesFromPortfolioHoldings(

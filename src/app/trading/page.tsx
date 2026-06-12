@@ -39,7 +39,7 @@ export default async function TradingPage() {
       <Card className="!p-4">
         <CardTitle className="!mb-3 !text-base">Trade ledger</CardTitle>
         <Suspense fallback={<p className="text-sm text-muted">Loading ledger…</p>}>
-          <TradingLedger />
+          <TradingLedger userId={session.user.id} />
         </Suspense>
       </Card>
     </div>

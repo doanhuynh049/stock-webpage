@@ -10,6 +10,9 @@ import {
 import type { TradeInput } from "@/lib/db/trading-types";
 import { log } from "@/lib/logger";
 
+// Never cache — trades are per-user and change on every mutation.
+export const dynamic = "force-dynamic";
+
 export async function GET(request: Request) {
   const session = await auth();
   if (!session?.user?.id) {
@@ -38,13 +41,16 @@ export async function GET(request: Request) {
       if (price > 0) currentPrices[sym] = price / 1000;
     }
 
-    return NextResponse.json({
-      success: true,
-      trades,
-      summary: summarizeTrades(trades),
-      currentPrices,
-      totalForUser: trades.length,
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        trades,
+        summary: summarizeTrades(trades),
+        currentPrices,
+        totalForUser: trades.length,
+      },
+      { headers: { "Cache-Control": "no-store" } },
+    );
   } catch (error) {
     log.error("trading-api", "GET failed", { error: (error as Error).message });
     return NextResponse.json(
