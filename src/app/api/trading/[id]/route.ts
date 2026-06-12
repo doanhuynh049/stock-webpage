@@ -27,6 +27,7 @@ export async function PUT(request: Request, { params }: Params) {
   try {
     const trade = await updateTrade(session.user.id, id, body);
     log.info("trading-api", "trade updated", { id, symbol: body.itemName, type: body.transactionType });
+    revalidatePath("/trading");
     revalidatePath("/portfolio");
     revalidateTag(`portfolio-${session.user.id}`, { expire: 0 });
     revalidateTag(`analysis-${session.user.id}`, { expire: 0 });
@@ -50,6 +51,7 @@ export async function DELETE(_request: Request, { params }: Params) {
   try {
     await removeTrade(session.user.id, id);
     log.info("trading-api", "trade deleted", { id });
+    revalidatePath("/trading");
     revalidatePath("/portfolio");
     revalidateTag(`portfolio-${session.user.id}`, { expire: 0 });
     revalidateTag(`analysis-${session.user.id}`, { expire: 0 });

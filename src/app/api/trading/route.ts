@@ -87,6 +87,7 @@ export async function POST(request: Request) {
   try {
     const trade = await addTrade(session.user.id, body);
     log.info("trading-api", "trade saved", { symbol: body.itemName, type: body.transactionType, qty: body.quantity });
+    revalidatePath("/trading");
     revalidatePath("/portfolio");
     revalidateTag(`portfolio-${session.user.id}`, { expire: 0 });
     revalidateTag(`analysis-${session.user.id}`, { expire: 0 });

@@ -161,30 +161,39 @@ async function readDbTrades(userId: string): Promise<TradeRecord[]> {
   if (!isPersistenceEnabled()) return [];
   const prefix = `${userId}__`;
   try {
-    const prefixed = await withDbRetry(
-      () =>
-        prisma.tradingTransaction.findMany({
-          where: { id: { startsWith: prefix } },
-          orderBy: { transactionDate: "desc" },
-        }),
-      "trading-list",
-      0,
-    );
-    if (prefixed.length) {
-      return prefixed.map((r) => toRecord(userId, r));
-    }
+    // Always fetch BOTH sets in parallel:
+    //   • prefixed  — trades added via this webapp  (id like "{userId}__uuid")
+    //   • legacy    — trades synced from stock-service (plain UUID, no "__")
+    // Previously the code returned only prefixed when any existed, which silently
+    // dropped all historical trades the first time a new trade was added.
+    const [prefixed, legacy] = await Promise.all([
+      withDbRetry(
+        () =>
+          prisma.tradingTransaction.findMany({
+            where: { id: { startsWith: prefix } },
+            orderBy: { transactionDate: "desc" },
+          }),
+        "trading-list-prefixed",
+        0,
+      ),
+      withDbRetry(
+        () =>
+          prisma.tradingTransaction.findMany({
+            where: { NOT: { id: { contains: "__" } } },
+            orderBy: { transactionDate: "desc" },
+          }),
+        "trading-list-legacy",
+        0,
+      ),
+    ]);
 
-    // stock-service stores plain UUID ids (no user prefix) — single-user legacy mirror
-    const legacy = await withDbRetry(
-      () =>
-        prisma.tradingTransaction.findMany({
-          where: { NOT: { id: { contains: "__" } } },
-          orderBy: { transactionDate: "desc" },
-        }),
-      "trading-list-legacy",
-      0,
-    );
-    return legacy.map((r) => ({ ...toLegacyRecord(r), userId }));
+    const merged: TradeRecord[] = [
+      ...prefixed.map((r) => toRecord(userId, r)),
+      ...legacy.map((r) => ({ ...toLegacyRecord(r), userId })),
+    ];
+    // Re-sort after merging two separately-ordered result sets.
+    merged.sort((a, b) => b.transactionDate.localeCompare(a.transactionDate));
+    return merged;
   } catch (err) {
     console.warn("[trading] DB read failed:", (err as Error).message);
     return [];
