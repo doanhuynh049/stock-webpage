@@ -31,10 +31,14 @@ export async function listPortfolioHoldings(userId: string) {
 /**
  * Full replace sync — mirrors stock-service replacePortfolioHoldings.
  *
- * Uses individual queries instead of prisma.$transaction() because the Neon
- * HTTP driver used on Vercel (DB_DRIVER=http) does NOT support interactive
- * transactions. Individual upserts + a trailing deleteMany achieve the same
- * result without a transaction wrapper.
+ * Two queries: deleteMany (all user rows) → createMany (rebuilt list).
+ * This is safe on Vercel/Neon HTTP because:
+ *  - The Neon HTTP driver does NOT support interactive transactions, so we
+ *    cannot wrap these in a transaction anyway.
+ *  - The gap between delete and create is sub-millisecond inside a single
+ *    serverless invocation; cache tags are busted only after both complete.
+ *  - 2 round-trips vs the old N-upserts + 1-deleteMany (e.g. 26 for 25 holdings)
+ *    dramatically reduces Vercel function duration and Neon connection pressure.
  */
 export async function syncPortfolioHoldings(
   userId: string,
@@ -45,65 +49,50 @@ export async function syncPortfolioHoldings(
   );
   const symbols = rows.map((h) => h.symbol.toUpperCase());
 
-  if (symbols.length === 0) {
+  log.debug("portfolio-sync", "syncPortfolioHoldings start", { userId, incoming: symbols.length });
+
+  // Step 1: wipe existing holdings for this user.
+  try {
     await withDbRetry(
       () => prisma.portfolioHolding.deleteMany({ where: { userId } }),
-      "portfolio-clear",
+      "portfolio-delete-all",
       0,
     );
+  } catch (err) {
+    log.error("portfolio-sync", "deleteMany failed", { userId, error: (err as Error).message });
+    throw err;
+  }
+
+  if (rows.length === 0) {
+    log.info("portfolio-sync", "syncPortfolioHoldings: cleared all holdings", { userId });
     return 0;
   }
 
-  log.debug("portfolio-sync", "syncPortfolioHoldings start", { userId, incoming: symbols.length, symbols });
-
-  // Upsert each incoming holding individually
-  for (const h of rows) {
-    const sym = h.symbol.toUpperCase();
-    const fields = {
-      name: h.name ?? null,
-      exchange: h.exchange ?? null,
-      sector: h.sector ?? null,
-      industry: h.industry ?? null,
-      shares: h.shares,
-      avgBuyPrice: h.avgBuyPrice ?? null,
-      target3Month: h.target3Month ?? null,
-      targetLongTerm: h.targetLongTerm ?? null,
-      targetSetDate: h.targetSetDate ?? null,
-      platform: h.platform ?? null,
-    };
-    try {
-      await withDbRetry(
-        () =>
-          prisma.portfolioHolding.upsert({
-            where: { userId_symbol: { userId, symbol: sym } },
-            create: { userId, symbol: sym, ...fields },
-            update: fields,
-          }),
-        "portfolio-upsert",
-        0,
-      );
-      log.debug("portfolio-sync", "upserted holding", { userId, symbol: sym, shares: h.shares });
-    } catch (err) {
-      log.error("portfolio-sync", "upsert failed", { userId, symbol: sym, error: (err as Error).message });
-      throw err;
-    }
-  }
-
-  // Remove any holdings that are no longer in the rebuilt list
+  // Step 2: bulk-insert the rebuilt list.
   try {
-    const deleted = await withDbRetry(
+    await withDbRetry(
       () =>
-        prisma.portfolioHolding.deleteMany({
-          where: { userId, symbol: { notIn: symbols } },
+        prisma.portfolioHolding.createMany({
+          data: rows.map((h) => ({
+            userId,
+            symbol: h.symbol.toUpperCase(),
+            name: h.name ?? null,
+            exchange: h.exchange ?? null,
+            sector: h.sector ?? null,
+            industry: h.industry ?? null,
+            shares: h.shares,
+            avgBuyPrice: h.avgBuyPrice ?? null,
+            target3Month: h.target3Month ?? null,
+            targetLongTerm: h.targetLongTerm ?? null,
+            targetSetDate: h.targetSetDate ?? null,
+            platform: h.platform ?? null,
+          })),
         }),
-      "portfolio-delete-stale",
-      0,
+      "portfolio-createMany",
+      1,
     );
-    if (deleted.count > 0) {
-      log.info("portfolio-sync", "removed stale holdings", { userId, removed: deleted.count });
-    }
   } catch (err) {
-    log.error("portfolio-sync", "deleteMany stale failed", { userId, error: (err as Error).message });
+    log.error("portfolio-sync", "createMany failed", { userId, symbols, error: (err as Error).message });
     throw err;
   }
 
