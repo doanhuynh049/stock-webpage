@@ -9,6 +9,7 @@ export function StatCard({
   change,
   icon: Icon,
   accent,
+  valueClass,
 }: {
   label: string;
   value: string;
@@ -16,6 +17,8 @@ export function StatCard({
   change?: number;
   icon?: LucideIcon;
   accent?: "emerald" | "cyan" | "violet" | "amber";
+  /** Optional override for the value text colour, e.g. "text-emerald-500" */
+  valueClass?: string;
 }) {
   const accents = {
     emerald: "from-emerald-500/10 to-transparent",
@@ -36,7 +39,7 @@ export function StatCard({
           <p className="text-[11px] font-semibold uppercase tracking-wider text-subtle">
             {label}
           </p>
-          <p className="mt-2 font-mono text-2xl font-bold tracking-tight text-[var(--fg)]">
+          <p className={cn("mt-2 font-mono text-2xl font-bold tracking-tight", valueClass ?? "text-[var(--fg)]")}>
             {value}
           </p>
           {subValue && (

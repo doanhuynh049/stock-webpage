@@ -28,6 +28,7 @@ import {
   INVESTMENT_PRINCIPLES,
   PRINCIPLES_IN_APP,
 } from "@/lib/content/investment-principles";
+import { StockEvaluationPanel } from "@/components/analysis/stock-evaluation-panel";
 
 type MainTab = "portfolio" | "sector" | "etf" | "vn30" | "vn100" | "rules" | "principles";
 type SubTab = "fundamental" | "technical" | "combined";
@@ -624,8 +625,18 @@ export function AnalysisView({
                   <RulesPanel />
                 </div>
               ) : mainTab === "principles" ? (
-                <div className="p-2">
-                  <PrinciplesPanel />
+                <div className="grid gap-0 lg:grid-cols-[1fr_1px_1fr]">
+                  {/* Left — Stock evaluator */}
+                  <div className="p-4">
+                    <StockEvaluationPanel />
+                  </div>
+                  {/* Divider */}
+                  <div className="hidden bg-[var(--border)] lg:block" />
+                  {/* Right — Investment principles */}
+                  <div className="border-t border-[var(--border)] p-4 lg:border-t-0">
+                    <p className="mb-3 text-sm font-semibold text-[var(--fg)]">Investment Principles</p>
+                    <PrinciplesPanel />
+                  </div>
                 </div>
               ) : subTab === "fundamental" ? (
                 <FundamentalTable

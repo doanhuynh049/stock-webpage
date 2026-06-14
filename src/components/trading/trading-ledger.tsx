@@ -535,12 +535,14 @@ export function TradingLedger({ userId }: { userId?: string }) {
           <StatCard
             label="Net P/L"
             value={formatPortfolioAmount(summary.totalProfit, 0)}
-            accent="amber"
+            accent={summary.totalProfit >= 0 ? "emerald" : "amber"}
+            valueClass={summary.totalProfit > 0 ? "text-emerald-500" : summary.totalProfit < 0 ? "text-red-500" : undefined}
           />
           <StatCard
             label="Win rate"
             value={summary.winRate != null ? formatPortfolioPercent(summary.winRate, 0) : "—"}
             accent="emerald"
+            valueClass={summary.winRate != null && summary.winRate > 0 ? "text-emerald-500" : undefined}
           />
           <StatCard
             label="Range"
