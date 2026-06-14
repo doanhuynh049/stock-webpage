@@ -68,6 +68,26 @@ See [data-flow.md](data-flow.md) and `.cursor/rules/vercel-cache.mdc`.
 - **Rules copy**: `src/lib/analysis/scoring-rules.ts`
 - **Principles copy**: `src/lib/content/investment-principles.ts`, `data/investment-principles.json`
 - **Sector P/E**: from snapshot store + `.cache/pe-ratios.json` (local disk only)
+- **Principles tab** (Jun 2026): side-by-side layout — left = **Stock Evaluator** (`StockEvaluationPanel` → `/api/stock-eval`), right = investment principles reference
+
+## Stock Evaluator (Jun 2026)
+
+- Enter any VN ticker → 8-category AI analysis (Business / Financial / Valuation / Risks / Growth / Management / Timing / Fit)
+- Uses Groq/Gemini LLM: quantitative from live data, qualitative from LLM training knowledge
+- Falls back to rule-based analysis if LLM unavailable
+- Returns `StockEvalResult` from `src/app/api/stock-eval/route.ts`
+
+## Sector colors & avatars (Jun 2026)
+
+- `sector-colors.ts` exports `SECTOR_ALIAS` (long → short name map) and `shortSectorName(name)`
+- All long DB sector names like `"Banking & Financial Services"` now resolve to correct colors + icons
+- `stock-avatar.tsx` uses `shortSectorName()` before looking up `SECTOR_ICONS`
+- ETF sector color: `#10b981` (emerald); ETF icon: `BarChart2`
+
+## Trading fixes (Jun 2026)
+
+- **Trade ID**: `trading_transaction.id` is `VARCHAR(64)`. New trades use `{userId.slice(0,8)}__{uuid}` = 46 chars. Full UUID prefix (74 chars) was overflowing the column and silently failing every trade write.
+- **Exchange inference**: `advisory-portfolio.ts` calls `inferExchange(symbol)` when `portfolio_holding.exchange` is NULL → uses `lookupIndexStock` then HNX list, defaults to HOSE
 
 ## Action-first pattern
 

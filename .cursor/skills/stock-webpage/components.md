@@ -56,10 +56,10 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 | `card.tsx` | Server | Card container + title |
 | `input.tsx` | Server | Input, label, select |
 | `page-header.tsx` | Server | Page title + description + badge slot |
-| `stat-card.tsx` | Server | KPI metric tile |
+| `stat-card.tsx` | Server | KPI metric tile; optional **`valueClass`** prop overrides value text color (e.g. `"text-emerald-500"` for positive P/L) |
 | `empty-state.tsx` | Server | Auth-gated empty page with CTA |
 | `brand-logo.tsx` | Server | App logo SVG |
-| `stock-avatar.tsx` | Server | Sector-colored ticker avatar |
+| `stock-avatar.tsx` | Server | Sector-colored ticker avatar; resolves long sector names (e.g. `"Banking & Financial Services"`) via **`shortSectorName()`** — shows correct icon + color for all sectors including ETF |
 | `markdown-lite.tsx` | Client | Minimal markdown for AI replies |
 | `db-unavailable-banner.tsx` | Server | DB connectivity warning |
 
@@ -84,22 +84,24 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 
 | File | Type | Purpose |
 |------|------|---------|
-| `portfolio-charts.tsx` | Client | Sector allocation pie + value summary |
+| `portfolio-charts.tsx` | Client | Sector allocation donut + breakdown cards; **redesigned Jun 2026** — interactive donut (hover dims other slices), gradient progress bars, compact legend, summary card; uses `shortSectorName()` |
 | `holdings-ledger.tsx` | Client | **Sortable** holdings table; optimistic save → `POST /api/portfolio` |
 
 ### `trading/`
 
 | File | Type | Purpose |
 |------|------|---------|
-| `trading-ledger.tsx` | Client | CRUD trade table; optimistic mutations → `/api/trading` |
+| `trading-ledger.tsx` | Client | CRUD trade table; optimistic mutations → `/api/trading`; **Net P/L + Win rate StatCards** are green when positive, red when negative |
 
 ### `analysis/`
 
 | File | Type | Purpose |
 |------|------|---------|
-| `analysis-view.tsx` | Client | Tabs: Portfolio / Sector / VN30 / VN100 / **Scoring rules** / **Principles** |
+| `analysis-view.tsx` | Client | Tabs: Portfolio / Sector / VN30 / VN100 / **Scoring rules** / **Principles**; **Principles tab** = left (StockEvaluationPanel) + right (investment principles) side-by-side |
 | `sector-analysis-view.tsx` | Client | Per-sector leaders + trend leaders panel |
 | `analysis-detail-panel.tsx` | Client | Slide-over detail for scored row |
+| `stock-evaluation-panel.tsx` | Client | **NEW (Jun 2026)** — 8-category AI stock evaluation; user enters ticker → calls `/api/stock-eval` → renders accordion (Business / Financial / Valuation / Risks / Growth / Management / Timing / Fit) + final-decision checklist + verdict banner |
+| `etf-analysis-view.tsx` | Client | ETF-specific analysis rows |
 
 ### `strategy/`
 
@@ -192,7 +194,7 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 | `screener-defaults.ts` | Default screener params + URL redirect helper |
 | `providers/entrade.ts` | Entrade API |
 | `providers/yahoo.ts` | Yahoo Finance fallback |
-| `sector-colors.ts` | Sector → color mapping |
+| `sector-colors.ts` | Sector → color mapping; **`SECTOR_ALIAS`** maps long names (e.g. `"Banking & Financial Services"`) to canonical short keys; **`shortSectorName()`** returns display-safe short name; ETF color added |
 | `cache/pe-cache.ts` | Sector P/E Yahoo fallback cache (local disk only) |
 
 ### Analysis
@@ -275,11 +277,12 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 | `/api/picks` | GET | Investment picks | Public | — |
 | `/api/data/sync` | GET, POST | Market data sync | Session / cron | — |
 | `/api/portfolio` | GET, POST | Portfolio holdings | Session | `portfolio-*`, `analysis-*` |
-| `/api/trading` | GET, POST | Trades list/add | Session | `portfolio-*`, `analysis-*` |
+| `/api/trading` | GET, POST | Trades list/add; supports `dateFrom`/`dateTo` filters | Session | `portfolio-*`, `analysis-*` |
 | `/api/trading/[id]` | PUT, DELETE | Update/delete trade | Session | `portfolio-*`, `analysis-*` |
 | `/api/strategy` | GET, PUT, DELETE | Strategy config | Session | — |
 | `/api/ai` | POST | AI analyst Q&A | Session | — |
 | `/api/ai/session` | GET, DELETE | Chat session | Session | — |
+| `/api/stock-eval` | GET | **NEW (Jun 2026)** — 8-category AI investment evaluation for any ticker (`?symbol=FPT`); fetches live data + `analyzeStock` scores; calls Groq/Gemini; rule-based fallback | Session | — |
 
 ---
 

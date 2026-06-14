@@ -87,17 +87,21 @@ await prisma.$executeRaw(
 
 ## Trade ID conventions (`trading_transaction.id`)
 
-| Pattern | Example | When |
-|---------|---------|------|
-| Prefixed | `{userId}__{uuid}` | Web app writes via `trading-store.addTrade` |
-| Legacy UUID | plain UUID, no `__` | stock-service import directly into Neon |
+| Pattern | Example | Length | When |
+|---------|---------|--------|------|
+| **Short-prefixed** | `{8-char-userId}__{uuid}` | 46 chars | Web app writes (Jun 2026+) |
+| Legacy UUID | plain UUID, no `__` | 36 chars | stock-service import directly into Neon |
+
+> **Why 8-char prefix?** `trading_transaction.id` is `VARCHAR(64)`. A full UUID prefix would be `36+2+36=74 chars` — exceeds the column limit. Using the first 8 chars: `8+2+36=46 chars` ✓. Previous code used the full userId prefix and **all new trade writes were silently failing** with `"value too long for type character varying(64)"`. Fixed Jun 2026.
 
 `listTrades(userId)` resolution order (verified Jun 2026):
 
 1. **Local dev**: `data/user-trades/{userId}.json` (read/write)
-2. **Prefixed Neon**: `WHERE id LIKE '{userId}__%'` (Prisma `startsWith`)
+2. **Prefixed Neon**: `WHERE id LIKE '{userId.slice(0,8)}__%'` (Prisma `startsWith` with `USER_PREFIX_LEN=8`)
 3. **Legacy Neon**: `WHERE STRPOS(id, '__') = 0` — **must use raw SQL**, NOT Prisma `contains: "__"` (Prisma generates `LIKE '%__%'` where `_` is a SQL wildcard — matches everything)
 4. **Bundled JSON fallback**: read-only `data/user-trades/{userId}.json` shipped in repo — used when Neon is empty or fails transiently
+
+`stripUserPrefix(userId, id)` handles both the short 8-char format and any legacy long-prefix format.
 
 On Vercel, `canUseLocalDataFiles()` is false — no writes to `data/user-trades/`.
 
@@ -211,6 +215,49 @@ Set `DB_CACHE_FIRST=0` on Vercel to avoid confusion.
 ### Sector P/E
 
 Resolved from snapshot store (`fund?.peRatio`), not stale `stock.pe` column. Yahoo fallback via `pe-cache.ts` (local disk only).
+
+---
+
+## Exchange inference (`portfolio_holding.exchange`)
+
+When `portfolio_holding.exchange` is NULL (e.g. old rows created before the column was populated):
+
+`advisory-portfolio.ts → mapHolding() → inferExchange(symbol)`:
+
+1. `lookupIndexStock(symbol)` — returns `exchange` from VN30/VN100 JSON files (most are `"HOSE"`)
+2. Hardcoded `HNX_SYMBOLS` set — `SHB, NTP, VCG, PVS, HUT, IDJ, ACB, VCS, …`
+3. Default: `"HOSE"`
+
+> To add HNX/UPCOM stocks: update `HNX_SYMBOLS` in `src/lib/db/advisory-portfolio.ts`. For UPCOM tickers, add a similar `UPCOM_SYMBOLS` set.
+
+---
+
+## Stock Evaluator (`/api/stock-eval`)
+
+**New Jun 2026.** Available at `/analysis` → Principles tab (left column).
+
+**Flow:**
+
+```
+StockEvaluationPanel (client)
+  → GET /api/stock-eval?symbol=FPT
+  → getStock(symbol)           # live price + fundamentals
+  → analyzeStock(stock)        # technical + fundamental scores
+  → buildStockContext(stock)   # rich prompt context
+  → callLlm(messages, context) # Groq/Gemini with structured JSON prompt
+  → parse JSON response
+  → return StockEvalResult
+```
+
+**LLM prompt strategy:**
+- QUANTITATIVE fields (valuation, timing): LLM uses **only provided data**
+- QUALITATIVE fields (business, management): LLM uses provided data **plus training knowledge** about Vietnamese companies
+- Returns JSON with 8 `EvalCategory` objects + recommendation + thesis + confidence
+- Falls back to `buildRuleBasedEval(stock)` when LLM fails / provider = "fallback"
+
+**Context includes:** profile string, price + 52w range (% from high pre-calculated), upside % to analyst target, historical financials (revenue + net profit by year), RSI with overbought/oversold label, technical score + fundamental score + combined signal, MA trend, momentum, S/R levels.
+
+**Recommendation values:** `ACCUMULATE | WATCH | HOLD | TRIM | AVOID`
 
 ---
 
@@ -338,5 +385,8 @@ Common production errors:
 | Missing sector P/E | Stale `stock.pe` column | Use snapshot store (`fund?.peRatio`) |
 | `Transactions are not supported in HTTP mode` | `createMany` / `upsert` with implicit transaction | Replace with `$executeRaw` using `INSERT … ON CONFLICT` (see Neon HTTP section above) |
 | `Showing 0 trades` after add | Two bugs in `readDbTrades`: (1) `neonTradeId` stored new trades as plain UUID so prefixed query missed them; (2) legacy query used `NOT { contains: "__" }` → SQL `NOT LIKE '%__%'` which excludes ALL UUIDs | Fixed Jun 2026: always prefix new trade IDs; use `STRPOS(id,'__')=0` for legacy query |
+| **`value too long for type character varying(64)` — trade add fails** | Full UUID prefix for trade IDs → 74 chars > VARCHAR(64) | Fixed Jun 2026: `USER_PREFIX_LEN=8` in `trading-store.ts`; ID is now `{8-char-userId}__{uuid}` = 46 chars |
 | Deleted trade reappears | Bundled JSON fallback served stale data when Neon failed | Bundled JSON is now last resort; keep it in sync by removing deleted IDs locally and pushing |
+| Holdings `Exch` column shows `—` | `portfolio_holding.exchange` was NULL; no fallback | `advisory-portfolio.ts` now calls `inferExchange(symbol)` which uses `lookupIndexStock` + hardcoded HNX set → defaults to HOSE |
+| Stock avatars/icons all gray (sector icons wrong) | Long sector names (e.g. `"Banking & Financial Services"`) didn't match short keys in `SECTOR_COLORS` / `SECTOR_ICONS` | `sector-colors.ts` now has `SECTOR_ALIAS` + `shortSectorName()`; `stock-avatar.tsx` resolves via `shortSectorName()` |
 | `sync:trades` hangs/fails locally | Neon HTTP endpoint blocked by local firewall (`fetch failed`) | Use `psql "$DATABASE_URL"` directly (wire protocol works) |
