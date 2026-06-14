@@ -9,6 +9,7 @@ import { normalizeEmail } from "@/lib/auth-utils";
 import { findUserByEmail } from "@/lib/auth/user-store";
 import { isPersistenceEnabled } from "@/lib/persistence";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@/generated/prisma/client";
 import {
   connectivityErrorMessage,
   isConnectivityError,
@@ -184,15 +185,16 @@ export async function addToWatchlist(symbol: string): Promise<WatchlistResult> {
   }
 
   try {
-    // upsert() uses an interactive transaction internally, which is forbidden by
-    // Neon's HTTP driver (DB_DRIVER=http). Use createMany with skipDuplicates
-    // instead — it maps to a single "INSERT … ON CONFLICT DO NOTHING" statement.
+    // createMany+skipDuplicates and upsert() both use implicit transactions,
+    // which are forbidden by Neon's HTTP driver. Use a raw INSERT … ON CONFLICT
+    // DO NOTHING instead — single statement, no transaction wrapper.
     await withDbRetry(
       () =>
-        prisma.watchlistItem.createMany({
-          data: [{ userId, symbol: sym }],
-          skipDuplicates: true,
-        }),
+        prisma.$executeRaw(
+          Prisma.sql`INSERT INTO watchlist_item (id, user_id, symbol, created_at)
+            VALUES (${randomUUID()}, ${userId}, ${sym}, NOW())
+            ON CONFLICT (user_id, symbol) DO NOTHING`,
+        ),
       "watchlist-add",
       0,
     );
@@ -260,12 +262,16 @@ export async function saveAiMessage(
     });
   }
 
-  await prisma.aiChatMessage.createMany({
-    data: [
-      { sessionId: session.id, role: "user", content: question },
-      { sessionId: session.id, role: "assistant", content: answer },
-    ],
-  });
+  // createMany uses an implicit transaction — forbidden on Neon HTTP.
+  // Insert each message with individual $executeRaw statements.
+  await prisma.$executeRaw(
+    Prisma.sql`INSERT INTO ai_chat_message (id, session_id, role, content, created_at)
+      VALUES (${randomUUID()}, ${session.id}, ${"user"}, ${question}, NOW())`,
+  );
+  await prisma.$executeRaw(
+    Prisma.sql`INSERT INTO ai_chat_message (id, session_id, role, content, created_at)
+      VALUES (${randomUUID()}, ${session.id}, ${"assistant"}, ${answer}, NOW())`,
+  );
 
   return { sessionId: session.id };
 }

@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { canUseLocalDataFiles } from "@/lib/serverless";
 import { isPersistenceEnabled } from "@/lib/persistence";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@/generated/prisma/client";
 import { withDbRetry } from "@/lib/prisma-query";
 
 export type ChatMessage = {
@@ -123,12 +124,15 @@ export async function appendAiChatMessages(
         sid = session.id;
       }
 
-      await prisma.aiChatMessage.createMany({
-        data: [
-          { sessionId: sid, role: "user", content: question },
-          { sessionId: sid, role: "assistant", content: answer },
-        ],
-      });
+      // createMany uses an implicit transaction — forbidden on Neon HTTP.
+      await prisma.$executeRaw(
+        Prisma.sql`INSERT INTO ai_chat_message (id, session_id, role, content, created_at)
+          VALUES (${randomUUID()}, ${sid}, ${"user"}, ${question}, NOW())`,
+      );
+      await prisma.$executeRaw(
+        Prisma.sql`INSERT INTO ai_chat_message (id, session_id, role, content, created_at)
+          VALUES (${randomUUID()}, ${sid}, ${"assistant"}, ${answer}, NOW())`,
+      );
 
       writeFileSession(userId, { sessionId: sid, messages });
     } catch (err) {
