@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { getStock } from "@/lib/market-service";
 import { callLlm } from "@/lib/providers/llm";
+import { analyzeStock } from "@/lib/analysis/stock-analysis";
 import type { Stock } from "@/types/stock";
 
 // ─── types ───────────────────────────────────────────────────────────────────
@@ -27,20 +28,69 @@ export type StockEvalResult = {
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
-function buildStockContext(stock: Stock): string {
-  return `Stock: ${stock.symbol} — ${stock.name}
-Exchange: ${stock.exchange ?? "HOSE"} | Sector: ${stock.sector ?? "N/A"}
-Price: ${stock.price.toLocaleString()} VND (${stock.changePercent > 0 ? "+" : ""}${stock.changePercent}%)
-PE Ratio: ${stock.pe > 0 ? stock.pe.toFixed(1) : "N/A"}
-P/B Ratio: ${stock.pb > 0 ? stock.pb.toFixed(2) : "N/A"}
-ROE: ${stock.roe > 0 ? stock.roe.toFixed(1) + "%" : "N/A"}
-Revenue Growth: ${stock.revenueGrowth ? stock.revenueGrowth.toFixed(1) + "% YoY" : "N/A"}
-Dividend Yield: ${stock.dividendYield > 0 ? stock.dividendYield.toFixed(2) + "%" : "None"}
-RSI: ${stock.rsi > 0 ? stock.rsi.toFixed(0) : "N/A"}
-Analyst Target: ${stock.analystTarget > 0 ? stock.analystTarget.toLocaleString() + " VND" : "N/A"}
-Analyst Rating: ${stock.analystRating ?? "N/A"}
-52w High: ${stock.high52w > 0 ? stock.high52w.toLocaleString() : "N/A"} | 52w Low: ${stock.low52w > 0 ? stock.low52w.toLocaleString() : "N/A"}
-Market Cap: ${stock.marketCap > 0 ? (stock.marketCap / 1e12).toFixed(1) + "T VND" : "N/A"}`;
+async function buildStockContext(stock: Stock): Promise<string> {
+  const lines: string[] = [];
+
+  lines.push(`=== ${stock.symbol} — ${stock.name} ===`);
+  lines.push(`Exchange: ${stock.exchange ?? "HOSE"} | Sector: ${stock.sector ?? "N/A"}`);
+  if (stock.profile) lines.push(`Profile: ${stock.profile}`);
+
+  lines.push("");
+  lines.push("--- Live Market Data ---");
+  lines.push(`Price: ${stock.price.toLocaleString()} VND (${stock.changePercent >= 0 ? "+" : ""}${stock.changePercent.toFixed(2)}% today)`);
+  if (stock.high52w > 0 && stock.low52w > 0) {
+    const pctFrom52High = ((stock.price - stock.high52w) / stock.high52w * 100).toFixed(1);
+    lines.push(`52w Range: ${stock.low52w.toLocaleString()} – ${stock.high52w.toLocaleString()} VND (currently ${pctFrom52High}% from 52w high)`);
+  }
+  if (stock.marketCap > 0) lines.push(`Market Cap: ${(stock.marketCap / 1e12).toFixed(2)}T VND`);
+  if (stock.volume > 0) lines.push(`Volume: ${stock.volume.toLocaleString()}`);
+
+  lines.push("");
+  lines.push("--- Valuation ---");
+  lines.push(`P/E Ratio: ${stock.pe > 0 ? stock.pe.toFixed(1) : "N/A"}`);
+  lines.push(`P/B Ratio: ${stock.pb > 0 ? stock.pb.toFixed(2) : "N/A"}`);
+  lines.push(`Dividend Yield: ${stock.dividendYield > 0 ? stock.dividendYield.toFixed(2) + "%" : "None"}`);
+  if (stock.analystTarget > 0) {
+    const upside = ((stock.analystTarget - stock.price) / stock.price * 100).toFixed(1);
+    lines.push(`Analyst Target: ${stock.analystTarget.toLocaleString()} VND (${Number(upside) >= 0 ? "+" : ""}${upside}% upside) — Rating: ${stock.analystRating}`);
+  } else {
+    lines.push(`Analyst Rating: ${stock.analystRating ?? "N/A"}`);
+  }
+
+  lines.push("");
+  lines.push("--- Fundamentals ---");
+  lines.push(`ROE: ${stock.roe > 0 ? stock.roe.toFixed(1) + "%" : "N/A"}`);
+  lines.push(`Revenue Growth (YoY): ${stock.revenueGrowth !== 0 ? stock.revenueGrowth.toFixed(1) + "%" : "N/A"}`);
+
+  if (stock.financials?.years?.length) {
+    const { years, revenue, netProfit } = stock.financials;
+    const rows = years.map((y, i) => {
+      const rev = revenue[i] != null ? `${(revenue[i] / 1e9).toFixed(0)}B` : "—";
+      const np = netProfit[i] != null ? `${(netProfit[i] / 1e9).toFixed(0)}B` : "—";
+      return `  ${y}: Revenue ${rev} VND | Net Profit ${np} VND`;
+    });
+    lines.push("Historical Financials:");
+    lines.push(...rows);
+  }
+
+  lines.push("");
+  lines.push("--- Technical ---");
+  lines.push(`RSI: ${stock.rsi > 0 ? stock.rsi.toFixed(1) + (stock.rsi > 70 ? " (overbought)" : stock.rsi < 30 ? " (oversold)" : " (neutral)") : "N/A"}`);
+
+  // Enrich with computed analysis scores
+  try {
+    const analysis = await analyzeStock(stock);
+    lines.push(`Technical Score: ${analysis.technicalScore}/100 (${analysis.technicalRating})`);
+    lines.push(`Fundamental Score: ${analysis.fundamentalScore}/100`);
+    lines.push(`Combined Score: ${analysis.combinedScore}/100 — Signal: ${analysis.recommendation}`);
+    lines.push(`MA Trend: ${analysis.maTrend}`);
+    lines.push(`Momentum: ${analysis.momentum}`);
+    if (analysis.supportResistance) lines.push(`Support/Resistance: ${analysis.supportResistance}`);
+  } catch {
+    // analysis is optional
+  }
+
+  return lines.join("\n");
 }
 
 /** Rule-based fallback when LLM is unavailable */
@@ -113,27 +163,33 @@ function buildRuleBasedEval(stock: Stock): Omit<StockEvalResult, "provider"> {
 
 // ─── route ───────────────────────────────────────────────────────────────────
 
-const EVAL_SYSTEM_INSTRUCTION = `You are a professional Vietnam stock analyst. Given stock market data, produce a structured investment evaluation.
+const EVAL_SYSTEM_INSTRUCTION = `You are a professional Vietnam stock analyst with deep knowledge of Vietnamese listed companies, their business models, competitive landscape, and management teams.
 
-Return ONLY valid JSON (no markdown fences, no extra text) matching this exact schema:
+Your task: produce a structured 8-category investment evaluation in JSON.
+
+IMPORTANT INSTRUCTIONS:
+- For QUANTITATIVE fields (valuation, financials, timing, technical): use ONLY the market data provided.
+- For QUALITATIVE fields (business model, management, competitive advantages): use BOTH the provided data AND your training knowledge about the company. Vietnamese blue-chips like VCB, FPT, VHM, HPG, VIC, MSN, REE, BMP are well-known — describe them accurately.
+- Never invent specific numbers not in the provided data.
+- Be concise but insightful (3-5 sentences per category).
+- If a metric is N/A in the data, explain why it matters and what the user should research.
+
+Return ONLY valid JSON (no markdown fences, no extra text):
 {
   "categories": [
-    {"id": "business", "title": "1. Business", "analysis": "string"},
-    {"id": "financial", "title": "2. Financial Health", "analysis": "string"},
-    {"id": "valuation", "title": "3. Valuation", "analysis": "string"},
-    {"id": "risks", "title": "4. Risks", "analysis": "string"},
-    {"id": "growth", "title": "5. Growth Opportunities", "analysis": "string"},
-    {"id": "management", "title": "6. Management", "analysis": "string"},
-    {"id": "timing", "title": "7. Timing", "analysis": "string"},
-    {"id": "fit", "title": "8. Investment Fit", "analysis": "string"}
+    {"id": "business", "title": "1. Business", "analysis": "string — describe what the company does, how it makes money, its competitive moat, and business model sustainability"},
+    {"id": "financial", "title": "2. Financial Health", "analysis": "string — revenue growth trend, profitability, cash flow quality, debt level, margin trajectory"},
+    {"id": "valuation", "title": "3. Valuation", "analysis": "string — P/E, P/B, dividend yield, analyst target vs current price, over/undervalued assessment"},
+    {"id": "risks", "title": "4. Risks", "analysis": "string — 3-4 specific risks for this company and sector"},
+    {"id": "growth", "title": "5. Growth Opportunities", "analysis": "string — concrete growth catalysts: new markets, products, M&A, demographic tailwinds"},
+    {"id": "management", "title": "6. Management", "analysis": "string — leadership track record, ownership alignment, communication quality, notable decisions"},
+    {"id": "timing", "title": "7. Timing", "analysis": "string — RSI signal, price vs 52w range, technical score, current entry attractiveness"},
+    {"id": "fit", "title": "8. Investment Fit", "analysis": "string — suitable for which investor type, holding horizon, position size suggestion, final verdict"}
   ],
   "recommendation": "ACCUMULATE|WATCH|HOLD|TRIM|AVOID",
-  "thesis": "one-sentence thesis",
+  "thesis": "one compelling sentence summarizing the investment case",
   "confidence": "HIGH|MEDIUM|LOW"
-}
-
-For each category write 2-4 concise sentences covering the most important points.
-Base your analysis ONLY on the data provided. If data is missing for a field, say so honestly.`;
+}`;
 
 export async function GET(request: Request) {
   const session = await auth();
@@ -152,7 +208,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: `Stock "${symbol}" not found` }, { status: 404 });
   }
 
-  const context = buildStockContext(stock);
+  const context = await buildStockContext(stock);
 
   const llmResult = await callLlm(
     [
