@@ -8,8 +8,37 @@ export const SECTOR_COLORS: Record<string, string> = {
   Healthcare: "#14b8a6",
   Materials: "#84cc16",
   "Financial Services": "#6366f1",
+  ETF: "#10b981",
 };
 
+/** Maps long full-form sector names to their canonical short key */
+const SECTOR_ALIAS: Record<string, string> = {
+  "Banking & Financial Services": "Banking",
+  "Technology & Telecommunications": "Technology",
+  "Consumer Goods & Retail": "Consumer",
+  "Real Estate & Construction": "Real Estate",
+  "Materials (Chemicals, Fertilizers, Mining)": "Materials",
+  "Energy (Oil, Gas, Utilities)": "Energy",
+  "Healthcare & Pharmaceuticals": "Healthcare",
+  "Industrial Manufacturing": "Industrial",
+  "ETF & Index Funds": "ETF",
+};
+
+/** Short display name for a sector (strips parenthetical details). */
+export function shortSectorName(sector: string): string {
+  if (SECTOR_ALIAS[sector]) return SECTOR_ALIAS[sector];
+  // strip everything after " (" or " &"
+  const idx = sector.indexOf(" (");
+  if (idx > 0) return sector.slice(0, idx);
+  const amp = sector.indexOf(" & ");
+  if (amp > 0) return sector.slice(0, amp);
+  return sector;
+}
+
 export function getSectorColor(sector: string): string {
-  return SECTOR_COLORS[sector] ?? "#71717a";
+  return (
+    SECTOR_COLORS[sector] ??
+    SECTOR_COLORS[SECTOR_ALIAS[sector] ?? ""] ??
+    "#71717a"
+  );
 }

@@ -6,6 +6,22 @@ import { shouldSkipDbReads } from "@/lib/db/cache-first";
 import { isPersistenceEnabled } from "@/lib/persistence";
 import { prisma } from "@/lib/prisma";
 import { withDbRetry } from "@/lib/prisma-query";
+import { lookupIndexStock } from "@/lib/stock-metadata";
+
+/** Known HNX-listed symbols (non-exhaustive but covers common ones). */
+const HNX_SYMBOLS = new Set([
+  "SHB", "NTP", "VCG", "PVS", "HUT", "IDJ", "ACB", "VCS", "PVC",
+  "SHS", "MBS", "KLF", "BVS", "HBS", "VIX", "WSS", "PSI", "TVS",
+]);
+
+/** Infer exchange from symbol when not stored. Defaults to HOSE. */
+function inferExchange(symbol: string): string {
+  const upper = symbol.toUpperCase();
+  const meta = lookupIndexStock(upper);
+  if (meta?.exchange) return meta.exchange;
+  if (HNX_SYMBOLS.has(upper)) return "HNX";
+  return "HOSE";
+}
 
 /** Holding row — prices in thousands VND (K), matching stock-service portfolio table. */
 export type PortfolioHolding = {
@@ -68,7 +84,7 @@ function mapHolding(row: RawRow): PortfolioHolding {
     id: symbol,
     symbol,
     name: row.name ?? null,
-    exchange: row.exchange ?? null,
+    exchange: row.exchange ?? inferExchange(symbol),
     sector: row.sector ?? null,
     industry: row.industry ?? null,
     shares,

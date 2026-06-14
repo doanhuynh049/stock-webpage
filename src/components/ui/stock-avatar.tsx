@@ -1,4 +1,5 @@
 import {
+  BarChart2,
   Building2,
   Cpu,
   Factory,
@@ -9,7 +10,7 @@ import {
   ShoppingBag,
   type LucideIcon,
 } from "lucide-react";
-import { getSectorColor } from "@/lib/sector-colors";
+import { getSectorColor, shortSectorName } from "@/lib/sector-colors";
 import { cn } from "@/lib/utils";
 
 const SECTOR_ICONS: Record<string, LucideIcon> = {
@@ -22,6 +23,7 @@ const SECTOR_ICONS: Record<string, LucideIcon> = {
   Healthcare: HeartPulse,
   Materials: Layers,
   "Financial Services": Landmark,
+  ETF: BarChart2,
 };
 
 export function StockAvatar({
@@ -34,7 +36,8 @@ export function StockAvatar({
   size?: "sm" | "md" | "lg";
 }) {
   const color = getSectorColor(sector ?? "");
-  const Icon = sector ? SECTOR_ICONS[sector] : null;
+  const shortSector = sector ? shortSectorName(sector) : "";
+  const Icon = shortSector ? SECTOR_ICONS[shortSector] : null;
   const sizes = {
     sm: { box: "h-8 w-8", icon: "h-3.5 w-3.5", text: "text-[10px]" },
     md: { box: "h-10 w-10", icon: "h-4 w-4", text: "text-xs" },
