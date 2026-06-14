@@ -2,6 +2,7 @@ import { mkdirSync, readFileSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@/generated/prisma/client";
 import { withDbRetry } from "@/lib/prisma-query";
 import { isPersistenceEnabled } from "@/lib/persistence";
 import type {
@@ -42,9 +43,13 @@ function stripUserPrefix(userId: string, id: string): string {
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** stock-service rows use plain UUID ids in Neon (no user prefix). */
+/**
+ * Always use the prefixed format "{userId}__{tradeId}" so the prefixed
+ * findMany query in readDbTrades reliably finds every trade for this user.
+ * Plain-UUID legacy rows (synced from stock-service directly into Neon) are
+ * handled separately by the raw-SQL legacy query in readDbTrades.
+ */
 function neonTradeId(userId: string, trade: TradeRecord): string {
-  if (UUID_RE.test(trade.id)) return trade.id;
   return tradeId(userId, trade.id);
 }
 
@@ -162,35 +167,75 @@ async function readDbTrades(userId: string): Promise<TradeRecord[]> {
   if (!isPersistenceEnabled()) return [];
   const prefix = `${userId}__`;
   try {
-    // Always fetch BOTH sets in parallel:
-    //   • prefixed  — trades added via this webapp  (id like "{userId}__uuid")
-    //   • legacy    — trades synced from stock-service (plain UUID, no "__")
-    // Previously the code returned only prefixed when any existed, which silently
-    // dropped all historical trades the first time a new trade was added.
-    const [prefixed, legacy] = await Promise.all([
-      withDbRetry(
-        () =>
-          prisma.tradingTransaction.findMany({
-            where: { id: { startsWith: prefix } },
-            orderBy: { transactionDate: "desc" },
-          }),
-        "trading-list-prefixed",
-        0,
-      ),
-      withDbRetry(
-        () =>
-          prisma.tradingTransaction.findMany({
-            where: { NOT: { id: { contains: "__" } } },
-            orderBy: { transactionDate: "desc" },
-          }),
-        "trading-list-legacy",
-        0,
-      ),
-    ]);
+    // Fetch BOTH sets sequentially (Neon HTTP doesn't reliably handle
+    // concurrent requests from a single serverless invocation):
+    //   • prefixed — trades added via this webapp  (id like "{userId}__uuid")
+    //   • legacy   — trades synced from stock-service (plain UUID, no "__")
+    //
+    // NOTE: `NOT { id: { contains: "__" } }` generates `NOT LIKE '%__%'` in
+    // SQL, where `_` is a single-char wildcard — it would exclude ALL UUIDs.
+    // We use raw STRPOS() instead, which does a literal string search.
+    const prefixed = await withDbRetry(
+      () =>
+        prisma.tradingTransaction.findMany({
+          where: { id: { startsWith: prefix } },
+          orderBy: { transactionDate: "desc" },
+        }),
+      "trading-list-prefixed",
+      0,
+    );
+    type RawTxRow = {
+      id: string;
+      transactionDate: Date;
+      itemName: string | null;
+      quantity: number | null;
+      unitPrice: number | null;
+      totalAmount: number | null;
+      transactionType: string | null;
+      exchange: string | null;
+    };
+    const legacy = await withDbRetry(
+      () =>
+        prisma.$queryRaw<RawTxRow[]>(
+          Prisma.sql`SELECT id,
+            transaction_date AS "transactionDate",
+            item_name        AS "itemName",
+            quantity,
+            unit_price::float8   AS "unitPrice",
+            total_amount::float8 AS "totalAmount",
+            transaction_type AS "transactionType",
+            exchange
+          FROM trading_transaction
+          WHERE STRPOS(id, '__') = 0
+          ORDER BY transaction_date DESC`,
+        ),
+      "trading-list-legacy",
+      0,
+    );
 
     const merged: TradeRecord[] = [
       ...prefixed.map((r) => toRecord(userId, r)),
-      ...legacy.map((r) => ({ ...toLegacyRecord(r), userId })),
+      ...legacy.map((r): TradeRecord => {
+        const unit = r.unitPrice ?? 0;
+        const qty = r.quantity ?? 0;
+        return {
+          id: r.id,
+          userId,
+          transactionDate: r.transactionDate instanceof Date
+            ? r.transactionDate.toISOString().slice(0, 10)
+            : String(r.transactionDate).slice(0, 10),
+          itemName: (r.itemName ?? "").toUpperCase(),
+          quantity: qty,
+          unitPrice: unit,
+          totalAmount: r.totalAmount ?? unit * qty,
+          fee: 0,
+          tax: 0,
+          profit: null,
+          transactionType: (r.transactionType?.toUpperCase() === "SELL" ? "SELL" : "BUY") as TradeType,
+          exchange: r.exchange,
+          sector: null,
+        };
+      }),
     ];
     // Re-sort after merging two separately-ordered result sets.
     merged.sort((a, b) => b.transactionDate.localeCompare(a.transactionDate));
