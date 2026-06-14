@@ -43,22 +43,74 @@ Direct edits on `/portfolio` (`POST /api/portfolio`) update `portfolio_holding` 
 
 ---
 
+## Neon HTTP adapter — forbidden operations
+
+`DB_DRIVER=http` uses Neon's serverless HTTP driver. **Any Prisma operation that requires an interactive transaction is rejected** with:
+
+```
+Error: Transactions are not supported in HTTP mode
+```
+
+| Forbidden Prisma call | Why | Fix |
+|---|---|---|
+| `upsert()` on most models | Prisma wraps SELECT+INSERT/UPDATE in a transaction | Use `$executeRaw` with `INSERT … ON CONFLICT DO UPDATE SET …` |
+| `createMany({ skipDuplicates: true })` | Prisma still wraps in a transaction | Use `$executeRaw` with `INSERT … ON CONFLICT DO NOTHING` |
+| `createMany()` (no skipDuplicates) | Same transaction wrapper | Use sequential `$executeRaw INSERT` calls |
+
+**Pattern** (copy for new Neon-safe writes):
+
+```ts
+import { Prisma } from "@/generated/prisma/client";
+
+// upsert-style
+await prisma.$executeRaw(
+  Prisma.sql`INSERT INTO my_table (col1, col2) VALUES (${v1}, ${v2})
+    ON CONFLICT (unique_col) DO UPDATE SET col2 = EXCLUDED.col2`,
+);
+
+// insert-or-ignore
+await prisma.$executeRaw(
+  Prisma.sql`INSERT INTO my_table (id, col1) VALUES (${randomUUID()}, ${v1})
+    ON CONFLICT (unique_col) DO NOTHING`,
+);
+```
+
+**Files fixed** (Jun 2026):
+- `src/lib/db/portfolio-sync.ts` — `syncPortfolioHoldings`: `createMany` → `deleteMany` + `$executeRaw` bulk INSERT
+- `src/lib/actions.ts` — `addToWatchlist`: `createMany+skipDuplicates` → `$executeRaw ON CONFLICT DO NOTHING`
+- `src/lib/actions.ts` — `saveAiMessage`: `createMany` → two sequential `$executeRaw` inserts
+- `src/lib/db/ai-chat-store.ts` — `appendAiMessages`: same as `saveAiMessage`
+
+> `upsert()` in `trading-store.ts` and `user-strategy.ts` happen to work because Prisma generates a single `INSERT … ON CONFLICT DO UPDATE` for those compound keys. Do **not** rely on this — always prefer `$executeRaw` for any write that involves conflict handling.
+
+---
+
 ## Trade ID conventions (`trading_transaction.id`)
 
 | Pattern | Example | When |
 |---------|---------|------|
-| Prefixed | `{userId}__{uuid}` | Web app writes via `trading-store` |
-| Legacy UUID | plain UUID, no `__` | stock-service import; shared fallback read |
+| Prefixed | `{userId}__{uuid}` | Web app writes via `trading-store.addTrade` |
+| Legacy UUID | plain UUID, no `__` | stock-service import directly into Neon |
 
-`listTrades(userId)` resolution order:
+`listTrades(userId)` resolution order (verified Jun 2026):
 
 1. **Local dev**: `data/user-trades/{userId}.json` (read/write)
-2. **Neon**: rows where `id` starts with `{userId}__`
-3. **Legacy Neon**: all rows without `__` in id (single-user mirror)
-4. **Bundled JSON** (Vercel fallback): read-only `data/user-trades/{userId}.json` shipped in repo
-5. **CACHE_USER_ID fallback**: same file under `CACHE_USER_ID` if user's file missing
+2. **Prefixed Neon**: `WHERE id LIKE '{userId}__%'` (Prisma `startsWith`)
+3. **Legacy Neon**: `WHERE STRPOS(id, '__') = 0` — **must use raw SQL**, NOT Prisma `contains: "__"` (Prisma generates `LIKE '%__%'` where `_` is a SQL wildcard — matches everything)
+4. **Bundled JSON fallback**: read-only `data/user-trades/{userId}.json` shipped in repo — used when Neon is empty or fails transiently
 
 On Vercel, `canUseLocalDataFiles()` is false — no writes to `data/user-trades/`.
+
+### Syncing trades to Neon
+
+`npm run sync:trades` uses Neon HTTP → fails if outbound HTTP to `*.neon.tech` is blocked by local firewall.
+Use `psql` (wire protocol, port 5432) instead:
+
+```bash
+psql "$DATABASE_URL" -f /tmp/insert_missing.sql
+```
+
+`psql` works even when `fetch` is blocked.
 
 ---
 
@@ -278,9 +330,13 @@ Common empty-data causes:
 
 Common production errors:
 
-| Error | Fix |
-|-------|-----|
-| `ENOENT: mkdir '/var/task/.cache'` | Guard disk writes; use `CachedNewsFeed` + localStorage |
-| Screener 0 matches | Ensure defaults redirect; never submit `maxPe=0` |
-| Raw HTML in news titles | `decodeHtmlEntities` in `rss-news.ts` |
-| Missing sector P/E | Use snapshot store, not `stock.pe` |
+| Error | Root cause | Fix |
+|-------|------------|-----|
+| `ENOENT: mkdir '/var/task/.cache'` | Disk write on Vercel | Guard with `canWriteLocalCache()`; use client localStorage for news/market |
+| Screener 0 matches | `maxPe=0` submitted | Never allow `maxPe=0`; ensure defaults redirect |
+| Raw HTML in news titles | Missing decode | `decodeHtmlEntities` in `rss-news.ts` |
+| Missing sector P/E | Stale `stock.pe` column | Use snapshot store (`fund?.peRatio`) |
+| `Transactions are not supported in HTTP mode` | `createMany` / `upsert` with implicit transaction | Replace with `$executeRaw` using `INSERT … ON CONFLICT` (see Neon HTTP section above) |
+| `Showing 0 trades` after add | Two bugs in `readDbTrades`: (1) `neonTradeId` stored new trades as plain UUID so prefixed query missed them; (2) legacy query used `NOT { contains: "__" }` → SQL `NOT LIKE '%__%'` which excludes ALL UUIDs | Fixed Jun 2026: always prefix new trade IDs; use `STRPOS(id,'__')=0` for legacy query |
+| Deleted trade reappears | Bundled JSON fallback served stale data when Neon failed | Bundled JSON is now last resort; keep it in sync by removing deleted IDs locally and pushing |
+| `sync:trades` hangs/fails locally | Neon HTTP endpoint blocked by local firewall (`fetch failed`) | Use `psql "$DATABASE_URL"` directly (wire protocol works) |
