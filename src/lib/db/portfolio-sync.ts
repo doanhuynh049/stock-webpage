@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { withDbRetry } from "@/lib/prisma-query";
+import { log } from "@/lib/logger";
 
 export type PortfolioHoldingInput = {
   symbol: string;
@@ -53,6 +54,8 @@ export async function syncPortfolioHoldings(
     return 0;
   }
 
+  log.debug("portfolio-sync", "syncPortfolioHoldings start", { userId, incoming: symbols.length, symbols });
+
   // Upsert each incoming holding individually
   for (const h of rows) {
     const sym = h.symbol.toUpperCase();
@@ -68,27 +71,42 @@ export async function syncPortfolioHoldings(
       targetSetDate: h.targetSetDate ?? null,
       platform: h.platform ?? null,
     };
-    await withDbRetry(
-      () =>
-        prisma.portfolioHolding.upsert({
-          where: { userId_symbol: { userId, symbol: sym } },
-          create: { userId, symbol: sym, ...fields },
-          update: fields,
-        }),
-      "portfolio-upsert",
-      0,
-    );
+    try {
+      await withDbRetry(
+        () =>
+          prisma.portfolioHolding.upsert({
+            where: { userId_symbol: { userId, symbol: sym } },
+            create: { userId, symbol: sym, ...fields },
+            update: fields,
+          }),
+        "portfolio-upsert",
+        0,
+      );
+      log.debug("portfolio-sync", "upserted holding", { userId, symbol: sym, shares: h.shares });
+    } catch (err) {
+      log.error("portfolio-sync", "upsert failed", { userId, symbol: sym, error: (err as Error).message });
+      throw err;
+    }
   }
 
   // Remove any holdings that are no longer in the rebuilt list
-  await withDbRetry(
-    () =>
-      prisma.portfolioHolding.deleteMany({
-        where: { userId, symbol: { notIn: symbols } },
-      }),
-    "portfolio-delete-stale",
-    0,
-  );
+  try {
+    const deleted = await withDbRetry(
+      () =>
+        prisma.portfolioHolding.deleteMany({
+          where: { userId, symbol: { notIn: symbols } },
+        }),
+      "portfolio-delete-stale",
+      0,
+    );
+    if (deleted.count > 0) {
+      log.info("portfolio-sync", "removed stale holdings", { userId, removed: deleted.count });
+    }
+  } catch (err) {
+    log.error("portfolio-sync", "deleteMany stale failed", { userId, error: (err as Error).message });
+    throw err;
+  }
 
+  log.info("portfolio-sync", "syncPortfolioHoldings done", { userId, synced: symbols.length });
   return symbols.length;
 }

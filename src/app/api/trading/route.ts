@@ -84,9 +84,23 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid trade fields" }, { status: 400 });
   }
 
+  log.info("trading-api", "POST addTrade request received", {
+    userId: session.user.id,
+    symbol: body.itemName,
+    type: body.transactionType,
+    qty: body.quantity,
+    unit: body.unitPrice,
+    date: body.transactionDate,
+  });
+
   try {
     const trade = await addTrade(session.user.id, body);
-    log.info("trading-api", "trade saved", { symbol: body.itemName, type: body.transactionType, qty: body.quantity });
+    log.info("trading-api", "POST addTrade success", {
+      tradeId: trade.id,
+      symbol: body.itemName,
+      type: body.transactionType,
+      qty: body.quantity,
+    });
     revalidatePath("/trading");
     revalidatePath("/portfolio");
     revalidateTag(`portfolio-${session.user.id}`, { expire: 0 });

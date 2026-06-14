@@ -23,6 +23,7 @@ import {
   stockServiceLedgerKey,
   stockServiceTradesPath,
 } from "@/lib/db/trading-import";
+import { log } from "@/lib/logger";
 
 const TRADES_DIR = join(process.cwd(), "data", "user-trades");
 
@@ -195,7 +196,7 @@ async function readDbTrades(userId: string): Promise<TradeRecord[]> {
     merged.sort((a, b) => b.transactionDate.localeCompare(a.transactionDate));
     return merged;
   } catch (err) {
-    console.warn("[trading] DB read failed:", (err as Error).message);
+    log.warn("trading-store", "DB read failed", { error: (err as Error).message });
     return [];
   }
 }
@@ -208,6 +209,14 @@ async function persistTradeNeon(
   if (!isPersistenceEnabled()) return;
 
   const id = neonTradeId(userId, trade);
+  log.debug("trading-store", "persistTradeNeon upsert", {
+    id,
+    symbol: trade.itemName,
+    type: trade.transactionType,
+    qty: trade.quantity,
+    unit: trade.unitPrice,
+    date: trade.transactionDate,
+  });
   await withDbRetry(
     () =>
       prisma.tradingTransaction.upsert({
@@ -301,10 +310,10 @@ export async function seedTradesFromPortfolioHoldings(
       await persistTradeNeon(userId, trade);
       synced++;
     } catch (err) {
-      console.warn(`[trading] seed ${trade.itemName} failed:`, (err as Error).message);
+      log.warn("trading-store", "seed trade failed", { symbol: trade.itemName, error: (err as Error).message });
     }
   }
-  console.info(`[trading] Seeded ${synced} BUY trades from portfolio for ${userId}`);
+  log.info("trading-store", "seeded BUY trades from portfolio", { userId, synced });
   return synced;
 }
 
@@ -317,9 +326,7 @@ export function importTradesFromStockService(
   const key = ledgerKey ?? stockServiceLedgerKey();
   const source = loadStockServiceTrades(key).map((t) => ({ ...t, userId }));
   if (!source.length) {
-    console.warn(
-      `[trading] No trades at ${stockServiceTradesPath()} for key ${key}`,
-    );
+    log.warn("trading-store", "no trades found at stock-service path", { path: stockServiceTradesPath(), key });
     return 0;
   }
 
@@ -333,9 +340,7 @@ export function importTradesFromStockService(
   if (!shouldImport) return existing.length;
 
   writeFileTrades(userId, source);
-  console.info(
-    `[trading] Imported ${source.length} trades from stock-service (${key}) → ${userId}`,
-  );
+  log.info("trading-store", "imported trades from stock-service", { userId, key, count: source.length });
   return source.length;
 }
 
@@ -370,16 +375,14 @@ export async function syncUserTradesJsonToDb(
       lastError = (err as Error).message;
       if (!opts?.force && failed >= 3) {
         dbSyncBlockedUntil = Date.now() + 5 * 60_000;
-        console.warn(
-          `[trading] DB sync paused 5m after ${failed} failures — using local JSON. Last: ${lastError}`,
-        );
+        log.warn("trading-store", "DB sync paused 5m after repeated failures", { failed, lastError });
         break;
       }
     }
   }
 
   if (opts?.force && failed > 0) {
-    console.warn(`[trading] ${failed}/${trades.length} failed. Last: ${lastError}`);
+    log.warn("trading-store", "JSON→DB sync completed with failures", { failed, total: trades.length, lastError });
   }
   return synced;
 }
@@ -456,12 +459,15 @@ function buildTrade(userId: string, input: TradeInput, id?: string): TradeRecord
 }
 
 export async function syncPortfolioFromTrades(userId: string) {
+  log.debug("trading-store", "syncPortfolioFromTrades start", { userId });
   const trades = await listTrades(userId);
+  log.debug("trading-store", "syncPortfolioFromTrades trades loaded", { count: trades.length });
+
   let existingRows: Awaited<ReturnType<typeof listPortfolioHoldings>> = [];
   try {
     existingRows = await listPortfolioHoldings(userId);
   } catch (err) {
-    console.warn("[trading] portfolio read failed during rebuild:", (err as Error).message);
+    log.warn("trading-store", "portfolio read failed during rebuild", { error: (err as Error).message });
   }
   const existing: PortfolioHoldingInput[] = existingRows.map((r) => ({
     symbol: r.symbol,
@@ -477,27 +483,50 @@ export async function syncPortfolioFromTrades(userId: string) {
     platform: r.platform,
   }));
   const rebuilt = rebuildPortfolioFromTrades(trades, existing);
+  log.debug("trading-store", "portfolio rebuilt from trades", {
+    tradingCount: trades.length,
+    holdingsCount: rebuilt.length,
+    symbols: rebuilt.map((h) => h.symbol),
+  });
   await syncPortfolioHoldings(userId, rebuilt);
+  log.info("trading-store", "portfolio holdings synced", { userId, count: rebuilt.length });
 }
 
 export async function addTrade(userId: string, input: TradeInput): Promise<TradeRecord> {
   const trade = buildTrade(userId, input);
+  log.info("trading-store", "addTrade start", {
+    tradeId: trade.id,
+    symbol: trade.itemName,
+    type: trade.transactionType,
+    qty: trade.quantity,
+    unit: trade.unitPrice,
+    date: trade.transactionDate,
+    userId,
+  });
+
   if (canUseLocalDataFiles()) {
     const all = await listTrades(userId);
     all.push(trade);
     writeFileTrades(userId, all);
+    log.debug("trading-store", "addTrade written to JSON file", { tradeId: trade.id, totalTrades: all.length });
   }
+
   try {
     await persistTradeNeon(userId, trade);
+    log.info("trading-store", "addTrade persisted to Neon", { tradeId: trade.id });
   } catch (err) {
-    console.warn("[trading] Neon upsert failed:", (err as Error).message);
+    log.warn("trading-store", "addTrade Neon upsert failed", { error: (err as Error).message, tradeId: trade.id });
     if (!canUseLocalDataFiles()) throw err;
   }
+
   try {
     await syncPortfolioFromTrades(userId);
+    log.info("trading-store", "addTrade portfolio sync complete", { tradeId: trade.id, symbol: trade.itemName });
   } catch (err) {
-    console.warn("[trading] portfolio rebuild failed:", (err as Error).message);
+    log.warn("trading-store", "addTrade portfolio rebuild failed", { error: (err as Error).message, tradeId: trade.id });
   }
+
+  log.info("trading-store", "addTrade done", { tradeId: trade.id, symbol: trade.itemName, type: trade.transactionType });
   return trade;
 }
 
@@ -515,27 +544,33 @@ export async function updateTrade(
   }
   try {
     await persistTradeNeon(userId, trade);
+    log.info("trading-store", "updateTrade persisted to Neon", { tradeId: trade.id });
   } catch (err) {
-    console.warn("[trading] Neon upsert failed:", (err as Error).message);
+    log.warn("trading-store", "updateTrade Neon upsert failed", { error: (err as Error).message, tradeId: trade.id });
     if (!canUseLocalDataFiles()) throw err;
   }
   try {
     await syncPortfolioFromTrades(userId);
+    log.info("trading-store", "updateTrade portfolio sync complete", { tradeId: trade.id });
   } catch (err) {
-    console.warn("[trading] portfolio rebuild failed:", (err as Error).message);
+    log.warn("trading-store", "updateTrade portfolio rebuild failed", { error: (err as Error).message, tradeId: trade.id });
   }
   return trade;
 }
 
 export async function removeTrade(userId: string, id: string) {
+  log.info("trading-store", "removeTrade start", { tradeId: id, userId });
   if (canUseLocalDataFiles()) {
     const all = (await listTrades(userId)).filter((t) => t.id !== id);
     writeFileTrades(userId, all);
+    log.debug("trading-store", "removeTrade removed from JSON file", { tradeId: id });
   }
   await deleteTradeDb(userId, id);
+  log.info("trading-store", "removeTrade deleted from DB", { tradeId: id });
   try {
     await syncPortfolioFromTrades(userId);
+    log.info("trading-store", "removeTrade portfolio sync complete", { tradeId: id });
   } catch (err) {
-    console.warn("[trading] portfolio rebuild failed:", (err as Error).message);
+    log.warn("trading-store", "removeTrade portfolio rebuild failed", { error: (err as Error).message, tradeId: id });
   }
 }

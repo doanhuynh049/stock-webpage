@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT_DIR"
 
 MODE="${1:-dev}"
-PORT="${PORT:-4873}"
+PORT="${PORT:-4962}"
 
 log()  { echo "[start.sh] $*"; }
 warn() { echo "[start.sh] WARNING: $*" >&2; }
@@ -19,6 +19,9 @@ load_env_flags() {
   if [[ -f .env ]]; then
     grep -qE '^DB_CACHE_FIRST=1' .env && export DB_CACHE_FIRST=1
     grep -qE '^CACHE_USER_ID=' .env && export CACHE_USER_ID="$(grep '^CACHE_USER_ID=' .env | cut -d= -f2- | tr -d '"')"
+    local env_port
+    env_port="$(grep -E '^PORT=' .env | head -1 | cut -d= -f2- | tr -d '"' | tr -d "'")"
+    [[ -n "$env_port" ]] && PORT="$env_port"
   fi
 }
 
@@ -202,7 +205,43 @@ check_api_keys() {
   fi
 }
 
+port_pids() {
+  if command -v fuser >/dev/null 2>&1; then
+    fuser "${PORT}/tcp" 2>/dev/null | tr -s ' ' '\n' | grep -E '^[0-9]+$' || true
+  elif command -v lsof >/dev/null 2>&1; then
+    lsof -ti "tcp:${PORT}" 2>/dev/null || true
+  fi
+}
+
+free_port() {
+  local pids
+  pids=$(port_pids)
+  [[ -z "$pids" ]] && return
+
+  warn "Port ${PORT} in use (pid(s): $(echo "$pids" | tr '\n' ' ')) — killing..."
+  echo "$pids" | xargs -r kill 2>/dev/null || true
+
+  # Wait up to 5 s for the port to be released; escalate to SIGKILL after 3 s.
+  local i
+  for i in 1 2 3 4 5; do
+    sleep 1
+    pids=$(port_pids)
+    if [[ -z "$pids" ]]; then
+      log "Port ${PORT} freed."
+      return
+    fi
+    if [[ "$i" -eq 3 ]]; then
+      warn "Port ${PORT} still busy after ${i}s — sending SIGKILL..."
+      echo "$pids" | xargs -r kill -9 2>/dev/null || true
+    else
+      log "Waiting for port ${PORT} to be released (${i}/5)..."
+    fi
+  done
+  warn "Port ${PORT} may still be in use — proceeding anyway."
+}
+
 run_dev() {
+  free_port
   log "Starting → http://localhost:${PORT}"
   load_env_flags
   export PORT
@@ -255,6 +294,9 @@ run_sync() {
 require_cmd node
 require_cmd npm
 require_cmd openssl
+
+# Resolve PORT from .env before any function uses it (overrides the shell default above).
+load_env_flags
 
 case "$MODE" in
   dev)
