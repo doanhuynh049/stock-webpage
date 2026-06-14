@@ -1,3 +1,4 @@
+import { Prisma } from "@/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import { withDbRetry } from "@/lib/prisma-query";
 import { log } from "@/lib/logger";
@@ -68,36 +69,46 @@ export async function syncPortfolioHoldings(
     return 0;
   }
 
-  // Step 2: bulk-insert the rebuilt list.
-  // skipDuplicates: true maps to INSERT … ON CONFLICT DO NOTHING — a single
-  // statement with no implicit transaction. Required for Neon HTTP mode which
-  // rejects any transactional wrapper (same pattern as watchlistItem.createMany
-  // in actions.ts). Safe here because step 1 already deleted all user rows.
+  // Step 2: bulk-insert the rebuilt list via a single raw INSERT statement.
+  //
+  // Neither createMany nor upsert works on the Neon HTTP adapter: Prisma wraps
+  // both in an implicit transaction internally, and Neon HTTP rejects any
+  // BEGIN/COMMIT ("Transactions are not supported in HTTP mode").
+  //
+  // $executeRaw generates exactly one SQL statement — no transaction wrapper —
+  // so it is safe with the Neon HTTP driver.  Prisma.sql / Prisma.join are
+  // the tagged-template helpers that parameterise values safely.
   try {
+    const valueFragments = rows.map((h) =>
+      Prisma.sql`(
+        ${userId},
+        ${h.symbol.toUpperCase()},
+        ${h.name ?? null},
+        ${h.exchange ?? null},
+        ${h.sector ?? null},
+        ${h.industry ?? null},
+        ${h.shares},
+        ${h.avgBuyPrice ?? null},
+        ${h.target3Month ?? null},
+        ${h.targetLongTerm ?? null},
+        ${h.targetSetDate ?? null},
+        ${h.platform ?? null}
+      )`
+    );
+
     await withDbRetry(
-      () =>
-        prisma.portfolioHolding.createMany({
-          data: rows.map((h) => ({
-            userId,
-            symbol: h.symbol.toUpperCase(),
-            name: h.name ?? null,
-            exchange: h.exchange ?? null,
-            sector: h.sector ?? null,
-            industry: h.industry ?? null,
-            shares: h.shares,
-            avgBuyPrice: h.avgBuyPrice ?? null,
-            target3Month: h.target3Month ?? null,
-            targetLongTerm: h.targetLongTerm ?? null,
-            targetSetDate: h.targetSetDate ?? null,
-            platform: h.platform ?? null,
-          })),
-          skipDuplicates: true,
-        }),
-      "portfolio-createMany",
+      () => prisma.$executeRaw`
+        INSERT INTO "portfolio_holding"
+          ("user_id","symbol","name","exchange","sector","industry",
+           "shares","avg_buy_price","target_3_month","target_long_term",
+           "target_set_date","platform")
+        VALUES ${Prisma.join(valueFragments)}
+      `,
+      "portfolio-insert-raw",
       1,
     );
   } catch (err) {
-    log.error("portfolio-sync", "createMany failed", { userId, symbols, error: (err as Error).message });
+    log.error("portfolio-sync", "bulk insert failed", { userId, symbols, error: (err as Error).message });
     throw err;
   }
 
