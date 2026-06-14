@@ -32,3 +32,14 @@ export function tickerToSectorId(): Map<string, string> {
   }
   return map;
 }
+
+/** Map ticker → human-readable sector name (e.g. "Banking & Financial Services"). */
+export function tickerToSectorName(): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const sec of getSectorUniverse()) {
+    for (const t of sec.tickers) {
+      map.set(t.toUpperCase(), sec.name);
+    }
+  }
+  return map;
+}

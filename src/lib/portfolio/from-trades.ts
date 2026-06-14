@@ -1,5 +1,6 @@
 import type { PortfolioHoldingInput } from "@/lib/db/portfolio-sync";
 import type { TradeRecord } from "@/lib/db/trading-types";
+import { tickerToSectorName } from "@/lib/analysis/sector-universe";
 
 function normSymbol(s: string | null | undefined): string | null {
   const t = s?.trim().toUpperCase();
@@ -14,6 +15,7 @@ export function rebuildPortfolioFromTrades(
   const existingBySymbol = new Map(
     existing.map((h) => [h.symbol.toUpperCase(), h]),
   );
+  const sectorBySymbol = tickerToSectorName();
 
   type Agg = { buyQty: number; sellQty: number; buyCost: number };
   const agg = new Map<string, Agg>();
@@ -44,7 +46,7 @@ export function rebuildPortfolioFromTrades(
       symbol,
       name: prior?.name ?? symbol,
       exchange: prior?.exchange ?? null,
-      sector: prior?.sector ?? null,
+      sector: prior?.sector ?? sectorBySymbol.get(symbol) ?? null,
       industry: prior?.industry ?? null,
       shares: net,
       avgBuyPrice: avgBuy,
