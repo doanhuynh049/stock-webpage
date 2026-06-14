@@ -69,6 +69,10 @@ export async function syncPortfolioHoldings(
   }
 
   // Step 2: bulk-insert the rebuilt list.
+  // skipDuplicates: true maps to INSERT … ON CONFLICT DO NOTHING — a single
+  // statement with no implicit transaction. Required for Neon HTTP mode which
+  // rejects any transactional wrapper (same pattern as watchlistItem.createMany
+  // in actions.ts). Safe here because step 1 already deleted all user rows.
   try {
     await withDbRetry(
       () =>
@@ -87,6 +91,7 @@ export async function syncPortfolioHoldings(
             targetSetDate: h.targetSetDate ?? null,
             platform: h.platform ?? null,
           })),
+          skipDuplicates: true,
         }),
       "portfolio-createMany",
       1,
