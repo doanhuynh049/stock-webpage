@@ -1,6 +1,6 @@
 {
-  "version": 1,
-  "description": "Curated 10 leaders per Vietnamese sector (from stock-service).",
+  "version": 2,
+  "description": "Curated leaders per Vietnamese sector (from stock-service). Includes ETFs and extended tickers.",
   "sectors": [
     {
       "id": "BANKING_FINANCE",
@@ -10,7 +10,7 @@
     {
       "id": "REAL_ESTATE_CONSTRUCTION",
       "name": "Real Estate & Construction",
-      "tickers": ["VIC", "VHM", "VRE", "NVL", "KDH", "DXG", "PDR", "NLG", "KBC", "BCM"]
+      "tickers": ["VIC", "VHM", "VRE", "NVL", "KDH", "DXG", "PDR", "NLG", "KBC", "BCM", "VCG"]
     },
     {
       "id": "CONSUMER_RETAIL",
@@ -20,7 +20,7 @@
     {
       "id": "MANUFACTURING_INDUSTRIALS",
       "name": "Manufacturing & Industrials",
-      "tickers": ["HPG", "HSG", "NKG", "VGT", "TCM", "DHC", "STK", "PAC", "TLG", "GVR"]
+      "tickers": ["HPG", "HSG", "NKG", "VGT", "TCM", "DHC", "STK", "PAC", "TLG", "GVR", "NTP"]
     },
     {
       "id": "ENERGY",
@@ -46,6 +46,11 @@
       "id": "HEALTHCARE_PHARMA",
       "name": "Healthcare & Pharmaceuticals",
       "tickers": ["DHG", "TRA", "IMP", "DBD", "DMC", "JVC", "DVN", "OPC", "DCL", "MED"]
+    },
+    {
+      "id": "ETF_INDEX",
+      "name": "ETF & Index Funds",
+      "tickers": ["E1VFVN30", "FUEVFVND", "FUESSVFL", "FUEMAV30", "VFMVF1", "VFMVF4", "SSIAM", "DCDS"]
     }
   ]
 }
