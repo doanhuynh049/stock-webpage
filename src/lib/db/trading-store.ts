@@ -414,20 +414,19 @@ export async function listTrades(
     }
   }
 
-  let dbAttempted = false;
   if (!trades.length && isPersistenceEnabled()) {
-    dbAttempted = true;
     trades = await readDbTrades(userId);
     if (trades.length && canUseLocalDataFiles()) {
       writeFileTrades(userId, trades);
     }
   }
 
-  // On Vercel, Neon is the single source of truth. Never fall back to the
-  // bundled JSON when persistence is enabled — the file is read-only and can
-  // be stale (e.g. it still contains trades that were deleted from Neon).
-  // Only use the bundled fallback in local dev when the DB was not tried.
-  if (!trades.length && !dbAttempted) {
+  // Bundled JSON fallback — used when:
+  //   a) DB read returned empty (trades not yet synced to Neon), or
+  //   b) DB read failed transiently (readDbTrades catches errors and returns []).
+  // The bundled file is read-only on Vercel; keep it in sync with Neon by
+  // running `npm run sync:trades` locally and pushing the updated JSON.
+  if (!trades.length) {
     trades = bundledTradesFallback(userId);
   }
 
