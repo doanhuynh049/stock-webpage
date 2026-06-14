@@ -191,20 +191,28 @@ async function readDbTrades(userId: string): Promise<TradeRecord[]> {
       quantity: number | null;
       unitPrice: number | null;
       totalAmount: number | null;
+      fee: number | null;
+      tax: number | null;
+      profit: number | null;
       transactionType: string | null;
       exchange: string | null;
+      sector: string | null;
     };
     const legacy = await withDbRetry(
       () =>
         prisma.$queryRaw<RawTxRow[]>(
           Prisma.sql`SELECT id,
-            transaction_date AS "transactionDate",
-            item_name        AS "itemName",
+            transaction_date  AS "transactionDate",
+            item_name         AS "itemName",
             quantity,
-            unit_price::float8   AS "unitPrice",
-            total_amount::float8 AS "totalAmount",
-            transaction_type AS "transactionType",
-            exchange
+            unit_price::float8    AS "unitPrice",
+            total_amount::float8  AS "totalAmount",
+            fee::float8           AS "fee",
+            tax::float8           AS "tax",
+            profit::float8        AS "profit",
+            transaction_type  AS "transactionType",
+            exchange,
+            sector
           FROM trading_transaction
           WHERE STRPOS(id, '__') = 0
           ORDER BY transaction_date DESC`,
@@ -228,12 +236,12 @@ async function readDbTrades(userId: string): Promise<TradeRecord[]> {
           quantity: qty,
           unitPrice: unit,
           totalAmount: r.totalAmount ?? unit * qty,
-          fee: 0,
-          tax: 0,
-          profit: null,
+          fee: r.fee ?? 0,
+          tax: r.tax ?? 0,
+          profit: r.profit ?? null,
           transactionType: (r.transactionType?.toUpperCase() === "SELL" ? "SELL" : "BUY") as TradeType,
           exchange: r.exchange,
-          sector: null,
+          sector: r.sector,
         };
       }),
     ];
@@ -446,7 +454,7 @@ export async function syncAllJsonTradesToDb(): Promise<number> {
 
 export async function listTrades(
   userId: string,
-  filters?: { year?: string; month?: string; type?: string; symbol?: string },
+  filters?: { year?: string; month?: string; type?: string; symbol?: string; dateFrom?: string; dateTo?: string },
   opts?: { email?: string | null },
 ): Promise<TradeRecord[]> {
   let trades: TradeRecord[] = [];
@@ -483,6 +491,8 @@ export async function listTrades(
       const m = filters.month.padStart(2, "0");
       if (!t.transactionDate.includes(`-${m}-`)) return false;
     }
+    if (filters?.dateFrom && t.transactionDate < filters.dateFrom) return false;
+    if (filters?.dateTo && t.transactionDate > filters.dateTo) return false;
     return true;
   });
 }

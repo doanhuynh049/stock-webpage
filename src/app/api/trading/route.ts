@@ -29,6 +29,8 @@ export async function GET(request: Request) {
         month: searchParams.get("month") ?? undefined,
         type: searchParams.get("type") ?? undefined,
         symbol: searchParams.get("symbol") ?? undefined,
+        dateFrom: searchParams.get("dateFrom") ?? undefined,
+        dateTo: searchParams.get("dateTo") ?? undefined,
       },
       { email: session.user.email },
     );

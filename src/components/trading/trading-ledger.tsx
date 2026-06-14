@@ -87,7 +87,7 @@ const emptyForm: TradeForm = {
 export function TradingLedger({ userId }: { userId?: string }) {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const [filters, setFilters] = useState({ year: "", month: "", type: "", symbol: "" });
+  const [filters, setFilters] = useState({ year: "", month: "", type: "", symbol: "", dateFrom: "", dateTo: "" });
 
   // Do NOT read localStorage in useState initializers — they run during SSR
   // and differ from the client, causing React hydration mismatches.
@@ -125,6 +125,8 @@ export function TradingLedger({ userId }: { userId?: string }) {
         if (filters.month) q.set("month", filters.month);
         if (filters.type) q.set("type", filters.type);
         if (filters.symbol) q.set("symbol", filters.symbol.toUpperCase());
+        if (filters.dateFrom) q.set("dateFrom", filters.dateFrom);
+        if (filters.dateTo) q.set("dateTo", filters.dateTo);
         const res = await fetch(`/api/trading?${q}`, { cache: "no-store" });
         const text = await res.text();
         if (!text.trim()) {
@@ -596,18 +598,33 @@ export function TradingLedger({ userId }: { userId?: string }) {
           value={filters.symbol}
           onChange={(e) => setFilters({ ...filters, symbol: e.target.value })}
         />
-        <input
-          placeholder="Year"
-          className="w-20 rounded border border-[var(--border)] bg-[var(--card)] px-2 py-1 text-xs"
-          value={filters.year}
-          onChange={(e) => setFilters({ ...filters, year: e.target.value })}
-        />
-        <input
-          placeholder="Month"
-          className="w-16 rounded border border-[var(--border)] bg-[var(--card)] px-2 py-1 text-xs"
-          value={filters.month}
-          onChange={(e) => setFilters({ ...filters, month: e.target.value })}
-        />
+        <div className="flex items-center gap-1">
+          <input
+            type="date"
+            title="From date"
+            className="w-32 rounded border border-[var(--border)] bg-[var(--card)] px-2 py-1 text-xs"
+            value={filters.dateFrom}
+            onChange={(e) => setFilters({ ...filters, dateFrom: e.target.value, year: "", month: "" })}
+          />
+          <span className="text-xs text-subtle">→</span>
+          <input
+            type="date"
+            title="To date"
+            className="w-32 rounded border border-[var(--border)] bg-[var(--card)] px-2 py-1 text-xs"
+            value={filters.dateTo}
+            onChange={(e) => setFilters({ ...filters, dateTo: e.target.value, year: "", month: "" })}
+          />
+          {(filters.dateFrom || filters.dateTo) && (
+            <button
+              type="button"
+              title="Clear date range"
+              onClick={() => setFilters({ ...filters, dateFrom: "", dateTo: "" })}
+              className="rounded px-1.5 py-0.5 text-xs text-subtle hover:text-[var(--fg)] hover:bg-[var(--bg-secondary)]"
+            >
+              ✕
+            </button>
+          )}
+        </div>
       </div>
 
       <FormModal

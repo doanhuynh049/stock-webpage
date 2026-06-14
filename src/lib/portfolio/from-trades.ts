@@ -17,6 +17,15 @@ export function rebuildPortfolioFromTrades(
   );
   const sectorBySymbol = tickerToSectorName();
 
+  // Build exchange lookup from trade records (prefer first non-null value found)
+  const exchangeBySymbol = new Map<string, string>();
+  for (const t of trades) {
+    const sym = normSymbol(t.itemName);
+    if (sym && t.exchange && !exchangeBySymbol.has(sym)) {
+      exchangeBySymbol.set(sym, t.exchange);
+    }
+  }
+
   type Agg = { buyQty: number; sellQty: number; buyCost: number };
   const agg = new Map<string, Agg>();
 
@@ -45,7 +54,7 @@ export function rebuildPortfolioFromTrades(
     result.push({
       symbol,
       name: prior?.name ?? symbol,
-      exchange: prior?.exchange ?? null,
+      exchange: prior?.exchange ?? exchangeBySymbol.get(symbol) ?? null,
       sector: prior?.sector ?? sectorBySymbol.get(symbol) ?? null,
       industry: prior?.industry ?? null,
       shares: net,
