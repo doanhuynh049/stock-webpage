@@ -30,14 +30,22 @@ const TRADES_DIR = join(process.cwd(), "data", "user-trades");
 
 let dbSyncBlockedUntil = 0;
 
+// Use first 8 chars of userId as prefix so IDs stay under VARCHAR(64).
+// Full format: "{8-char-prefix}__{36-char-uuid}" = 46 chars < 64.
+const USER_PREFIX_LEN = 8;
+
 function tradeId(userId: string, id?: string): string {
   const raw = id ?? randomUUID();
-  return raw.startsWith(`${userId}__`) ? raw : `${userId}__${raw}`;
+  const pfx = `${userId.slice(0, USER_PREFIX_LEN)}__`;
+  return raw.startsWith(pfx) ? raw : `${pfx}${raw}`;
 }
 
 function stripUserPrefix(userId: string, id: string): string {
-  const prefix = `${userId}__`;
-  return id.startsWith(prefix) ? id.slice(prefix.length) : id;
+  const shortPfx = `${userId.slice(0, USER_PREFIX_LEN)}__`;
+  const longPfx = `${userId}__`; // legacy format never stored (all failed on VARCHAR limit)
+  if (id.startsWith(shortPfx)) return id.slice(shortPfx.length);
+  if (id.startsWith(longPfx)) return id.slice(longPfx.length);
+  return id;
 }
 
 const UUID_RE =
@@ -165,7 +173,7 @@ function toLegacyRecord(row: Parameters<typeof toRecord>[1]): TradeRecord {
 
 async function readDbTrades(userId: string): Promise<TradeRecord[]> {
   if (!isPersistenceEnabled()) return [];
-  const prefix = `${userId}__`;
+  const prefix = `${userId.slice(0, USER_PREFIX_LEN)}__`;
   try {
     // Fetch BOTH sets sequentially (Neon HTTP doesn't reliably handle
     // concurrent requests from a single serverless invocation):

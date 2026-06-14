@@ -552,7 +552,7 @@ export function AnalysisView({
 
   return (
     <div className="space-y-3">
-      <div className="tab-scroll -mx-1 flex gap-1 overflow-x-auto rounded-lg bg-[var(--bg-secondary)] p-1 ring-1 ring-[var(--border)]">
+      <div className="tab-scroll -mx-1 flex gap-1 overflow-x-auto rounded-xl bg-[var(--bg-secondary)] p-1 ring-1 ring-[var(--border)]">
         {MAIN_TABS.map((t) => (
           <button
             key={t.id}
@@ -561,8 +561,10 @@ export function AnalysisView({
               setMainTab(t.id);
               setSelection(null);
             }}
-            className={`shrink-0 rounded-md px-3 py-2 text-xs font-medium transition-colors sm:py-1.5 ${
-              mainTab === t.id ? "bg-accent text-white" : "text-muted hover:text-[var(--fg)]"
+            className={`shrink-0 rounded-lg px-3 py-2 text-xs font-semibold transition-all sm:py-1.5 ${
+              mainTab === t.id
+                ? "bg-accent text-white shadow-sm ring-1 ring-accent/30"
+                : "text-[var(--fg)] opacity-60 hover:bg-[var(--card)] hover:opacity-100"
             }`}
           >
             {t.label}
@@ -571,7 +573,7 @@ export function AnalysisView({
       </div>
 
       {!noSubTabs && (
-        <div className="tab-scroll -mx-1 flex gap-1 overflow-x-auto pb-0.5">
+        <div className="tab-scroll -mx-1 flex gap-1.5 overflow-x-auto pb-0.5">
           {SUB_TABS.map((t) => (
             <button
               key={t.id}
@@ -580,8 +582,10 @@ export function AnalysisView({
                 setSubTab(t.id);
                 setSelection(null);
               }}
-              className={`shrink-0 rounded-md px-2.5 py-1.5 text-[11px] font-medium ring-1 ring-[var(--border)] sm:py-1 ${
-                subTab === t.id ? "bg-[var(--accent-bg)] text-accent" : "text-muted"
+              className={`shrink-0 rounded-lg px-3 py-1.5 text-[11px] font-semibold transition-all sm:py-1 ${
+                subTab === t.id
+                  ? "bg-[var(--accent-bg)] text-accent ring-1 ring-accent/30"
+                  : "text-[var(--fg)] opacity-55 ring-1 ring-[var(--border)] hover:bg-[var(--bg-secondary)] hover:opacity-100"
               }`}
             >
               {t.label}
