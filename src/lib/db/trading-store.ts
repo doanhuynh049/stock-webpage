@@ -17,7 +17,7 @@ import {
   syncPortfolioHoldings,
   type PortfolioHoldingInput,
 } from "@/lib/db/portfolio-sync";
-import { canUseLocalDataFiles } from "@/lib/serverless";
+import { canUseLocalDataFiles, isVercel } from "@/lib/serverless";
 import {
   loadStockServiceTrades,
   stockServiceLedgerKey,
@@ -414,14 +414,20 @@ export async function listTrades(
     }
   }
 
+  let dbAttempted = false;
   if (!trades.length && isPersistenceEnabled()) {
+    dbAttempted = true;
     trades = await readDbTrades(userId);
     if (trades.length && canUseLocalDataFiles()) {
       writeFileTrades(userId, trades);
     }
   }
 
-  if (!trades.length) {
+  // On Vercel, Neon is the single source of truth. Never fall back to the
+  // bundled JSON when persistence is enabled — the file is read-only and can
+  // be stale (e.g. it still contains trades that were deleted from Neon).
+  // Only use the bundled fallback in local dev when the DB was not tried.
+  if (!trades.length && !dbAttempted) {
     trades = bundledTradesFallback(userId);
   }
 
