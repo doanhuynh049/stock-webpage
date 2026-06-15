@@ -12,3 +12,5 @@ For architecture, components, and conventions, read `.cursor/skills/stock-webpag
 - `action-first-navigation.mdc` — optimistic UI, NavLink pending state
 - `page-state-cache.mdc` — server page cache keys and invalidation
 - `vercel-cache.mdc` — no disk cache on Vercel; use localStorage for news/market
+- `theme-aware-interactive.mdc` — use `text-accent-fg` not `text-white` with `bg-accent`
+- `settings-page-pattern.mdc` — settings pages: full-panel, no max-w, DB key ≤16 chars

@@ -1,0 +1,65 @@
+---
+description: Settings pages — full-panel layout, no max-width, left-nav pattern
+globs: src/app/settings/**
+alwaysApply: false
+---
+
+# Settings page pattern
+
+## Layout structure
+
+Settings pages live under `/settings/*` and share `src/app/settings/layout.tsx` which renders:
+- Left: narrow nav rail (`w-56`) with links to Overview / AI / Reports
+- Right: full remaining panel (`flex-1 overflow-y-auto`)
+
+## Page content wrapper
+
+```tsx
+// ✅ CORRECT — matches other full-panel pages (/portfolio, /analysis, /news)
+<div className="space-y-6 p-6">
+  <div>
+    <h1 className="text-xl font-bold text-[var(--fg)]">Page title</h1>
+    <p className="mt-1 text-sm text-muted">Description</p>
+  </div>
+  {/* content */}
+</div>
+
+// ❌ WRONG — constrains width, breaks full-panel design
+<div className="mx-auto max-w-3xl space-y-6 p-6">
+```
+
+## Server/client split
+
+```
+src/app/settings/[section]/page.tsx  ← Server component
+  - auth() check → redirect("/login")
+  - read server-side data (getLlmStatus, DB)
+  - render layout with <ClientPanel />
+
+src/components/settings/[name]-panel.tsx  ← "use client"
+  - own state, fetch /api/settings/*, save logic
+  - localStorage for client-only prefs (report settings)
+  - Neon via API for shared/cross-device prefs (AI settings)
+```
+
+## API endpoints
+
+```
+src/app/api/settings/[section]/route.ts
+  GET  → return user settings (auth required)
+  PUT  → save user settings (auth required)
+```
+
+## DB key for settings in ai_response_cache
+
+`symbol` is VARCHAR(16) — always keep the key ≤ 16 chars:
+- AI config: `symbol="_ai_cfg_"`, `analysisType="ai_config"`, `modelName=userId`
+- Other sections: follow same pattern with a short symbol key
+
+## New section checklist
+
+1. Add nav item to `settings/layout.tsx`
+2. Create `settings/[section]/page.tsx` (server, auth guard)
+3. Create `components/settings/[name]-panel.tsx` (client)
+4. Create `api/settings/[section]/route.ts` (GET + PUT)
+5. Use `p-6 space-y-6` wrapper — no `max-w-*`

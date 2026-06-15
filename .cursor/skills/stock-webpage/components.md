@@ -2,7 +2,7 @@
 
 High-level reference for AI agents. Server = React Server Component; Client = `"use client"`.
 
-**Related**: [data-flow.md](data-flow.md) — DB, cache layers, Vercel. **Rules**: `.cursor/rules/vercel-cache.mdc`
+**Related**: [data-flow.md](data-flow.md) — DB, cache layers, Vercel. **Rules**: `.cursor/rules/vercel-cache.mdc`, `.cursor/rules/theme-aware-interactive.mdc`
 
 ---
 
@@ -10,16 +10,22 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 
 | Route | File | Type | Purpose | Data sources |
 |-------|------|------|---------|--------------|
-| `/` | `page.tsx` | Server | Market dashboard: indices, movers, sectors, picks, **AI news digest** | `stocks`, `stock-picks`; news via **`AiNewsSummary`** + **`CachedNewsFeed`** (both client) |
+| `/` | `page.tsx` | Server | Market dashboard: indices, movers, sectors, picks, **AiNewsSummary**, **CachedNewsFeed** | `stocks`, `stock-picks`; news via client components |
 | `/login` | `login/page.tsx` | Client | Email/password login & registration | `actions` |
+| `/news` | `news/page.tsx` | Server | **AI News Digest** + **Earnings Calendar** | `AiNewsSummary`, `EarningsCalendar` (both client) |
 | `/portfolio` | `portfolio/page.tsx` | Server | Holdings ledger (sortable), allocation charts | `advisory-portfolio`, `holdings-enrichment`, `page-cache` |
 | `/watchlist` | `watchlist/page.tsx` | Server | **Quick-add panel** + watchlist grid | `user-data`, `stocks` |
-| `/analysis` | `analysis/page.tsx` | Server | Portfolio / Sector / VN30 / VN100 / **Scoring rules** / **Principles** | `combined-analysis`, `sector-analysis`, `recommendations`, shared portfolio cache |
+| `/analysis` | `analysis/page.tsx` | Server | Portfolio / Sector / VN30 / VN100 / Scoring rules / **Principles** | `combined-analysis`, `sector-analysis`, `recommendations`, shared portfolio cache |
 | `/ai-analyst` | `ai-analyst/page.tsx` | Server | AI chat shell | `auth`; chat via `/api/ai` |
 | `/stocks/[symbol]` | `stocks/[symbol]/page.tsx` | Server | Stock detail: quote, charts, fundamentals | `stocks`, `stock-analysis`, `user-data`; news via **`CachedNewsFeed`** |
 | `/trading` | `trading/page.tsx` | Server | Trade ledger wrapper | `auth`; `TradingLedger` → `/api/trading` |
 | `/screener` | `screener/page.tsx` | Server | Filter stocks; **redirects with defaults** on first visit | `stocks`, `screener-defaults` |
 | `/strategy-review` | `strategy-review/page.tsx` | Server | Core–Satellite compliance, action items | `advisory-portfolio`, `strategy/*` |
+| `/settings` | `settings/page.tsx` | Server | Settings hub — account card + nav tiles | `auth`, `getLlmStatus` |
+| `/settings/ai` | `settings/ai/page.tsx` | Server | AI provider config — key status + `AiProviderPanel` | `auth`, `getLlmStatus`, `LLM_PROVIDERS` |
+| `/settings/reports` | `settings/reports/page.tsx` | Server | Reports & alerts config | `auth`; `ReportSettingsPanel` (client) |
+
+**Settings layout**: `src/app/settings/layout.tsx` — left nav rail (Overview / AI / Reports) + full-width right content. Pages use `p-6 space-y-6`, no `max-w-*`.
 
 **Global loading**: `loading.tsx` — route transition skeleton.
 
@@ -41,11 +47,13 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 |------|------|---------|
 | `app-shell.tsx` | Server | Wrapper → `ShellContent` |
 | `shell-content.tsx` | Client | Sidebar + market ticker + main; hides chrome on `/login` |
-| `sidebar.tsx` | Client | Nav links, user info, theme toggle, sign out |
+| `sidebar.tsx` | Client | Nav links, **UserMenu** (bottom-left), theme toggle |
+| `user-menu.tsx` | Client | **NEW (Jun 2026)** — clickable user card at bottom-left opens popup: Settings, AI Config, Reports, Sign out |
 | `nav-link.tsx` | Client | Nav link with `useLinkStatus` pending indicator |
 | `market-ticker.tsx` | Client | Scrolling index strip; **`useCachedFetch`** → `/api/market` |
 | `theme-toggle.tsx` | Client | Light / dark / system cycle |
-| `sign-out-button.tsx` | Client | Sign out — navigates first, session cleared after |
+| `sign-out-button.tsx` | Client | Sign out (legacy; still used in compact sidebar) |
+| `nav-items.ts` | — | Nav item definitions; includes `/news` |
 
 ### `ui/`
 
@@ -56,10 +64,10 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 | `card.tsx` | Server | Card container + title |
 | `input.tsx` | Server | Input, label, select |
 | `page-header.tsx` | Server | Page title + description + badge slot |
-| `stat-card.tsx` | Server | KPI metric tile; optional **`valueClass`** prop overrides value text color (e.g. `"text-emerald-500"` for positive P/L) |
+| `stat-card.tsx` | Server | KPI metric tile; optional **`valueClass`** prop overrides value text color |
 | `empty-state.tsx` | Server | Auth-gated empty page with CTA |
 | `brand-logo.tsx` | Server | App logo SVG |
-| `stock-avatar.tsx` | Server | Sector-colored ticker avatar; resolves long sector names (e.g. `"Banking & Financial Services"`) via **`shortSectorName()`** — shows correct icon + color for all sectors including ETF |
+| `stock-avatar.tsx` | Server | Sector-colored ticker avatar; resolves long sector names via **`shortSectorName()`** |
 | `markdown-lite.tsx` | Client | Minimal markdown for AI replies |
 | `db-unavailable-banner.tsx` | Server | DB connectivity warning |
 
@@ -71,9 +79,9 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 | `mover-list.tsx` | Server | Top gainers/losers rows |
 | `stock-table.tsx` | Server | Market table |
 | `sector-heatmap.tsx` | Server | Sector performance grid |
-| `news-feed.tsx` | Server | Static news list (legacy; prefer **`cached-news-feed`**) |
+| `news-feed.tsx` | Server | Static news list (legacy) |
 | `cached-news-feed.tsx` | Client | Live news via **`useCachedFetch`** → `/api/news`; localStorage TTL 1h |
-| `ai-news-summary.tsx` | Client | **NEW (Jun 2026)** — AI news digest: fetches `/api/news/summary`, renders market mood banner, impact/sentiment labels, breaking alerts, and AI-generated 1-sentence market implication per item; in-memory cached 30 min |
+| `ai-news-summary.tsx` | Client | **NEW (Jun 2026)** — AI news digest; tabs: Outlook / Hot / All / Guide; sector trends; stock movers; BEAT/MISS signals; 7-signal framework; rule-based fallback when LLM unavailable |
 | `investment-picks.tsx` | Server | Curated picks card |
 | `stock-analysis-panel.tsx` | Server | Combined analysis on detail page |
 | `price-chart.tsx` | Client | Recharts line chart |
@@ -81,28 +89,41 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 | `financial-chart.tsx` | Client | Revenue/profit bar chart |
 | `watchlist-button.tsx` | Client | Toggle watchlist — optimistic UI |
 
+### `news/`
+
+| File | Type | Purpose |
+|------|------|---------|
+| `earnings-calendar.tsx` | Client | **NEW (Jun 2026)** — VN quarterly earnings calendar; **Track ›** button on active season switches to "Earnings News" tab; BEAT/MISS tracker header; tabs: VN Season Calendar / Earnings News |
+
 ### `portfolio/`
 
 | File | Type | Purpose |
 |------|------|---------|
-| `portfolio-charts.tsx` | Client | Sector allocation donut + breakdown cards; **redesigned Jun 2026** — interactive donut (hover dims other slices), gradient progress bars, compact legend, summary card; uses `shortSectorName()` |
+| `portfolio-charts.tsx` | Client | Sector allocation donut + breakdown cards; interactive donut; gradient progress bars; uses `shortSectorName()` |
 | `holdings-ledger.tsx` | Client | **Sortable** holdings table; optimistic save → `POST /api/portfolio` |
 
 ### `trading/`
 
 | File | Type | Purpose |
 |------|------|---------|
-| `trading-ledger.tsx` | Client | CRUD trade table; optimistic mutations → `/api/trading`; **Net P/L + Win rate StatCards** are green when positive, red when negative |
+| `trading-ledger.tsx` | Client | CRUD trade table; optimistic mutations → `/api/trading`; date range filters; **Net P/L + Win rate** green when positive |
 
 ### `analysis/`
 
 | File | Type | Purpose |
 |------|------|---------|
-| `analysis-view.tsx` | Client | Tabs: Portfolio / Sector / VN30 / VN100 / **Scoring rules** / **Principles**; **Principles tab** = left (StockEvaluationPanel) + right (investment principles) side-by-side |
+| `analysis-view.tsx` | Client | Tabs: Portfolio / Sector / VN30 / VN100 / Scoring rules / **Principles**; Principles tab = left (StockEvaluationPanel) + right (principles) |
 | `sector-analysis-view.tsx` | Client | Per-sector leaders + trend leaders panel |
 | `analysis-detail-panel.tsx` | Client | Slide-over detail for scored row |
-| `stock-evaluation-panel.tsx` | Client | **NEW (Jun 2026)** — 8-category AI stock evaluation; user enters ticker → calls `/api/stock-eval` → renders accordion (Business / Financial / Valuation / Risks / Growth / Management / Timing / Fit) + final-decision checklist + verdict banner |
+| `stock-evaluation-panel.tsx` | Client | **NEW (Jun 2026)** — 8-category AI stock evaluation; ticker input → `/api/stock-eval` → accordion (Business / Financial / Valuation / Risks / Growth / Management / Timing / Fit) + verdict |
 | `etf-analysis-view.tsx` | Client | ETF-specific analysis rows |
+
+### `settings/`
+
+| File | Type | Purpose |
+|------|------|---------|
+| `ai-provider-panel.tsx` | Client | **NEW (Jun 2026)** — AI provider priority UI: enable/disable toggle (independent of env key), masked API key input, model selector, "Latest models" fetch button, ↑↓ priority reorder; saves to Neon via `/api/settings/ai` |
+| `report-settings-panel.tsx` | Client | **NEW (Jun 2026)** — Email/Slack delivery config; portfolio report frequency selector (pill: Daily/Weekly/Monthly/Off); toggle items for weekly digest, monthly review, trade alert, earnings beat/miss, price movement alert (with slider); localStorage persistence |
 
 ### `strategy/`
 
@@ -148,6 +169,7 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 | `vnstocks:news-market` | 1h | Dashboard `CachedNewsFeed` |
 | `vnstocks:news-{SYMBOL}` | 1h | Stock detail news |
 | `vnstocks:market-snapshot` | 6h | `MarketTicker` |
+| `vnstocks:report-settings` | browser | `ReportSettingsPanel` config |
 
 ---
 
@@ -170,7 +192,7 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 | `prisma-query.ts` | Retry + connectivity helpers |
 | `database-url.ts` | Neon URL resolution |
 | `persistence.ts` | `PERSISTENCE_ENABLED` flag |
-| `db/advisory-portfolio.ts` | Portfolio holdings + summary (reads `portfolio_holding`) |
+| `db/advisory-portfolio.ts` | Portfolio holdings + summary; `inferExchange(symbol)` |
 | `db/portfolio-sync.ts` | Upsert/delete `portfolio_holding` rows |
 | `db/trading-store.ts` | Trade CRUD, Neon + JSON fallback, **portfolio rebuild** |
 | `db/trading-types.ts` | Trade types |
@@ -187,15 +209,15 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 | Module | Purpose |
 |--------|---------|
 | `market-service.ts` | Sync, quotes (Entrade + Yahoo fallback); disk cache guarded by `canWriteLocalCache()` |
-| `news-service.ts` | Yahoo + Google RSS; in-memory + optional `.cache/news.json` (local only) |
-| `providers/rss-news.ts` | RSS parse, HTML entity decode, tag strip |
+| `news-service.ts` | Yahoo + Google + CafeF + VnExpress RSS; in-memory + optional `.cache/news.json` (local only); `deduplicateNews()` |
+| `providers/rss-news.ts` | RSS parse, HTML entity decode, tag strip; `googleEarningsNewsRssUrl`, `googleMacroNewsRssUrl`, `cafeFRssUrl`, `vnExpressFinanceRssUrl` |
 | `stocks.ts` | Re-export barrel → market-service |
 | `stock-metadata.ts` | Index/universe metadata |
 | `stock-picks.ts` | Scored picks for dashboard |
 | `screener-defaults.ts` | Default screener params + URL redirect helper |
 | `providers/entrade.ts` | Entrade API |
 | `providers/yahoo.ts` | Yahoo Finance fallback |
-| `sector-colors.ts` | Sector → color mapping; **`SECTOR_ALIAS`** maps long names (e.g. `"Banking & Financial Services"`) to canonical short keys; **`shortSectorName()`** returns display-safe short name; ETF color added |
+| `sector-colors.ts` | `SECTOR_ALIAS` (long→short map) + `shortSectorName()` + sector color/icon lookup |
 | `cache/pe-cache.ts` | Sector P/E Yahoo fallback cache (local disk only) |
 
 ### Analysis
@@ -210,7 +232,7 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 | `analysis/sector-universe.ts` | Load `data/sector-stocks.json` |
 | `analysis/sector-analysis.ts` | Sector scores, trend leaders, P/E from snapshot store |
 | `analysis/index-universe.ts` | VN30 / VN100 lists |
-| `analysis/scoring-rules.ts` | Scoring rules tab copy (technical + combined weights) |
+| `analysis/scoring-rules.ts` | Scoring rules tab copy |
 | `analysis/strategy-review.ts` | Portfolio vs targets |
 
 ### Content
@@ -235,10 +257,36 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 | Module | Purpose |
 |--------|---------|
 | `ai-analyst.ts` | Rule-based fallback Q&A |
-| `providers/llm.ts` | OpenAI-compatible LLM (Groq/Gemini) |
+| `providers/llm.ts` | **5-provider chain** (Cerebras → Groq → Gemini → Mistral → OpenRouter → fallback); `LLM_PROVIDERS` metadata array; `callLlm(messages, context, opts)` accepts `opts.apiKeys` for user-supplied key overrides; `getLlmStatus()` |
 | `page-cache.ts` | `unstable_cache` wrapper + TTL |
 | `serverless.ts` | `isVercel`, `canUseLocalDataFiles`, **`canWriteLocalCache`** |
 | `utils.ts` | `cn`, formatting helpers |
+
+---
+
+## API routes (`src/app/api/`)
+
+| Route | Methods | Purpose | Auth |
+|-------|---------|---------|------|
+| `/api/auth/[...nextauth]` | GET, POST | NextAuth handlers | — |
+| `/api/health` | GET | Health + cache age | Public |
+| `/api/market` | GET | Market snapshot | Public |
+| `/api/stocks` | GET | All/screened stocks | Public |
+| `/api/stocks/[symbol]` | GET | Stock detail | Public |
+| `/api/stocks/[symbol]/history` | GET | Price history | Public |
+| `/api/news` | GET | Live RSS news | Public |
+| `/api/news/summary` | GET | **AI news digest** (`?refresh=true` bypasses 30-min cache); 20 items max; compact context; 3500 output tokens; Cerebras→Groq→rule fallback; returns `NewsSummaryResponse` with `sectorTrends`, `stockMovers`, `items[]` | None |
+| `/api/picks` | GET | Investment picks | Public |
+| `/api/data/sync` | GET, POST | Market data sync | Session/cron |
+| `/api/portfolio` | GET, POST | Portfolio holdings | Session |
+| `/api/trading` | GET, POST | Trades list/add; `dateFrom`/`dateTo` filters | Session |
+| `/api/trading/[id]` | PUT, DELETE | Update/delete trade | Session |
+| `/api/strategy` | GET, PUT, DELETE | Strategy config | Session |
+| `/api/ai` | POST | AI analyst Q&A | Session |
+| `/api/ai/session` | GET, DELETE | Chat session | Session |
+| `/api/stock-eval` | GET | 8-category AI stock evaluation (`?symbol=FPT`); 5-provider LLM; rule-based fallback | Session |
+| `/api/settings/ai` | GET, PUT | Load/save user AI config (provider priority, models, API keys) from `ai_response_cache` | Session |
+| `/api/settings/ai/models` | GET | Fetch live model list from provider (`?provider=groq`); falls back to curated defaults | Session |
 
 ---
 
@@ -246,9 +294,9 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 
 | File | Purpose |
 |------|---------|
-| `sector-stocks.json` | 9 sectors × 10 leader symbols (Sector analysis tab) |
+| `sector-stocks.json` | 9 sectors × 10 leader symbols |
 | `investment-strategy.json` | Default Core–Satellite targets |
-| `investment-principles.json` | Investment principles (English) for Analysis tab |
+| `investment-principles.json` | Investment principles (English) |
 | `user-trades/{userId}.json` | Bundled trade ledger (Vercel read fallback) |
 | `neon-cache/*.json` | Local DB read cache (gitignored; not on Vercel) |
 
@@ -264,41 +312,19 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 
 ---
 
-## API routes (`src/app/api/`)
-
-| Route | Methods | Purpose | Auth | Cache invalidation |
-|-------|---------|---------|------|-------------------|
-| `/api/auth/[...nextauth]` | GET, POST | NextAuth handlers | — | — |
-| `/api/health` | GET | Health + cache age | Public | — |
-| `/api/market` | GET | Market snapshot | Public | — |
-| `/api/stocks` | GET | All/screened stocks | Public | — |
-| `/api/stocks/[symbol]` | GET | Stock detail | Public | — |
-| `/api/stocks/[symbol]/history` | GET | Price history | Public | — |
-| `/api/news` | GET | Live RSS news (`?refresh=true` bypasses server memory) | Public | — |
-| `/api/picks` | GET | Investment picks | Public | — |
-| `/api/data/sync` | GET, POST | Market data sync | Session / cron | — |
-| `/api/portfolio` | GET, POST | Portfolio holdings | Session | `portfolio-*`, `analysis-*` |
-| `/api/trading` | GET, POST | Trades list/add; supports `dateFrom`/`dateTo` filters | Session | `portfolio-*`, `analysis-*` |
-| `/api/trading/[id]` | PUT, DELETE | Update/delete trade | Session | `portfolio-*`, `analysis-*` |
-| `/api/strategy` | GET, PUT, DELETE | Strategy config | Session | — |
-| `/api/ai` | POST | AI analyst Q&A | Session | — |
-| `/api/ai/session` | GET, DELETE | Chat session | Session | — |
-| `/api/stock-eval` | GET | **NEW (Jun 2026)** — 8-category AI investment evaluation for any ticker (`?symbol=FPT`); fetches live data + `analyzeStock` scores; calls Groq/Gemini; adapts system prompt to data availability (data-scarce companies → LLM uses training knowledge); rule-based fallback | Session | — |
-| `/api/news/summary` | GET | **NEW (Jun 2026)** — AI news digest (`?refresh=true` to force); fetches 15 recent items, calls LLM to rate impact (HIGH/MEDIUM/LOW), sentiment (Bullish/Bearish/Neutral), affected symbols, and AI summary; returns `NewsSummaryResponse`; in-memory cache 30 min | None | — |
-
----
-
 ## Dependency graph
 
 ```
-layout (Sidebar, NavLink, MarketTicker + localStorage)
+layout (Sidebar → UserMenu, NavLink, MarketTicker)
   └── pages (Server prefetch + pageCache)
-        └── client components (CachedNewsFeed, ledgers, charts, analysis tabs, chat)
+        └── client components (AiNewsSummary, EarningsCalendar, ledgers, charts, analysis tabs, settings panels, chat)
               └── /api routes
                     └── lib/db (trading-store → portfolio-sync)
-                          └── market-service + news-service + analysis (batch snapshots)
+                          └── market-service + news-service + analysis + llm
 ```
 
 **Trading mutation path**: `TradingLedger` → `/api/trading` → `trading-store` → `trading_transaction` → `syncPortfolioFromTrades` → `portfolio_holding`.
 
 **News path (preferred)**: `CachedNewsFeed` → `/api/news` → `news-service` (RSS); browser caches in localStorage.
+
+**AI news path**: `AiNewsSummary` → `/api/news/summary` → `news-service` + `callLlm` (5-provider chain); in-memory 30-min cache.

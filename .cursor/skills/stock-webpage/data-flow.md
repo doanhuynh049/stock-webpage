@@ -354,6 +354,103 @@ ETFs / illiquid tickers may still show `—` if both providers fail.
 
 ---
 
+## AI provider chain (`src/lib/providers/llm.ts`)
+
+`callLlm(messages, context, opts?)` tries providers in order, skipping any without a key:
+
+```
+1. Cerebras   — api.cerebras.ai        (model: llama3.1-70b,   1M TPM free)
+2. Groq       — api.groq.com           (model: llama-3.3-70b-versatile, 12k TPM free)
+3. Gemini     — generativelanguage...  (model: gemini-2.0-flash, 1.5M TPM free)
+4. Mistral    — api.mistral.ai         (model: mistral-small-latest, free trial)
+5. OpenRouter — openrouter.ai          (model: meta-llama/...free, aggregated free models)
+6. fallback   — rule-based (always)
+```
+
+Keys: env vars `CEREBRAS_API_KEY`, `GROQ_API_KEY`, `GEMINI_API_KEY`, `MISTRAL_API_KEY`, `OPENROUTER_API_KEY`.
+
+User key overrides: passed via `opts.apiKeys: Partial<Record<LlmProvider, string>>` — checked first before env var. Stored in Neon `ai_response_cache` (symbol `_ai_cfg_`, analysisType `ai_config`, modelName `userId`).
+
+**Adding a new OpenAI-compatible provider** — one call in `callLlm`:
+```ts
+const myKey = k(process.env.MY_API_KEY, "myprovider");
+if (myKey) {
+  const r = await callOpenAICompat("https://api.myprovider.com/v1/chat/completions",
+    myKey, "model-name", fullMessages, maxTokens);
+  if (r) return { ...r, provider: "myprovider" };
+}
+```
+
+---
+
+## AI settings storage (`ai_response_cache`)
+
+User AI settings are stored reusing the existing `ai_response_cache` table:
+
+| Column | Value |
+|--------|-------|
+| `symbol` | `_ai_cfg_` (≤16 chars — VARCHAR(16)) |
+| `analysis_type` | `ai_config` |
+| `model_name` | `{userId}` (VARCHAR(128)) |
+| `payload` | JSON: `{ providers: ProviderConfig[], updatedAt }` |
+
+`ProviderConfig = { id, enabled, model, priority, apiKey? }` — `apiKey` is stored in plain text (personal use only).
+
+---
+
+## AI News Digest (`/api/news/summary`)
+
+Rate-limit mitigation (Groq 12k TPM free tier):
+- Deduplicate news (`deduplicateNews`)
+- Slice to 20 items max (`recentNews.slice(0, 20)`)
+- Compact context format: single-line per item, title capped at 120 chars, blurb at 80 chars
+- Compact system prompt: ~180 tokens (down from ~500)
+- `maxTokens: 3500` output
+- Total input: ~900 tokens → well under 12k TPM
+
+7-signal classification: `earnings | guidance | filing | analyst | insider | ma | macro | noise`
+
+Cache: in-memory 30 min, `?refresh=true` to bypass.
+
+---
+
+## Settings pages
+
+New routes: `/settings`, `/settings/ai`, `/settings/reports`
+
+Layout: `src/app/settings/layout.tsx` — left nav (3 items) + full-width right panel. All pages use `p-6 space-y-6` — **no `max-w-*` constraint** (matches other full-panel pages like `/portfolio`).
+
+Pattern for new settings pages:
+```
+settings/[section]/page.tsx   ← server, auth() check, render wrapper
+components/settings/*-panel.tsx ← "use client", handles save + fetch
+api/settings/[section]/route.ts ← GET + PUT
+```
+
+`ReportSettingsPanel` saves to `localStorage` (key: `vnstocks:report-settings`). No server-side persistence needed for delivery preferences.
+
+`AiProviderPanel` saves to Neon via `PUT /api/settings/ai`.
+
+---
+
+## Theme-aware interactive elements
+
+**Problem**: Tailwind v4 `bg-accent` = `var(--color-accent)`. If `--color-accent` is not in `@theme inline`, it's a no-op. `text-white` on a transparent/white card = invisible in light mode.
+
+**Fix**: `globals.css` `@theme inline` block includes:
+```css
+--color-accent:    var(--accent);
+--color-accent-fg: var(--accent-fg);
+```
+
+Both `:root` and `.dark` define `--accent-fg`:
+- Light: `#ffffff` (white text on dark `#059669` green)
+- Dark: `#052e16` (dark text on light `#34d399` green)
+
+**Rule**: Use `text-accent-fg` not `text-white` when pairing with `bg-accent`. See `.cursor/rules/theme-aware-interactive.mdc`.
+
+---
+
 ## Vercel checklist
 
 ```
@@ -390,3 +487,7 @@ Common production errors:
 | Holdings `Exch` column shows `—` | `portfolio_holding.exchange` was NULL; no fallback | `advisory-portfolio.ts` now calls `inferExchange(symbol)` which uses `lookupIndexStock` + hardcoded HNX set → defaults to HOSE |
 | Stock avatars/icons all gray (sector icons wrong) | Long sector names (e.g. `"Banking & Financial Services"`) didn't match short keys in `SECTOR_COLORS` / `SECTOR_ICONS` | `sector-colors.ts` now has `SECTOR_ALIAS` + `shortSectorName()`; `stock-avatar.tsx` resolves via `shortSectorName()` |
 | `sync:trades` hangs/fails locally | Neon HTTP endpoint blocked by local firewall (`fetch failed`) | Use `psql "$DATABASE_URL"` directly (wire protocol works) |
+| `value too long for character varying(16)` — settings save | `ai_response_cache.symbol` is VARCHAR(16); `"__user_ai_settings__"` (20 chars) overflows | Use `"_ai_cfg_"` (8 chars) as the settings symbol key |
+| LLM `429 Rate limit reached` on news summary | 30 items × ~300 token summaries exceeded Groq 12k TPM | Compact context format + 20 items + max_tokens=3500; add Cerebras (1M TPM free) as #1 provider |
+| Cerebras `404 model not found` | Model ID `llama-3.3-70b` doesn't exist | Use `llama3.1-70b` (no dash before version number) |
+| Tab / button text invisible in light mode | `bg-accent` no-op in Tailwind v4 (missing `--color-accent` in `@theme inline`); `text-white` on white card | Added `--color-accent` + `--color-accent-fg` to `@theme inline`; use `text-accent-fg` not `text-white` with `bg-accent` |
