@@ -5,8 +5,8 @@ import { X } from "lucide-react";
 import { BrandLogo } from "@/components/ui/brand-logo";
 import { NavLink } from "@/components/layout/nav-link";
 import { navItems } from "@/components/layout/nav-items";
-import { SignOutButton } from "@/components/layout/sign-out-button";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
+import { UserMenu } from "@/components/layout/user-menu";
 import { cn } from "@/lib/utils";
 
 type SidebarProps = {
@@ -101,30 +101,7 @@ export function Sidebar({
 
       {!compact && (
         <div className="shrink-0 border-t border-[var(--border)] p-4 safe-bottom">
-          {user ? (
-            <div className="space-y-3">
-              <div className="flex items-center gap-3 rounded-xl bg-[var(--bg-secondary)] px-3 py-2.5 ring-1 ring-[var(--border)]">
-                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--accent-bg)] text-xs font-bold text-[var(--accent)]">
-                  {(user.name || user.email || "U").charAt(0).toUpperCase()}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-medium text-[var(--fg)]">
-                    {user.name || "Investor"}
-                  </div>
-                  <div className="truncate text-[10px] text-[var(--fg-subtle)]">{user.email}</div>
-                </div>
-              </div>
-              <SignOutButton />
-            </div>
-          ) : (
-            <Link
-              href="/login"
-              onClick={onNavigate}
-              className="block rounded-xl bg-[var(--accent)] px-3 py-2.5 text-center text-sm font-semibold text-white shadow-md transition hover:opacity-90"
-            >
-              Sign in to save data
-            </Link>
-          )}
+          <UserMenu user={user} onNavigate={onNavigate} />
         </div>
       )}
 
