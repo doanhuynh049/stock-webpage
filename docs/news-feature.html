@@ -1,0 +1,363 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VN Stocks — AI News & Earnings Feature Guide</title>
+<style>
+  :root {
+    --accent: #6366f1;
+    --green: #10b981;
+    --red: #ef4444;
+    --amber: #f59e0b;
+    --blue: #3b82f6;
+    --violet: #8b5cf6;
+    --cyan: #06b6d4;
+    --pink: #ec4899;
+    --orange: #f97316;
+    --teal: #14b8a6;
+    --gray: #6b7280;
+    --bg: #0f1117;
+    --bg2: #1a1d27;
+    --border: #2a2d3a;
+    --fg: #e2e8f0;
+    --muted: #94a3b8;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: var(--bg); color: var(--fg); line-height: 1.6; }
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 2rem 1.5rem; }
+
+  /* Header */
+  .hero { background: linear-gradient(135deg, #1e1b4b 0%, #0f172a 60%); border: 1px solid var(--border); border-radius: 1rem; padding: 2.5rem 2rem; margin-bottom: 2.5rem; }
+  .hero h1 { font-size: 2rem; font-weight: 800; background: linear-gradient(135deg, #a5b4fc, #38bdf8); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+  .hero p { color: var(--muted); margin-top: 0.5rem; font-size: 0.95rem; }
+  .badge { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.25rem 0.75rem; border-radius: 999px; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+
+  /* Section */
+  h2 { font-size: 1.25rem; font-weight: 700; margin: 2rem 0 1rem; padding-left: 0.75rem; border-left: 3px solid var(--accent); color: #a5b4fc; }
+  h3 { font-size: 1rem; font-weight: 600; margin: 1.5rem 0 0.75rem; color: #c7d2fe; }
+  p { color: var(--muted); margin-bottom: 0.75rem; font-size: 0.92rem; }
+
+  /* Cards */
+  .card { background: var(--bg2); border: 1px solid var(--border); border-radius: 0.75rem; padding: 1.25rem 1.5rem; margin-bottom: 1rem; }
+  .card-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
+
+  /* Table */
+  table { width: 100%; border-collapse: collapse; font-size: 0.875rem; margin-bottom: 1rem; }
+  th { background: #1e2233; color: #c7d2fe; padding: 0.6rem 0.85rem; text-align: left; font-size: 0.75rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; border-bottom: 1px solid var(--border); }
+  td { padding: 0.6rem 0.85rem; border-bottom: 1px solid var(--border); color: var(--muted); vertical-align: top; }
+  td strong { color: var(--fg); }
+  tr:last-child td { border-bottom: none; }
+  tr:hover td { background: #1e2233; }
+
+  /* Signal badges */
+  .sig { display: inline-flex; align-items: center; gap: 0.25rem; padding: 0.2rem 0.6rem; border-radius: 0.4rem; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; }
+  .sig-earnings { background: rgba(139,92,246,0.15); color: #a78bfa; border: 1px solid rgba(139,92,246,0.3); }
+  .sig-guidance { background: rgba(59,130,246,0.15); color: #93c5fd; border: 1px solid rgba(59,130,246,0.3); }
+  .sig-filing   { background: rgba(245,158,11,0.15); color: #fcd34d; border: 1px solid rgba(245,158,11,0.3); }
+  .sig-analyst  { background: rgba(6,182,212,0.15);  color: #67e8f9; border: 1px solid rgba(6,182,212,0.3); }
+  .sig-insider  { background: rgba(236,72,153,0.15); color: #f9a8d4; border: 1px solid rgba(236,72,153,0.3); }
+  .sig-ma       { background: rgba(249,115,22,0.15); color: #fdba74; border: 1px solid rgba(249,115,22,0.3); }
+  .sig-macro    { background: rgba(20,184,166,0.15); color: #5eead4; border: 1px solid rgba(20,184,166,0.3); }
+  .sig-noise    { background: rgba(107,114,128,0.15); color: #9ca3af; border: 1px solid rgba(107,114,128,0.3); }
+
+  /* Impact */
+  .impact-high { background: rgba(239,68,68,0.1); color: #fca5a5; border: 1px solid rgba(239,68,68,0.3); }
+  .impact-med  { background: rgba(245,158,11,0.1); color: #fcd34d; border: 1px solid rgba(245,158,11,0.3); }
+  .impact-low  { background: rgba(107,114,128,0.1); color: #9ca3af; border: 1px solid rgba(107,114,128,0.3); }
+
+  /* Surprise */
+  .beat { background: rgba(16,185,129,0.1); color: #6ee7b7; border: 1px solid rgba(16,185,129,0.3); }
+  .miss { background: rgba(239,68,68,0.1); color: #fca5a5; border: 1px solid rgba(239,68,68,0.3); }
+  .inline { background: rgba(59,130,246,0.1); color: #93c5fd; border: 1px solid rgba(59,130,246,0.3); }
+
+  /* Code */
+  pre, code { font-family: 'Fira Code', 'Cascadia Code', monospace; font-size: 0.82rem; }
+  pre { background: #0d1117; border: 1px solid var(--border); border-radius: 0.5rem; padding: 1rem 1.25rem; overflow-x: auto; margin-bottom: 1rem; color: #e2e8f0; line-height: 1.7; }
+  code { background: #1e2233; padding: 0.1rem 0.35rem; border-radius: 0.3rem; color: #a5b4fc; font-size: 0.8rem; }
+
+  /* Alert boxes */
+  .alert { border-radius: 0.6rem; padding: 0.85rem 1rem; margin-bottom: 1rem; font-size: 0.875rem; display: flex; gap: 0.6rem; align-items: flex-start; }
+  .alert-blue  { background: rgba(59,130,246,0.1); border: 1px solid rgba(59,130,246,0.25); color: #93c5fd; }
+  .alert-green { background: rgba(16,185,129,0.1); border: 1px solid rgba(16,185,129,0.25); color: #6ee7b7; }
+  .alert-amber { background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.25); color: #fcd34d; }
+  .icon { font-size: 1rem; flex-shrink: 0; }
+
+  /* Checklist */
+  .check { display: flex; align-items: flex-start; gap: 0.5rem; margin-bottom: 0.5rem; font-size: 0.875rem; color: var(--muted); }
+  .check::before { content: "→"; color: var(--accent); flex-shrink: 0; margin-top: 0.05rem; }
+
+  /* Flow diagram */
+  .flow { background: #0d1117; border: 1px solid var(--border); border-radius: 0.75rem; padding: 1.5rem; margin-bottom: 1rem; overflow-x: auto; }
+  .flow-step { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem; }
+  .flow-box { background: var(--bg2); border: 1px solid var(--border); border-radius: 0.4rem; padding: 0.35rem 0.75rem; font-size: 0.8rem; font-weight: 600; white-space: nowrap; }
+  .flow-box.source { border-color: rgba(99,102,241,0.5); color: #a5b4fc; }
+  .flow-box.process { border-color: rgba(59,130,246,0.5); color: #93c5fd; }
+  .flow-box.output { border-color: rgba(16,185,129,0.5); color: #6ee7b7; }
+  .arrow { color: var(--muted); font-size: 1.1rem; }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  @media (max-width: 640px) { .two-col, .card-row { grid-template-columns: 1fr; } .hero h1 { font-size: 1.5rem; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- Hero -->
+  <div class="hero">
+    <h1>📰 AI News &amp; Earnings Feature</h1>
+    <p>VN Stocks · Route: <code>/news</code> · Implemented June 2026</p>
+    <div style="margin-top:1rem; display:flex; flex-wrap:wrap; gap:0.5rem;">
+      <span class="badge" style="background:rgba(99,102,241,0.2);color:#a5b4fc;border:1px solid rgba(99,102,241,0.3);">AI-powered</span>
+      <span class="badge" style="background:rgba(16,185,129,0.2);color:#6ee7b7;border:1px solid rgba(16,185,129,0.3);">6 RSS sources</span>
+      <span class="badge" style="background:rgba(245,158,11,0.2);color:#fcd34d;border:1px solid rgba(245,158,11,0.3);">7-signal framework</span>
+      <span class="badge" style="background:rgba(59,130,246,0.2);color:#93c5fd;border:1px solid rgba(59,130,246,0.3);">VN Earnings Calendar</span>
+    </div>
+  </div>
+
+  <!-- Q1: Why only 1 item -->
+  <h2>Q1 — Why do I see only 1 item in the Hot tab?</h2>
+  <div class="card">
+    <p>The <strong>Hot</strong> tab shows only <span class="sig sig-earnings">Earnings</span> <span class="sig sig-ma">M&amp;A</span> <span class="sig sig-filing">Filing</span> and breaking news rated <span class="sig impact-high">HIGH</span> impact. On a quiet news day (market commentary, technical analysis), most items correctly appear as <span class="sig sig-noise">Noise</span> — LOW impact — and go to the <strong>All</strong> tab instead.</p>
+    <div class="two-col" style="margin-top:1rem;">
+      <div class="card" style="background:#0f1117; border-color:rgba(16,185,129,0.2);">
+        <p style="color:#6ee7b7; font-weight:700; margin-bottom:0.5rem;">✅ HIGH impact → Hot tab</p>
+        <div class="check">Q2 earnings beat / miss</div>
+        <div class="check">SBV rate decision</div>
+        <div class="check">M&amp;A announcement</div>
+        <div class="check">CEO resignation / appointment</div>
+        <div class="check">Analyst upgrade with raised target</div>
+      </div>
+      <div class="card" style="background:#0f1117; border-color:rgba(107,114,128,0.2);">
+        <p style="color:#9ca3af; font-weight:700; margin-bottom:0.5rem;">📰 LOW impact → All tab only</p>
+        <div class="check">VN-Index technical analysis</div>
+        <div class="check">General market outlook pieces</div>
+        <div class="check">Liquidity / cash-flow commentary</div>
+        <div class="check">World Cup / seasonal patterns</div>
+        <div class="check">General "what to watch" articles</div>
+      </div>
+    </div>
+    <div class="alert alert-blue" style="margin-top:0.75rem; margin-bottom:0;">
+      <span class="icon">💡</span>
+      <div><strong>How to see all news:</strong> Click <strong>All (N)</strong> tab to see every item with its signal badge, AI summary, and financial impact indicators. During earnings season (July), the Hot tab will fill with BEAT/MISS signals.</div>
+    </div>
+  </div>
+
+  <!-- Q2: News sources + limits -->
+  <h2>News Sources (6 parallel RSS feeds)</h2>
+  <table>
+    <tr><th>Source</th><th>URL / Query</th><th>Focus</th></tr>
+    <tr><td><strong>Google News — Market</strong></td><td><code>chứng khoán Việt Nam</code></td><td>General VN market</td></tr>
+    <tr><td><strong>Google News — Earnings</strong></td><td><code>kết quả kinh doanh lợi nhuận</code></td><td>KQKD / EPS news</td></tr>
+    <tr><td><strong>Google News — Macro</strong></td><td><code>ngân hàng nhà nước VN-Index lãi suất</code></td><td>SBV / policy / rates</td></tr>
+    <tr><td><strong>Google News — Corporate</strong></td><td><code>mua lại sáp nhập cổ phiếu thoái vốn</code></td><td>M&amp;A / events</td></tr>
+    <tr><td><strong>CafeF</strong></td><td><code>cafef.vn/rss/thi-truong-chung-khoan.rss</code></td><td>Leading VN financial site</td></tr>
+    <tr><td><strong>VnExpress Finance</strong></td><td><code>vnexpress.net/rss/kinh-doanh/chung-khoan.rss</code></td><td>Mass-market finance news</td></tr>
+  </table>
+  <p>All 6 feeds are fetched <strong>in parallel</strong>, deduplicated by title similarity, sorted newest-first, then capped at <strong>60 items</strong> in the cache. The AI summary uses the top <strong>30 most recent</strong> items.</p>
+
+  <!-- Q3: Earnings Calendar -->
+  <h2>Q3 — VN Earnings Calendar Explained</h2>
+
+  <h3>What is it?</h3>
+  <p>The <strong>VN Earnings Calendar</strong> shows Vietnam's quarterly KQKD (Kết quả Kinh doanh) reporting seasons. All listed companies on HOSE and HNX must file quarterly financials by law. The calendar tracks four seasons per year and automatically flags which one is currently active.</p>
+
+  <h3>Reporting deadlines (UBCK / HOSE / HNX rules)</h3>
+  <table>
+    <tr><th>Quarter</th><th>Results cover</th><th>Deadline</th><th>Large caps report around</th></tr>
+    <tr>
+      <td><strong>Q1</strong></td><td>Jan – Mar</td>
+      <td><strong>April 30</strong></td>
+      <td>April 10–20</td>
+    </tr>
+    <tr>
+      <td><strong>Q2</strong></td><td>Apr – Jun</td>
+      <td><strong>July 31</strong> <span style="color:#9ca3af;font-size:0.8rem;">(small caps: Aug 14)</span></td>
+      <td>July 10–25</td>
+    </tr>
+    <tr>
+      <td><strong>Q3</strong></td><td>Jul – Sep</td>
+      <td><strong>October 31</strong></td>
+      <td>October 10–25</td>
+    </tr>
+    <tr>
+      <td><strong>Q4</strong></td><td>Oct – Dec</td>
+      <td><strong>Jan 31</strong> (prelim) / <strong>Mar 31</strong> (audited)</td>
+      <td>January 10–25</td>
+    </tr>
+  </table>
+
+  <h3>How to know when a specific stock will release earnings</h3>
+  <div class="alert alert-amber">
+    <span class="icon">⚠️</span>
+    <div><strong>No official earnings date API exists for VN stocks.</strong> Unlike the US (SEC 8-K filings with exact dates), Vietnamese companies only commit to the quarterly deadline. The actual date is unpredictable unless you monitor their CBTT disclosures.</div>
+  </div>
+
+  <div class="card">
+    <p style="font-weight:600; color:var(--fg); margin-bottom:0.75rem;">Practical ways to track earnings releases:</p>
+    <div class="check">Watch the <strong>Earnings News</strong> tab in the Earnings Calendar — the AI digest surfaces KQKD news automatically</div>
+    <div class="check">The <strong>Hot</strong> tab shows <span class="sig sig-earnings">Earnings</span> items with <span class="sig beat">BEAT ↑</span> or <span class="sig miss">MISS ↓</span> badges as they appear</div>
+    <div class="check">Follow HOSE disclosure portal: <code>hsx.vn → Công bố thông tin → CBTT định kỳ</code></div>
+    <div class="check">For VN30 stocks (VCB, FPT, HPG, etc.): they typically publish within the first 2 weeks of the season</div>
+    <div class="check">Check each stock's investor relations page directly</div>
+  </div>
+
+  <h3>Season status badges</h3>
+  <div class="two-col">
+    <div class="card" style="background:rgba(16,185,129,0.07); border-color:rgba(16,185,129,0.25);">
+      <p style="color:#6ee7b7; font-weight:700;">🟢 Active Now / Peak</p>
+      <p style="margin:0.25rem 0 0;">Results are being published daily. Check the Hot tab every morning. Deadline is within 30 days.</p>
+    </div>
+    <div class="card" style="background:rgba(59,130,246,0.07); border-color:rgba(59,130,246,0.25);">
+      <p style="color:#93c5fd; font-weight:700;">🔵 In Season</p>
+      <p style="margin:0.25rem 0 0;">The reporting window has opened but the peak hasn't started. Large caps may publish early.</p>
+    </div>
+    <div class="card" style="background:rgba(245,158,11,0.07); border-color:rgba(245,158,11,0.25);">
+      <p style="color:#fcd34d; font-weight:700;">🟡 Upcoming</p>
+      <p style="margin:0.25rem 0 0;">More than 30 days until deadline. Prepare your watchlist of companies to track.</p>
+    </div>
+    <div class="card" style="background:rgba(107,114,128,0.07); border-color:rgba(107,114,128,0.25);">
+      <p style="color:#9ca3af; font-weight:700;">✅ Completed</p>
+      <p style="margin:0.25rem 0 0;">Deadline has passed. All companies should have filed. Focus on guidance revisions now.</p>
+    </div>
+  </div>
+
+  <h3>What to watch: the surprise formula</h3>
+  <div class="flow">
+    <pre style="background:transparent; border:none; padding:0; margin:0;">Surprise = Actual EPS − Expected EPS
+
+The market reacts to the GAP vs expectation, not the raw number.
+
+  EPS 1.00 expected → EPS 1.20 actual  =  BEAT +20%  →  stock typically +3–8%
+  EPS 1.00 expected → EPS 0.90 actual  =  MISS -10%  →  stock typically -3–8%
+
+  Good Q + guidance CUT   → stock often drops (priced-in optimism collapses)
+  Average Q + guidance UP → stock often rises (future expectations repriced)
+
+  Sector contagion: if VCB beats, watch TCB / MBB / BID for sympathy moves</pre>
+  </div>
+
+  <!-- Q4: Architecture flow -->
+  <h2>Q4 — Full Implementation Flow</h2>
+
+  <h3>Data pipeline</h3>
+  <pre>
+┌─────────────────────────────────────────────────────────────┐
+│                     RSS LAYER (6 sources)                    │
+│  Google News ×4  +  CafeF  +  VnExpress  (parallel fetch)   │
+└──────────────────────┬──────────────────────────────────────┘
+                       │ raw RssItem[]
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│                  news-service.ts                             │
+│  dedupeNews() → sort by date → slice(0, 60)                  │
+│  60-min file cache (.cache/news.json) + memory cache         │
+└──────────────────────┬──────────────────────────────────────┘
+                       │ NewsItem[]  (up to 60)
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│              /api/news/summary (GET)                         │
+│  1. deduplicateNews()  – remove near-duplicate titles        │
+│  2. slice(0, 30)       – top 30 by recency                   │
+│  3. buildNewsContext() – format as LLM text                  │
+│  4. callLlm(messages, "", { maxTokens: 6000 })               │
+│     ├── Groq llama-3.3-70b (primary)                         │
+│     └── Gemini 2.0 Flash   (fallback)                        │
+│  5. parse JSON response                                      │
+│  6. merge AI fields into NewsItem structs                    │
+│  7. in-memory cache 30 min                                   │
+└──────────────────────┬──────────────────────────────────────┘
+                       │ NewsSummaryResponse
+                       ▼
+┌─────────────────────────────────────────────────────────────┐
+│              AiNewsSummary component                         │
+│  Tabs: Outlook | Hot (N) | All (N) | Guide                   │
+│  Outlook → sectorTrends[] + stockMovers[]                    │
+│  All    → 30 NewsCard components with signal badges          │
+└─────────────────────────────────────────────────────────────┘</pre>
+
+  <h3>7-Signal classification</h3>
+  <table>
+    <tr><th>Signal</th><th>Vietnamese concept</th><th>HIGH impact examples</th></tr>
+    <tr><td><span class="sig sig-earnings">Earnings</span></td><td>Báo cáo KQKD</td><td>EPS beat/miss vs consensus</td></tr>
+    <tr><td><span class="sig sig-guidance">Guidance</span></td><td>Dự báo tương lai</td><td>Forward outlook raised / cut</td></tr>
+    <tr><td><span class="sig sig-filing">Filing</span></td><td>CBTT / Regulatory</td><td>CEO resign, major contract, investigation</td></tr>
+    <tr><td><span class="sig sig-analyst">Analyst</span></td><td>Khuyến nghị</td><td>Multiple upgrades / consensus EPS revision</td></tr>
+    <tr><td><span class="sig sig-insider">Insider</span></td><td>Giao dịch nội bộ</td><td>CEO/CFO large buy (bullish) or sell</td></tr>
+    <tr><td><span class="sig sig-ma">M&amp;A</span></td><td>Mua lại / Sáp nhập</td><td>Acquisition, spin-off, stake sale</td></tr>
+    <tr><td><span class="sig sig-macro">Macro</span></td><td>Vĩ mô / SBV</td><td>Rate decision, GDP surprise, FX</td></tr>
+    <tr><td><span class="sig sig-noise">Noise</span></td><td>Không ảnh hưởng</td><td>Does NOT affect Rev / P&amp;L / CF / Growth</td></tr>
+  </table>
+
+  <h3>Per-item AI checklist fields</h3>
+  <div class="two-col">
+    <div class="card">
+      <p style="font-weight:600; color:var(--fg); margin-bottom:0.5rem;">Impact rating</p>
+      <div style="display:flex; flex-direction:column; gap:0.4rem;">
+        <div><span class="sig impact-high">HIGH</span><span style="margin-left:0.5rem; font-size:0.85rem; color:var(--muted);">earnings surprise, M&amp;A, CEO event, SBV</span></div>
+        <div><span class="sig impact-med">MEDIUM</span><span style="margin-left:0.5rem; font-size:0.85rem; color:var(--muted);">analyst revisions, policy previews</span></div>
+        <div><span class="sig impact-low">LOW</span><span style="margin-left:0.5rem; font-size:0.85rem; color:var(--muted);">commentary, technical analysis, noise</span></div>
+      </div>
+    </div>
+    <div class="card">
+      <p style="font-weight:600; color:var(--fg); margin-bottom:0.5rem;">Surprise factor</p>
+      <div style="display:flex; flex-direction:column; gap:0.4rem;">
+        <div><span class="sig beat">BEAT ↑</span><span style="margin-left:0.5rem; font-size:0.85rem; color:var(--muted);">actual exceeded market expectation</span></div>
+        <div><span class="sig miss">MISS ↓</span><span style="margin-left:0.5rem; font-size:0.85rem; color:var(--muted);">actual fell short of expectation</span></div>
+        <div><span class="sig inline">IN-LINE →</span><span style="margin-left:0.5rem; font-size:0.85rem; color:var(--muted);">within ±5% of expectation</span></div>
+      </div>
+    </div>
+  </div>
+
+  <h3>Financial impact dots (per card)</h3>
+  <p>Each news card shows which financial dimensions are affected:</p>
+  <div style="display:flex; gap:0.5rem; flex-wrap:wrap; margin-bottom:1rem;">
+    <span class="sig" style="background:rgba(99,102,241,0.15);color:#a5b4fc;border:1px solid rgba(99,102,241,0.3);">Rev</span><span style="font-size:0.85rem;color:var(--muted);margin-right:0.5rem;"> Revenue affected</span>
+    <span class="sig" style="background:rgba(99,102,241,0.15);color:#a5b4fc;border:1px solid rgba(99,102,241,0.3);">P&amp;L</span><span style="font-size:0.85rem;color:var(--muted);margin-right:0.5rem;"> Profit/EPS affected</span>
+    <span class="sig" style="background:rgba(99,102,241,0.15);color:#a5b4fc;border:1px solid rgba(99,102,241,0.3);">CF</span><span style="font-size:0.85rem;color:var(--muted);margin-right:0.5rem;"> Cash Flow affected</span>
+    <span class="sig" style="background:rgba(99,102,241,0.15);color:#a5b4fc;border:1px solid rgba(99,102,241,0.3);">Gr</span><span style="font-size:0.85rem;color:var(--muted);"> Growth trajectory affected</span>
+  </div>
+  <div class="alert alert-blue">
+    <span class="icon">ℹ️</span>
+    <div>If none of the 4 dots appear, the item is classified as <span class="sig sig-noise">Noise</span> — it does not directly affect a company's financials and may be safely de-prioritised.</div>
+  </div>
+
+  <!-- Key files -->
+  <h2>Key Files</h2>
+  <table>
+    <tr><th>File</th><th>Purpose</th></tr>
+    <tr><td><code>src/app/news/page.tsx</code></td><td>News page (2-column: digest + calendar)</td></tr>
+    <tr><td><code>src/app/api/news/summary/route.ts</code></td><td>AI enrichment API, 30-min cache, rule fallback</td></tr>
+    <tr><td><code>src/components/stock/ai-news-summary.tsx</code></td><td>AI Digest client component (4 tabs)</td></tr>
+    <tr><td><code>src/components/news/earnings-calendar.tsx</code></td><td>Earnings Calendar component</td></tr>
+    <tr><td><code>src/lib/news-service.ts</code></td><td>Multi-source RSS fetch, dedup, 60-min cache</td></tr>
+    <tr><td><code>src/lib/providers/rss-news.ts</code></td><td>RSS URL builders + XML parser</td></tr>
+    <tr><td><code>src/lib/providers/llm.ts</code></td><td>Groq/Gemini wrapper with maxTokens param</td></tr>
+  </table>
+
+  <!-- Production vs local -->
+  <h2>Production vs Local</h2>
+  <table>
+    <tr><th>Feature</th><th>Local dev</th><th>Vercel production</th></tr>
+    <tr><td>News fetch (RSS)</td><td>✅ Works</td><td>✅ Works</td></tr>
+    <tr><td>Keyword classification (fallback)</td><td>✅ Works</td><td>✅ Works</td></tr>
+    <tr><td>AI enrichment (LLM)</td><td>❌ Firewall blocks outbound HTTP</td><td>✅ Groq/Gemini</td></tr>
+    <tr><td>Sector trends</td><td>❌ Empty</td><td>✅ AI-generated</td></tr>
+    <tr><td>Stock movers</td><td>❌ Empty</td><td>✅ AI-generated</td></tr>
+    <tr><td>AI summaries per item</td><td>❌ Title repeated</td><td>✅ One-liner implications</td></tr>
+    <tr><td>Earnings Calendar</td><td>✅ Works</td><td>✅ Works</td></tr>
+    <tr><td>Banner shown</td><td>🔵 "Keyword analysis mode"</td><td>Not shown</td></tr>
+  </table>
+
+  <div class="alert alert-green" style="margin-top:1rem;">
+    <span class="icon">🚀</span>
+    <div><strong>Deploy to Vercel</strong> to get the full AI experience — sector trend predictions, stock movers, per-item AI summaries, and proper signal classification for all 30 news items.</div>
+  </div>
+
+  <p style="text-align:center; margin-top:2rem; color:var(--muted); font-size:0.8rem;">
+    VN Stocks · AI News &amp; Earnings · docs/news-feature.html
+  </p>
+
+</div>
+</body>
+</html>

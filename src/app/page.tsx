@@ -14,6 +14,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { StatCard } from "@/components/ui/stat-card";
 import { MoverList } from "@/components/stock/mover-list";
 import { CachedNewsFeed } from "@/components/stock/cached-news-feed";
+import { AiNewsSummary } from "@/components/stock/ai-news-summary";
 import { SectorHeatmap } from "@/components/stock/sector-heatmap";
 import { StockTable } from "@/components/stock/stock-table";
 import { ChangeBadge } from "@/components/stock/change-badge";
@@ -149,10 +150,13 @@ export default async function DashboardPage() {
       </Card>
 
       <div className="grid gap-6 lg:grid-cols-5">
-        <Card className="lg:col-span-3">
-          <CardTitle>Market News</CardTitle>
-          <CachedNewsFeed limit={5} />
-        </Card>
+        <div className="space-y-6 lg:col-span-3">
+          <AiNewsSummary />
+          <Card>
+            <CardTitle>Latest News</CardTitle>
+            <CachedNewsFeed limit={5} />
+          </Card>
+        </div>
 
         <Card className="lg:col-span-2">
           <CardTitle

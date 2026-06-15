@@ -222,7 +222,7 @@ export function EtfAnalysisView({ rows }: { rows: EtfAnalysisRow[] }) {
             onClick={() => setBenchmarkFilter(f)}
             className={`rounded px-2 py-1 text-[10px] font-medium ring-1 ring-[var(--border)] transition-colors ${
               benchmarkFilter === f
-                ? "bg-accent text-white ring-accent"
+                ? "bg-accent text-accent-fg ring-accent"
                 : "text-muted hover:text-[var(--fg)]"
             }`}
           >

@@ -163,33 +163,44 @@ function buildRuleBasedEval(stock: Stock): Omit<StockEvalResult, "provider"> {
 
 // ─── route ───────────────────────────────────────────────────────────────────
 
-const EVAL_SYSTEM_INSTRUCTION = `You are a professional Vietnam stock analyst with deep knowledge of Vietnamese listed companies, their business models, competitive landscape, and management teams.
+function buildEvalSystemInstruction(hasFundamentals: boolean): string {
+  const dataNote = hasFundamentals
+    ? "Fundamental data (PE/ROE/revenue) is available — use it for precise valuation and financial analysis."
+    : `IMPORTANT — FUNDAMENTAL DATA IS NOT AVAILABLE from the market feed for this stock (it may be a smaller HNX/UPCOM listing not covered by our snapshot DB).
+For categories 1–3 and 6: draw heavily on your training knowledge about this Vietnamese company — its actual business, products, clients, financials if you know them, and management.
+Do NOT say "data not provided" as your primary response — that adds no value. Instead, share what you know or provide informed sector-level analysis.
+For categories 7 and 8: use the technical data which IS available.`;
+
+  return `You are a professional Vietnam stock analyst with deep knowledge of Vietnamese listed companies, their business models, competitive landscape, and management teams.
 
 Your task: produce a structured 8-category investment evaluation in JSON.
 
-IMPORTANT INSTRUCTIONS:
-- For QUANTITATIVE fields (valuation, financials, timing, technical): use ONLY the market data provided.
-- For QUALITATIVE fields (business model, management, competitive advantages): use BOTH the provided data AND your training knowledge about the company. Vietnamese blue-chips like VCB, FPT, VHM, HPG, VIC, MSN, REE, BMP are well-known — describe them accurately.
-- Never invent specific numbers not in the provided data.
-- Be concise but insightful (3-5 sentences per category).
-- If a metric is N/A in the data, explain why it matters and what the user should research.
+${dataNote}
+
+GENERAL RULES:
+- For quantitative claims (PE ratio, exact revenue figures, etc.): only cite numbers present in the provided data.
+- For qualitative analysis (business model, moat, management): use your training knowledge freely and accurately.
+- Do NOT write "information not provided" or "data unavailable" as the entire answer — always add insight.
+- Be concise but insightful: 3–5 sentences per category.
+- Vietnamese listed companies like NTP (Tien Phong Plastics), BMP (Binh Minh Plastics), REE (Refrigeration Electrical Engineering), NLG (Nam Long Group), etc. are well-known — describe them accurately from your knowledge.
 
 Return ONLY valid JSON (no markdown fences, no extra text):
 {
   "categories": [
-    {"id": "business", "title": "1. Business", "analysis": "string — describe what the company does, how it makes money, its competitive moat, and business model sustainability"},
-    {"id": "financial", "title": "2. Financial Health", "analysis": "string — revenue growth trend, profitability, cash flow quality, debt level, margin trajectory"},
-    {"id": "valuation", "title": "3. Valuation", "analysis": "string — P/E, P/B, dividend yield, analyst target vs current price, over/undervalued assessment"},
-    {"id": "risks", "title": "4. Risks", "analysis": "string — 3-4 specific risks for this company and sector"},
-    {"id": "growth", "title": "5. Growth Opportunities", "analysis": "string — concrete growth catalysts: new markets, products, M&A, demographic tailwinds"},
-    {"id": "management", "title": "6. Management", "analysis": "string — leadership track record, ownership alignment, communication quality, notable decisions"},
-    {"id": "timing", "title": "7. Timing", "analysis": "string — RSI signal, price vs 52w range, technical score, current entry attractiveness"},
-    {"id": "fit", "title": "8. Investment Fit", "analysis": "string — suitable for which investor type, holding horizon, position size suggestion, final verdict"}
+    {"id": "business", "title": "1. Business", "analysis": "string — what the company does, revenue model, competitive moat, business sustainability"},
+    {"id": "financial", "title": "2. Financial Health", "analysis": "string — use available metrics; if missing, describe what is known from public records or typical sector profile"},
+    {"id": "valuation", "title": "3. Valuation", "analysis": "string — use PE/PB if available; otherwise describe how investors typically value this type of business and whether the price looks reasonable"},
+    {"id": "risks", "title": "4. Risks", "analysis": "string — 3–4 specific risks for this company and its sector"},
+    {"id": "growth", "title": "5. Growth Opportunities", "analysis": "string — concrete growth catalysts specific to this company and Vietnam context"},
+    {"id": "management", "title": "6. Management", "analysis": "string — what is known about the leadership, ownership structure, and track record"},
+    {"id": "timing", "title": "7. Timing", "analysis": "string — RSI, price vs 52w range, technical score, current entry attractiveness"},
+    {"id": "fit", "title": "8. Investment Fit", "analysis": "string — investor type, holding horizon, position size consideration, verdict"}
   ],
   "recommendation": "ACCUMULATE|WATCH|HOLD|TRIM|AVOID",
   "thesis": "one compelling sentence summarizing the investment case",
   "confidence": "HIGH|MEDIUM|LOW"
 }`;
+}
 
 export async function GET(request: Request) {
   const session = await auth();
@@ -210,18 +221,23 @@ export async function GET(request: Request) {
 
   const context = await buildStockContext(stock);
 
+  // Detect if meaningful fundamental data is available
+  const hasFundamentals = stock.pe > 0 || stock.roe > 0 || stock.revenueGrowth !== 0;
+  const systemInstruction = buildEvalSystemInstruction(hasFundamentals);
+
   const llmResult = await callLlm(
     [
       {
         role: "system",
-        content: EVAL_SYSTEM_INSTRUCTION,
+        content: systemInstruction,
       },
       {
         role: "user",
-        content: `Evaluate ${symbol} for a Vietnamese long-term investor. Stock data:\n\n${context}\n\nReturn JSON only.`,
+        content: `Evaluate ${symbol} (${stock.name}) for a Vietnamese long-term investor.\n\nStock data:\n${context}\n\nReturn JSON only.`,
       },
     ],
-    context,
+    "",  // context in user message; skip double-inject
+    { maxTokens: 2000 },
   );
 
   if (llmResult.content && llmResult.provider !== "fallback") {

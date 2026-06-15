@@ -4,6 +4,7 @@ import {
   Bot,
   Filter,
   LayoutDashboard,
+  Newspaper,
   Star,
   Target,
   Wallet,
@@ -19,6 +20,7 @@ export type NavItem = {
 
 export const navItems: NavItem[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard, desc: "Market overview" },
+  { href: "/news", label: "News", icon: Newspaper, desc: "AI digest & earnings" },
   { href: "/screener", label: "Screener", icon: Filter, desc: "Find stocks" },
   { href: "/portfolio", label: "Portfolio", icon: Wallet, desc: "Your holdings" },
   { href: "/strategy-review", label: "Strategy", icon: Target, desc: "Compliance review" },

@@ -2,9 +2,14 @@ import fs from "fs/promises";
 import path from "path";
 import seedNews from "@/data/news.json";
 import {
+  cafeFRssUrl,
   fetchRss,
+  googleCorporateNewsRssUrl,
+  googleEarningsNewsRssUrl,
+  googleMacroNewsRssUrl,
   googleMarketNewsRssUrl,
   googleSymbolNewsRssUrl,
+  vnExpressFinanceRssUrl,
   yahooHeadlineRssUrl,
   type RssItem,
 } from "@/lib/providers/rss-news";
@@ -116,11 +121,25 @@ async function fetchSymbolNews(symbol: string): Promise<NewsItem[]> {
 }
 
 async function fetchMarketNews(): Promise<NewsItem[]> {
-  const google = await fetchRss(googleMarketNewsRssUrl());
-  const items = google.map((r) =>
-    rssToNewsItem(r, [], "Google News"),
-  );
-  return dedupeNews(items).slice(0, 25);
+  // Parallel fetch from 5 sources: general market + earnings + macro + M&A + CafeF + VnExpress
+  const [general, earnings, macro, corporate, cafef, vnexpress] = await Promise.all([
+    fetchRss(googleMarketNewsRssUrl()),
+    fetchRss(googleEarningsNewsRssUrl()),
+    fetchRss(googleMacroNewsRssUrl()),
+    fetchRss(googleCorporateNewsRssUrl()),
+    fetchRss(cafeFRssUrl()),
+    fetchRss(vnExpressFinanceRssUrl()),
+  ]);
+
+  const items = [
+    ...general.map((r) => rssToNewsItem(r, [], "Google News")),
+    ...earnings.map((r) => rssToNewsItem(r, [], "Google News")),
+    ...macro.map((r) => rssToNewsItem(r, [], "Google News")),
+    ...corporate.map((r) => rssToNewsItem(r, [], "Google News")),
+    ...cafef.map((r) => rssToNewsItem(r, [], "CafeF")),
+    ...vnexpress.map((r) => rssToNewsItem(r, [], "VnExpress")),
+  ];
+  return dedupeNews(items).slice(0, 60);
 }
 
 async function refreshNewsCache(symbol?: string): Promise<NewsCachePayload> {
@@ -153,7 +172,7 @@ async function refreshNewsCache(symbol?: string): Promise<NewsCachePayload> {
     ...["FPT", "VCB", "HPG"].map((s) => fetchSymbolNews(s)),
   ]);
 
-  const market = dedupeNews([...marketLive, ...seedNewsList]).slice(0, 30);
+  const market = dedupeNews([...marketLive, ...seedNewsList]).slice(0, 60);
   const bySymbol: Record<string, NewsItem[]> = { ...existing.bySymbol };
   for (const batch of symbolSamples) {
     for (const item of batch) {

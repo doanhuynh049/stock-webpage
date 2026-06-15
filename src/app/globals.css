@@ -14,6 +14,7 @@
   --accent: #059669;
   --accent-light: #10b981;
   --accent-bg: rgba(5, 150, 105, 0.08);
+  --accent-fg: #ffffff;  /* text on top of --accent bg in light mode */
   --danger: #dc2626;
   --success: #059669;
   --glow: rgba(5, 150, 105, 0.12);
@@ -43,6 +44,7 @@
   --accent: #34d399;
   --accent-light: #6ee7b7;
   --accent-bg: rgba(52, 211, 153, 0.1);
+  --accent-fg: #052e16;  /* dark text on light accent in dark mode */
   --danger: #f87171;
   --success: #34d399;
   --glow: rgba(52, 211, 153, 0.15);
@@ -57,6 +59,8 @@
 @theme inline {
   --color-background: var(--bg);
   --color-foreground: var(--fg);
+  --color-accent: var(--accent);
+  --color-accent-fg: var(--accent-fg);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }

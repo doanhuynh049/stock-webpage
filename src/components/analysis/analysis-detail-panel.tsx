@@ -132,7 +132,7 @@ export function AnalysisDetailPanel({
       <div className="mt-4 flex flex-wrap gap-2 border-t border-[var(--border)] pt-3">
         <Link
           href={`/stocks/${sym}`}
-          className="inline-flex items-center gap-1 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-white"
+          className="inline-flex items-center gap-1 rounded-lg bg-accent px-3 py-1.5 text-xs font-semibold text-accent-fg"
         >
           Full stock page <ExternalLink className="h-3 w-3" />
         </Link>

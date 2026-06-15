@@ -136,8 +136,36 @@ export function googleMarketNewsRssUrl(): string {
   return `https://news.google.com/rss/search?q=${q}&hl=vi&gl=VN&ceid=VN:vi`;
 }
 
+/** Google News RSS for VN earnings / KQKD news. */
+export function googleEarningsNewsRssUrl(): string {
+  const q = encodeURIComponent("kết quả kinh doanh cổ phiếu lợi nhuận");
+  return `https://news.google.com/rss/search?q=${q}&hl=vi&gl=VN&ceid=VN:vi`;
+}
+
+/** Google News RSS for VN macro / SBV / policy news. */
+export function googleMacroNewsRssUrl(): string {
+  const q = encodeURIComponent("ngân hàng nhà nước VN-Index lãi suất");
+  return `https://news.google.com/rss/search?q=${q}&hl=vi&gl=VN&ceid=VN:vi`;
+}
+
+/** Google News RSS for VN M&A / corporate events. */
+export function googleCorporateNewsRssUrl(): string {
+  const q = encodeURIComponent("mua lại sáp nhập cổ phiếu thoái vốn Việt Nam");
+  return `https://news.google.com/rss/search?q=${q}&hl=vi&gl=VN&ceid=VN:vi`;
+}
+
 /** Google News RSS for a specific ticker mention. */
 export function googleSymbolNewsRssUrl(symbol: string): string {
   const q = encodeURIComponent(`${symbol.toUpperCase()} cổ phiếu`);
   return `https://news.google.com/rss/search?q=${q}&hl=vi&gl=VN&ceid=VN:vi`;
+}
+
+/** CafeF RSS feed — leading Vietnamese financial news site. */
+export function cafeFRssUrl(): string {
+  return "https://cafef.vn/rss/thi-truong-chung-khoan.rss";
+}
+
+/** VnExpress Finance RSS */
+export function vnExpressFinanceRssUrl(): string {
+  return "https://vnexpress.net/rss/kinh-doanh/chung-khoan.rss";
 }

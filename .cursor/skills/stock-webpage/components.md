@@ -10,7 +10,7 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 
 | Route | File | Type | Purpose | Data sources |
 |-------|------|------|---------|--------------|
-| `/` | `page.tsx` | Server | Market dashboard: indices, movers, sectors, picks | `stocks`, `stock-picks`; news via **`CachedNewsFeed`** (client) |
+| `/` | `page.tsx` | Server | Market dashboard: indices, movers, sectors, picks, **AI news digest** | `stocks`, `stock-picks`; news via **`AiNewsSummary`** + **`CachedNewsFeed`** (both client) |
 | `/login` | `login/page.tsx` | Client | Email/password login & registration | `actions` |
 | `/portfolio` | `portfolio/page.tsx` | Server | Holdings ledger (sortable), allocation charts | `advisory-portfolio`, `holdings-enrichment`, `page-cache` |
 | `/watchlist` | `watchlist/page.tsx` | Server | **Quick-add panel** + watchlist grid | `user-data`, `stocks` |
@@ -73,6 +73,7 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 | `sector-heatmap.tsx` | Server | Sector performance grid |
 | `news-feed.tsx` | Server | Static news list (legacy; prefer **`cached-news-feed`**) |
 | `cached-news-feed.tsx` | Client | Live news via **`useCachedFetch`** → `/api/news`; localStorage TTL 1h |
+| `ai-news-summary.tsx` | Client | **NEW (Jun 2026)** — AI news digest: fetches `/api/news/summary`, renders market mood banner, impact/sentiment labels, breaking alerts, and AI-generated 1-sentence market implication per item; in-memory cached 30 min |
 | `investment-picks.tsx` | Server | Curated picks card |
 | `stock-analysis-panel.tsx` | Server | Combined analysis on detail page |
 | `price-chart.tsx` | Client | Recharts line chart |
@@ -282,7 +283,8 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 | `/api/strategy` | GET, PUT, DELETE | Strategy config | Session | — |
 | `/api/ai` | POST | AI analyst Q&A | Session | — |
 | `/api/ai/session` | GET, DELETE | Chat session | Session | — |
-| `/api/stock-eval` | GET | **NEW (Jun 2026)** — 8-category AI investment evaluation for any ticker (`?symbol=FPT`); fetches live data + `analyzeStock` scores; calls Groq/Gemini; rule-based fallback | Session | — |
+| `/api/stock-eval` | GET | **NEW (Jun 2026)** — 8-category AI investment evaluation for any ticker (`?symbol=FPT`); fetches live data + `analyzeStock` scores; calls Groq/Gemini; adapts system prompt to data availability (data-scarce companies → LLM uses training knowledge); rule-based fallback | Session | — |
+| `/api/news/summary` | GET | **NEW (Jun 2026)** — AI news digest (`?refresh=true` to force); fetches 15 recent items, calls LLM to rate impact (HIGH/MEDIUM/LOW), sentiment (Bullish/Bearish/Neutral), affected symbols, and AI summary; returns `NewsSummaryResponse`; in-memory cache 30 min | None | — |
 
 ---
 

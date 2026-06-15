@@ -564,7 +564,7 @@ export function AnalysisView({
             }}
             className={`shrink-0 rounded-lg px-3 py-2 text-xs font-semibold transition-all sm:py-1.5 ${
               mainTab === t.id
-                ? "bg-accent text-white shadow-sm ring-1 ring-accent/30"
+                ? "bg-accent text-accent-fg shadow-sm ring-1 ring-accent/30"
                 : "text-[var(--fg)] opacity-60 hover:bg-[var(--card)] hover:opacity-100"
             }`}
           >

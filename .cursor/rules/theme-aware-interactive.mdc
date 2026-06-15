@@ -1,0 +1,58 @@
+---
+description: Theme-aware interactive element colours (tabs, buttons, badges)
+globs: src/**/*.tsx
+alwaysApply: false
+---
+
+# Theme-aware interactive colours
+
+## The bug to avoid
+
+`bg-accent` is a Tailwind v4 utility that resolves to `var(--color-accent)`.
+`text-white` is always `#fff`.
+
+In **light mode** the card background is `#fff` and there is NO `--color-accent` defined
+unless it is listed in `@theme inline` — so `bg-accent` is a no-op and you get
+white text on a white card = invisible.
+
+In **dark mode** `--accent: #34d399` (light mint) — white text on a light green
+background also fails WCAG contrast.
+
+## Required approach
+
+### @theme inline (globals.css) — already done
+
+```css
+@theme inline {
+  --color-accent:    var(--accent);
+  --color-accent-fg: var(--accent-fg);  /* contrast-safe fg on accent bg */
+}
+```
+
+Both variables are defined for light and dark in `:root` / `.dark`.
+
+### Active tabs / selected buttons
+
+```tsx
+// ❌ WRONG — text-white fails on light accent bg
+className={active ? "bg-accent text-white" : "..."}
+
+// ✅ CORRECT — text-accent-fg is always contrast-safe on --accent bg
+className={active ? "bg-accent text-accent-fg" : "..."}
+```
+
+### CTA / submit buttons & badges
+
+```tsx
+// ❌ WRONG
+className="bg-accent text-white px-4 py-2"
+
+// ✅ CORRECT
+className="bg-accent text-accent-fg px-4 py-2"
+```
+
+## Quick check
+
+After adding any `bg-accent` element, verify that the text class is
+`text-accent-fg` (Tailwind utility) or `text-[var(--accent-fg)]` (arbitrary),
+never a hard-coded `text-white` or `text-black`.

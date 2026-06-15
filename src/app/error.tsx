@@ -33,7 +33,7 @@ export default function GlobalError({
       </div>
       <button
         onClick={reset}
-        className="rounded-lg bg-accent px-5 py-2 text-sm font-semibold text-white hover:opacity-90"
+        className="rounded-lg bg-accent px-5 py-2 text-sm font-semibold text-accent-fg hover:opacity-90"
       >
         Try again
       </button>
