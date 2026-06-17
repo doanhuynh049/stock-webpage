@@ -16,13 +16,18 @@ export type YahooQuote = {
 
 async function fetchChart(symbol: string, range: string) {
   const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=${range}`;
-  const res = await fetch(url, {
-    headers: { "User-Agent": "Mozilla/5.0 (compatible; VNStocks/1.0)" },
-    next: { revalidate: 0 },
-  });
-  if (!res.ok) return null;
-  const json = await res.json();
-  return json?.chart?.result?.[0] ?? null;
+  try {
+    const res = await fetch(url, {
+      headers: { "User-Agent": "Mozilla/5.0 (compatible; VNStocks/1.0)" },
+      next: { revalidate: 0 },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) return null;
+    const json = await res.json();
+    return json?.chart?.result?.[0] ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export async function fetchYahooQuote(ticker: string): Promise<YahooQuote | null> {

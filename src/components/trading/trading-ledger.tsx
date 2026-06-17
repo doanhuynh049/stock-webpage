@@ -19,7 +19,6 @@ import {
   formatPortfolioAmount,
   formatPortfolioPercent,
   formatDateDMY,
-  parseDateDMY,
   parseFormattedNumber,
   formatNumber,
   todayISO,
@@ -286,8 +285,8 @@ export function TradingLedger({ userId }: { userId?: string }) {
   function openForm(nextForm: TradeForm, editingId: string | null = null) {
     setForm(nextForm);
     setEditId(editingId);
-    setDateInput(formatDateDMY(nextForm.transactionDate));
-    setUnitPriceInput(vndToKInput(nextForm.unitPrice));
+    setDateInput(nextForm.transactionDate); // ISO yyyy-mm-dd for type="date"
+    setUnitPriceInput(vndToKInput(nextForm.unitPrice * 1000)); // unitPrice is K; vndToKInput needs full VND
     setAddAnother(false);
     setFormOpen(true);
   }
@@ -303,12 +302,11 @@ export function TradingLedger({ userId }: { userId?: string }) {
 
   function saveTrade(e: FormEvent) {
     e.preventDefault();
-    const parsedDate = parseDateDMY(dateInput);
-    if (!parsedDate) {
-      alert("Enter a valid date (dd/mm/yyyy).");
+    if (!form.transactionDate) {
+      alert("Enter a valid date.");
       return;
     }
-    const tradeForm = { ...form, transactionDate: parsedDate };
+    const tradeForm = { ...form };
     const keepOpen = addAnother && !editId;
     const payload = {
       ...tradeForm,
@@ -350,7 +348,7 @@ export function TradingLedger({ userId }: { userId?: string }) {
         transactionType: tradeForm.transactionType,
       };
       setForm(nextForm);
-      setDateInput(formatDateDMY(nextForm.transactionDate));
+      setDateInput(nextForm.transactionDate); // ISO for type="date"
       setUnitPriceInput("");
     } else {
       closeForm();
@@ -402,7 +400,7 @@ export function TradingLedger({ userId }: { userId?: string }) {
   const tradeFormFields = (
     <div className="grid gap-3 sm:grid-cols-2">
       <label className="block sm:col-span-2">
-        <span className={modalLabelClass}>Symbol</span>
+        <span className={modalLabelClass}>Symbol <span className="text-danger">*</span></span>
         <input
           required
           autoFocus={!editId}
@@ -416,18 +414,15 @@ export function TradingLedger({ userId }: { userId?: string }) {
         )}
       </label>
       <label className="block">
-        <span className={modalLabelClass}>Date</span>
+        <span className={modalLabelClass}>Date <span className="text-danger">*</span></span>
         <input
-          type="text"
+          type="date"
           required
-          inputMode="numeric"
-          placeholder="dd/mm/yyyy"
           className={modalFieldClass}
-          value={dateInput}
+          value={form.transactionDate}
           onChange={(e) => {
             setDateInput(e.target.value);
-            const iso = parseDateDMY(e.target.value);
-            if (iso) setForm({ ...form, transactionDate: iso });
+            setForm({ ...form, transactionDate: e.target.value });
           }}
         />
       </label>
@@ -445,7 +440,7 @@ export function TradingLedger({ userId }: { userId?: string }) {
         </select>
       </label>
       <label className="block">
-        <span className={modalLabelClass}>Quantity</span>
+        <span className={modalLabelClass}>Quantity <span className="text-danger">*</span></span>
         <input
           type="number"
           required
@@ -457,7 +452,7 @@ export function TradingLedger({ userId }: { userId?: string }) {
       </label>
       <label className="block">
         <span className={modalLabelClass}>
-          Unit price{" "}
+          Unit price <span className="text-danger">*</span>{" "}
           <span className="font-normal text-subtle"></span>
         </span>
         <input
@@ -473,7 +468,8 @@ export function TradingLedger({ userId }: { userId?: string }) {
           }}
           onBlur={() => {
             if (form.unitPrice > 0) {
-              setUnitPriceInput(vndToKInput(form.unitPrice));
+              // form.unitPrice is in K units; vndToKInput expects full VND
+              setUnitPriceInput(vndToKInput(form.unitPrice * 1000));
             }
           }}
           placeholder="0"
@@ -513,13 +509,20 @@ export function TradingLedger({ userId }: { userId?: string }) {
       </label>
       {form.transactionType === "SELL" && (
         <label className="block sm:col-span-2">
-          <span className={modalLabelClass}>Profit</span>
+          <span className={modalLabelClass}>Profit <span className="text-danger">*</span></span>
           <input
             type="number"
+            required
             className={modalFieldClass}
             value={form.profit || ""}
             onChange={(e) => setForm({ ...form, profit: Number(e.target.value) })}
+            placeholder="Enter realized profit/loss"
           />
+          {form.profit !== 0 && (
+            <span className="mt-0.5 block text-[10px] text-subtle">
+              = {form.profit.toLocaleString("vi-VN")} ₫
+            </span>
+          )}
         </label>
       )}
     </div>
@@ -644,7 +647,7 @@ export function TradingLedger({ userId }: { userId?: string }) {
               id="trade-add-another"
               checked={addAnother}
               onChange={setAddAnother}
-              label="Add another after saving"
+              label="Add another"
             />
           ) : undefined
         }

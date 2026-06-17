@@ -75,7 +75,9 @@ export function AiProviderPanel() {
       const res = await fetch(`/api/settings/ai/models?provider=${id}`);
       if (res.ok) {
         const { models: list } = await res.json() as { models: ModelInfo[] };
-        setModels((m) => ({ ...m, [id]: list }));
+        // Deduplicate by id — some providers return the same model under multiple aliases
+        const unique = list.filter((m, idx, arr) => arr.findIndex((x) => x.id === m.id) === idx);
+        setModels((m) => ({ ...m, [id]: unique }));
       }
     } catch {/* silent */}
     finally { setFetching((f) => ({ ...f, [id]: false })); }
@@ -258,14 +260,20 @@ export function AiProviderPanel() {
                       onChange={(e) => updateProvider(cfg.id, { model: e.target.value })}
                       className="min-w-0 flex-1 rounded-lg border border-[var(--border)] bg-[var(--input-bg)] px-3 py-1.5 text-xs text-[var(--fg)] focus:outline-none focus:ring-2 focus:ring-accent/40"
                     >
-                      <option value={cfg.model}>{cfg.model}</option>
-                      {modelList.filter((m) => m.id !== cfg.model).map((m) => (
-                        <option key={m.id} value={m.id}>
-                          {m.name ?? m.id}
-                          {m.free ? " (free)" : ""}
-                          {m.contextLength ? ` — ${(m.contextLength / 1000).toFixed(0)}k ctx` : ""}
-                        </option>
-                      ))}
+                      {/* Current model always first; merge with fetched list, deduplicate by id */}
+                      {(() => {
+                        const currentInList = modelList.some((m) => m.id === cfg.model);
+                        const opts = currentInList
+                          ? modelList
+                          : [{ id: cfg.model, name: cfg.model } as ModelInfo, ...modelList];
+                        return opts.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.name ?? m.id}
+                            {m.free ? " (free)" : ""}
+                            {m.contextLength ? ` — ${(m.contextLength / 1000).toFixed(0)}k ctx` : ""}
+                          </option>
+                        ));
+                      })()}
                     </select>
                     <button
                       type="button"

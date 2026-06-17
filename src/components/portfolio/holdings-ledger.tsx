@@ -38,8 +38,8 @@ type Draft = {
   sector: string;
   shares: number;
   avgBuyPrice: number;
-  target3Month: number;
-  targetLongTerm: number;
+  target3Month: number | null;
+  targetLongTerm: number | null;
 };
 
 function sortHoldings(
@@ -132,8 +132,8 @@ function toDraft(h: EnrichedHolding): Draft {
     sector: h.sector ?? "",
     shares: h.shares,
     avgBuyPrice: h.avgBuyPrice,
-    target3Month: h.target3Month ?? 0,
-    targetLongTerm: h.targetLongTerm ?? 0,
+    target3Month: h.target3Month ?? null,
+    targetLongTerm: h.targetLongTerm ?? null,
   };
 }
 
@@ -170,8 +170,8 @@ function emptyDraft(): Draft {
     sector: "",
     shares: 0,
     avgBuyPrice: 0,
-    target3Month: 0,
-    targetLongTerm: 0,
+    target3Month: null,
+    targetLongTerm: null,
   };
 }
 
@@ -260,7 +260,7 @@ function EditModal({
             id="holding-add-another"
             checked={addAnother}
             onChange={onAddAnotherChange}
-            label="Add another after saving"
+            label="Add another"
             description="Keep this dialog open for the next position."
           />
         ) : undefined
@@ -293,27 +293,37 @@ function EditModal({
       }
     >
       <div className="grid gap-3 sm:grid-cols-2">
-        {fields.map(([key, label, readOnly, type]) => (
-          <label key={key} className="block">
-            <span className={modalLabelClass}>{label}</span>
-            <input
-              type={type ?? "text"}
-              readOnly={readOnly === true}
-              disabled={busy}
-              className={`${modalFieldClass} font-mono disabled:opacity-60`}
-              value={String(draft[key as keyof Draft] ?? "")}
-              onChange={(e) =>
-                onChange({
-                  ...draft,
-                  [key]:
-                    type === "number"
-                      ? Number(e.target.value)
-                      : e.target.value,
-                })
-              }
-            />
-          </label>
-        ))}
+        {fields.map(([key, label, readOnly, type]) => {
+          const rawVal = draft[key as keyof Draft];
+          const isTargetField = key === "target3Month" || key === "targetLongTerm";
+          // Target fields: show empty string for null/0 so user sees a blank input
+          const displayVal = isTargetField
+            ? (rawVal == null || rawVal === 0 ? "" : String(rawVal))
+            : String(rawVal ?? "");
+          return (
+            <label key={key} className="block">
+              <span className={modalLabelClass}>{label}</span>
+              <input
+                type={type ?? "text"}
+                readOnly={readOnly === true}
+                disabled={busy}
+                className={`${modalFieldClass} font-mono disabled:opacity-60`}
+                value={displayVal}
+                placeholder={isTargetField ? "e.g. 85 (= 85,000 ₫)" : undefined}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  let parsed: string | number | null;
+                  if (type === "number") {
+                    parsed = raw === "" ? (isTargetField ? null : 0) : Number(raw);
+                  } else {
+                    parsed = raw;
+                  }
+                  onChange({ ...draft, [key]: parsed });
+                }}
+              />
+            </label>
+          );
+        })}
       </div>
     </FormModal>
   );
