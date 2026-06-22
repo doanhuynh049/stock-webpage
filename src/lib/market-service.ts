@@ -15,6 +15,7 @@ import {
   readCachedFundamentalSnapshot,
   readCachedTechnicalSnapshot,
 } from "@/lib/db/neon-cache";
+import { fetchVNDirectFundamentals } from "@/lib/providers/vndirect";
 import { canWriteLocalCache } from "@/lib/serverless";
 import { extractLastMentionedSymbol, extractTickersFromQuestion, isFollowUpQuestion } from "@/lib/symbol-utils";
 import { isEtfSymbol } from "@/lib/analysis/etf-utils";
@@ -301,6 +302,26 @@ async function enrichStockDetails(stock: Stock): Promise<Stock> {
     if (fund.roe != null) s.roe = Math.round(fund.roe * 1000) / 10;
     if (fund.revenue_growth != null) {
       s.revenueGrowth = Math.round(fund.revenue_growth * 1000) / 10;
+    }
+  }
+
+  // If still missing PE/PB, try VNDirect live fundamentals as fallback
+  if (s.pe === 0 && s.pb === 0) {
+    try {
+      const vnd = await fetchVNDirectFundamentals(stock.symbol);
+      if (vnd) {
+        if (vnd.pe > 0) s.pe = vnd.pe;
+        if (vnd.pb > 0) s.pb = vnd.pb;
+        if (vnd.roeApprox > 0 && s.roe === 0) s.roe = vnd.roeApprox;
+        if (vnd.dividendYield > 0 && s.dividendYield === 0) s.dividendYield = vnd.dividendYield;
+        if (vnd.high52w > 0 && s.high52w === 0) s.high52w = vnd.high52w;
+        if (vnd.low52w > 0 && s.low52w === 0) s.low52w = vnd.low52w;
+        if (vnd.marketCapVnd > 0 && s.marketCap === 0) {
+          s.marketCap = Math.round(vnd.marketCapVnd / 1e9); // store in billions like seed data
+        }
+      }
+    } catch {
+      // VNDirect is optional — skip on error
     }
   }
 

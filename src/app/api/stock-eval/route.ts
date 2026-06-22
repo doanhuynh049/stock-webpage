@@ -4,6 +4,7 @@ import { getStock } from "@/lib/market-service";
 import { callLlm } from "@/lib/providers/llm";
 import { analyzeStock } from "@/lib/analysis/stock-analysis";
 import { isEtfSymbol } from "@/lib/analysis/etf-utils";
+import { fetchVNDirectFundamentals } from "@/lib/providers/vndirect";
 import type { Stock } from "@/types/stock";
 
 // ─── types ───────────────────────────────────────────────────────────────────
@@ -29,8 +30,25 @@ export type StockEvalResult = {
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
-async function buildStockContext(stock: Stock): Promise<string> {
+async function buildStockContext(
+  stock: Stock,
+  prefetchedVnd?: Awaited<ReturnType<typeof fetchVNDirectFundamentals>>,
+): Promise<string> {
   const lines: string[] = [];
+
+  // Use prefetched VNDirect data or fetch now if fundamentals are missing
+  const hasCachedFundamentals = stock.pe > 0 || stock.pb > 0;
+  let vnd = prefetchedVnd !== undefined
+    ? prefetchedVnd
+    : hasCachedFundamentals ? null : await fetchVNDirectFundamentals(stock.symbol);
+
+  const pe = stock.pe > 0 ? stock.pe : (vnd?.pe ?? 0);
+  const pb = stock.pb > 0 ? stock.pb : (vnd?.pb ?? 0);
+  const dividendYield = stock.dividendYield > 0 ? stock.dividendYield : (vnd?.dividendYield ?? 0);
+  const roe = stock.roe > 0 ? stock.roe : (vnd?.roeApprox ?? 0);
+  const marketCapVnd = vnd?.marketCapVnd ?? 0;
+  const high52w = stock.high52w > 0 ? stock.high52w : (vnd?.high52w ?? 0);
+  const low52w = stock.low52w > 0 ? stock.low52w : (vnd?.low52w ?? 0);
 
   lines.push(`=== ${stock.symbol} — ${stock.name} ===`);
   lines.push(`Exchange: ${stock.exchange ?? "HOSE"} | Sector: ${stock.sector ?? "N/A"}`);
@@ -39,18 +57,27 @@ async function buildStockContext(stock: Stock): Promise<string> {
   lines.push("");
   lines.push("--- Live Market Data ---");
   lines.push(`Price: ${stock.price.toLocaleString()} VND (${stock.changePercent >= 0 ? "+" : ""}${stock.changePercent.toFixed(2)}% today)`);
-  if (stock.high52w > 0 && stock.low52w > 0) {
-    const pctFrom52High = ((stock.price - stock.high52w) / stock.high52w * 100).toFixed(1);
-    lines.push(`52w Range: ${stock.low52w.toLocaleString()} – ${stock.high52w.toLocaleString()} VND (currently ${pctFrom52High}% from 52w high)`);
+  if (high52w > 0 && low52w > 0) {
+    const pctFrom52High = ((stock.price - high52w) / high52w * 100).toFixed(1);
+    lines.push(`52w Range: ${low52w.toLocaleString()} – ${high52w.toLocaleString()} VND (currently ${pctFrom52High}% from 52w high)`);
   }
-  if (stock.marketCap > 0) lines.push(`Market Cap: ${(stock.marketCap / 1e12).toFixed(2)}T VND`);
+  const displayMarketCap = stock.marketCap > 0
+    ? stock.marketCap
+    : marketCapVnd > 0 ? marketCapVnd / 1e3 : 0; // VNDirect returns raw VND, seed stores in billions
+  if (displayMarketCap > 0) {
+    const capT = marketCapVnd > 0 && stock.marketCap === 0
+      ? (marketCapVnd / 1e12).toFixed(2)
+      : (stock.marketCap / 1e12).toFixed(2);
+    lines.push(`Market Cap: ${capT}T VND`);
+  }
   if (stock.volume > 0) lines.push(`Volume: ${stock.volume.toLocaleString()}`);
+  if (vnd?.beta && vnd.beta > 0) lines.push(`Beta: ${vnd.beta.toFixed(2)}`);
 
   lines.push("");
   lines.push("--- Valuation ---");
-  lines.push(`P/E Ratio: ${stock.pe > 0 ? stock.pe.toFixed(1) : "N/A"}`);
-  lines.push(`P/B Ratio: ${stock.pb > 0 ? stock.pb.toFixed(2) : "N/A"}`);
-  lines.push(`Dividend Yield: ${stock.dividendYield > 0 ? stock.dividendYield.toFixed(2) + "%" : "None"}`);
+  lines.push(`P/E Ratio: ${pe > 0 ? pe.toFixed(1) : "N/A"}${vnd && pe > 0 && stock.pe === 0 ? " (via VNDirect)" : ""}`);
+  lines.push(`P/B Ratio: ${pb > 0 ? pb.toFixed(2) : "N/A"}${vnd && pb > 0 && stock.pb === 0 ? " (via VNDirect)" : ""}`);
+  lines.push(`Dividend Yield: ${dividendYield > 0 ? dividendYield.toFixed(2) + "%" : "None"}`);
   if (stock.analystTarget > 0) {
     const upside = ((stock.analystTarget - stock.price) / stock.price * 100).toFixed(1);
     lines.push(`Analyst Target: ${stock.analystTarget.toLocaleString()} VND (${Number(upside) >= 0 ? "+" : ""}${upside}% upside) — Rating: ${stock.analystRating}`);
@@ -60,7 +87,7 @@ async function buildStockContext(stock: Stock): Promise<string> {
 
   lines.push("");
   lines.push("--- Fundamentals ---");
-  lines.push(`ROE: ${stock.roe > 0 ? stock.roe.toFixed(1) + "%" : "N/A"}`);
+  lines.push(`ROE: ${roe > 0 ? roe.toFixed(1) + "%" + (vnd && stock.roe === 0 ? " (derived: PB/PE)" : "") : "N/A"}`);
   lines.push(`Revenue Growth (YoY): ${stock.revenueGrowth !== 0 ? stock.revenueGrowth.toFixed(1) + "%" : "N/A"}`);
 
   if (stock.financials?.years?.length) {
@@ -354,13 +381,25 @@ export async function GET(request: Request) {
 
   const isEtf = isEtfSymbol(symbol);
 
+  // For non-ETFs: pre-fetch VNDirect fundamentals when stock cache is empty,
+  // so buildStockContext (which also calls fetchVNDirectFundamentals) and the
+  // hasFundamentals flag both see the same enriched data.
+  let vndFund = null;
+  if (!isEtf && stock.pe === 0 && stock.pb === 0) {
+    vndFund = await fetchVNDirectFundamentals(symbol);
+  }
+
+  const hasFundamentals =
+    stock.pe > 0 || stock.roe > 0 || stock.revenueGrowth !== 0 ||
+    (vndFund !== null && (vndFund.pe > 0 || vndFund.pb > 0));
+
   const context = isEtf
     ? await buildEtfContext(stock)
-    : await buildStockContext(stock);
+    : await buildStockContext(stock, vndFund);
 
   const systemInstruction = isEtf
     ? buildEtfSystemInstruction()
-    : buildEvalSystemInstruction(stock.pe > 0 || stock.roe > 0 || stock.revenueGrowth !== 0);
+    : buildEvalSystemInstruction(hasFundamentals);
 
   const userPrompt = isEtf
     ? `Evaluate the ETF ${symbol} (${stock.name}) for a Vietnamese long-term passive investor.\n\nETF data:\n${context}\n\nReturn JSON only.`
