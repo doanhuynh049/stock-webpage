@@ -322,13 +322,22 @@ export function SectorAnalysisView({
                 return (
                   <tr key={s.id} className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--card-hover)]">
                     <td className="px-2 py-1.5 font-medium">
-                      <button
-                        type="button"
-                        className="text-left text-accent hover:underline"
-                        onClick={() => scrollToSector(s.id)}
-                      >
-                        {s.name}
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          className="text-left text-accent hover:underline"
+                          onClick={() => scrollToSector(s.id)}
+                        >
+                          {s.name}
+                        </button>
+                        <Link
+                          href={`/analysis/sector/${s.id}`}
+                          className="rounded px-1 py-0.5 text-[9px] font-medium text-muted ring-1 ring-[var(--border)] hover:text-accent hover:ring-accent/40 transition-colors"
+                          title="Open sector detail page"
+                        >
+                          Detail →
+                        </Link>
+                      </div>
                     </td>
                     <td className="px-2 py-1.5 text-right">
                       <input

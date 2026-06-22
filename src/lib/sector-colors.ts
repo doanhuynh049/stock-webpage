@@ -24,6 +24,20 @@ const SECTOR_ALIAS: Record<string, string> = {
   "ETF & Index Funds": "ETF",
 };
 
+/** Maps human-readable sector name → route sectorId (safe for client components). */
+export const SECTOR_NAME_TO_ROUTE_ID: Record<string, string> = {
+  "Banking & Financial Services": "BANKING_FINANCE",
+  "Real Estate & Construction": "REAL_ESTATE_CONSTRUCTION",
+  "Consumer Goods & Retail": "CONSUMER_RETAIL",
+  "Manufacturing & Industrials": "MANUFACTURING_INDUSTRIALS",
+  "Energy (Oil, Gas, Utilities)": "ENERGY",
+  "Materials (Chemicals, Fertilizers, Mining)": "MATERIALS",
+  "Technology & Telecommunications": "TECH_TELECOM",
+  "Transportation & Logistics": "TRANSPORT_LOGISTICS",
+  "Healthcare & Pharmaceuticals": "HEALTHCARE_PHARMA",
+  "ETF & Index Funds": "ETF_INDEX",
+};
+
 /** Short display name for a sector (strips parenthetical details). */
 export function shortSectorName(sector: string): string {
   if (SECTOR_ALIAS[sector]) return SECTOR_ALIAS[sector];

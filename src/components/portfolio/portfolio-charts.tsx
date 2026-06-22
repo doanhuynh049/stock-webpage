@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Cell,
   Pie,
@@ -9,7 +10,7 @@ import {
   Tooltip,
 } from "recharts";
 import { Card } from "@/components/ui/card";
-import { getSectorColor, shortSectorName } from "@/lib/sector-colors";
+import { getSectorColor, shortSectorName, SECTOR_NAME_TO_ROUTE_ID } from "@/lib/sector-colors";
 import { formatPortfolioAmount } from "@/lib/utils";
 
 type Slice = { name: string; value: number };
@@ -25,6 +26,7 @@ export function PortfolioCharts({
   valueLabel?: string;
   useMarketValue?: boolean;
 }) {
+  const router = useRouter();
   const [activeIdx, setActiveIdx] = useState<number | null>(null);
   const sorted = [...allocationData].sort((a, b) => b.value - a.value);
 
@@ -63,6 +65,12 @@ export function PortfolioCharts({
                 stroke="var(--bg)"
                 onMouseEnter={(_data, idx) => setActiveIdx(idx)}
                 onMouseLeave={() => setActiveIdx(null)}
+                onClick={(_data, idx) => {
+                  const name = sorted[idx]?.name;
+                  const id = name ? SECTOR_NAME_TO_ROUTE_ID[name] : null;
+                  if (id) router.push(`/analysis/sector/${id}`);
+                }}
+                style={{ cursor: "pointer" }}
               >
                 {sorted.map((item, idx) => (
                   <Cell
@@ -151,10 +159,11 @@ export function PortfolioCharts({
             const pct = totalValue > 0 ? (item.value / totalValue) * 100 : 0;
             const color = getSectorColor(item.name);
             const isActive = activeIdx === idx;
+            const sectorId = SECTOR_NAME_TO_ROUTE_ID[item.name];
             return (
               <div
                 key={item.name}
-                className="group cursor-default rounded-xl p-2.5 transition-all"
+                className="group rounded-xl p-2.5 transition-all"
                 style={{
                   background: isActive
                     ? `linear-gradient(135deg, ${color}14 0%, ${color}06 100%)`
@@ -170,9 +179,19 @@ export function PortfolioCharts({
                       className="h-3 w-3 shrink-0 rounded-sm"
                       style={{ background: color }}
                     />
-                    <span className="truncate text-[13px] font-medium text-[var(--fg)]">
-                      {shortSectorName(item.name)}
-                    </span>
+                    {sectorId ? (
+                      <button
+                        type="button"
+                        onClick={() => router.push(`/analysis/sector/${sectorId}`)}
+                        className="truncate text-[13px] font-medium text-accent hover:underline text-left"
+                      >
+                        {shortSectorName(item.name)}
+                      </button>
+                    ) : (
+                      <span className="truncate text-[13px] font-medium text-[var(--fg)]">
+                        {shortSectorName(item.name)}
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <span className="hidden font-mono text-[11px] text-muted sm:inline">

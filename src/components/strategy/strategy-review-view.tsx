@@ -13,6 +13,7 @@ import { useTableSort } from "@/hooks/use-table-sort";
 import { applySortDir, compareNumbers, compareStrings } from "@/lib/table-sort";
 import type { StrategyReview } from "@/lib/strategy/strategy-review";
 import { formatPortfolioAmount, formatPortfolioPercent } from "@/lib/utils";
+import { SECTOR_NAME_TO_ROUTE_ID } from "@/lib/sector-colors";
 
 function actionVariant(action: string) {
   if (action === "STOP_LOSS" || action === "SECTOR_CAP") return "danger" as const;
@@ -181,7 +182,18 @@ export function StrategyReviewView({ review }: { review: StrategyReview }) {
             {review.sectorRows.map((s) => (
               <div key={s.sector} className="space-y-1">
                 <div className="flex items-center justify-between text-xs">
-                  <span className="font-medium text-[var(--fg)]">{s.sector}</span>
+                  <div className="flex items-center gap-1.5">
+                    {SECTOR_NAME_TO_ROUTE_ID[s.sector] ? (
+                      <Link
+                        href={`/analysis/sector/${SECTOR_NAME_TO_ROUTE_ID[s.sector]}`}
+                        className="font-medium text-accent hover:underline"
+                      >
+                        {s.sector}
+                      </Link>
+                    ) : (
+                      <span className="font-medium text-[var(--fg)]">{s.sector}</span>
+                    )}
+                  </div>
                   <span className="text-muted">
                     {s.pct.toFixed(1)}%
                     {s.target != null ? ` / ${s.target}%` : ""}
