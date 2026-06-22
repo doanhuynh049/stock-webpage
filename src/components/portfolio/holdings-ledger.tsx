@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Plus, Trash2 } from "lucide-react";
 import { StockAvatar } from "@/components/ui/stock-avatar";
@@ -233,6 +233,17 @@ function EditModal({
   onSave: () => void;
   onDelete?: () => void;
 }) {
+  // Track raw string inputs for numeric fields so users can type decimals like "31.08"
+  const [rawInputs, setRawInputs] = useState<Partial<Record<string, string>>>({});
+  const draftKey = useRef(draft.symbol + mode);
+  useEffect(() => {
+    const key = draft.symbol + mode;
+    if (key !== draftKey.current) {
+      draftKey.current = key;
+      setRawInputs({});
+    }
+  }, [draft.symbol, mode]);
+
   const fields = [
     ["symbol", "Symbol", mode === "edit"],
     ["name", "Name"],
@@ -243,6 +254,11 @@ function EditModal({
     ["target3Month", "3M target", false, "number"],
     ["targetLongTerm", "LT target", false, "number"],
   ] as const;
+
+  function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    onSave();
+  }
 
   return (
     <FormModal
@@ -268,9 +284,9 @@ function EditModal({
       footer={
         <>
           <button
-            type="button"
+            type="submit"
+            form="edit-holding-form"
             disabled={busy}
-            onClick={onSave}
             className="flex-1 rounded-lg bg-accent px-4 py-2.5 text-sm font-semibold text-accent-fg shadow-sm hover:opacity-90 disabled:opacity-50 sm:flex-none"
           >
             {busy ? "Saving…" : mode === "add" ? "Save holding" : "Save changes"}
@@ -292,39 +308,59 @@ function EditModal({
         </>
       }
     >
-      <div className="grid gap-3 sm:grid-cols-2">
-        {fields.map(([key, label, readOnly, type]) => {
-          const rawVal = draft[key as keyof Draft];
-          const isTargetField = key === "target3Month" || key === "targetLongTerm";
-          // Target fields: show empty string for null/0 so user sees a blank input
-          const displayVal = isTargetField
-            ? (rawVal == null || rawVal === 0 ? "" : String(rawVal))
-            : String(rawVal ?? "");
-          return (
-            <label key={key} className="block">
-              <span className={modalLabelClass}>{label}</span>
-              <input
-                type={type ?? "text"}
-                readOnly={readOnly === true}
-                disabled={busy}
-                className={`${modalFieldClass} font-mono disabled:opacity-60`}
-                value={displayVal}
-                placeholder={isTargetField ? "e.g. 85 (= 85,000 ₫)" : undefined}
-                onChange={(e) => {
-                  const raw = e.target.value;
-                  let parsed: string | number | null;
-                  if (type === "number") {
-                    parsed = raw === "" ? (isTargetField ? null : 0) : Number(raw);
-                  } else {
-                    parsed = raw;
-                  }
-                  onChange({ ...draft, [key]: parsed });
-                }}
-              />
-            </label>
-          );
-        })}
-      </div>
+      <form id="edit-holding-form" onSubmit={handleSubmit}>
+        <div className="grid gap-3 sm:grid-cols-2">
+          {fields.map(([key, label, readOnly, type]) => {
+            const rawVal = draft[key as keyof Draft];
+            const isTargetField = key === "target3Month" || key === "targetLongTerm";
+            const isNumeric = type === "number";
+            // Use raw string when user is actively typing; fall back to stored value
+            const displayVal =
+              isNumeric && rawInputs[key] !== undefined
+                ? rawInputs[key]!
+                : isTargetField
+                  ? (rawVal == null || rawVal === 0 ? "" : String(rawVal))
+                  : String(rawVal ?? "");
+            return (
+              <label key={key} className="block">
+                <span className={modalLabelClass}>{label}</span>
+                <input
+                  type="text"
+                  inputMode={isNumeric ? "decimal" : undefined}
+                  readOnly={readOnly === true}
+                  disabled={busy}
+                  className={`${modalFieldClass} font-mono disabled:opacity-60`}
+                  value={displayVal}
+                  placeholder={isTargetField ? "e.g. 85 (= 85,000 ₫)" : undefined}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    if (isNumeric) {
+                      setRawInputs((prev) => ({ ...prev, [key]: raw }));
+                      const parsed = raw === "" ? null : parseFloat(raw);
+                      const value = parsed == null || isNaN(parsed)
+                        ? (isTargetField ? null : 0)
+                        : parsed;
+                      onChange({ ...draft, [key]: value });
+                    } else {
+                      onChange({ ...draft, [key]: raw });
+                    }
+                  }}
+                  onBlur={() => {
+                    if (isNumeric) {
+                      // Clear raw input on blur so display normalizes to stored value
+                      setRawInputs((prev) => {
+                        const next = { ...prev };
+                        delete next[key];
+                        return next;
+                      });
+                    }
+                  }}
+                />
+              </label>
+            );
+          })}
+        </div>
+      </form>
     </FormModal>
   );
 }

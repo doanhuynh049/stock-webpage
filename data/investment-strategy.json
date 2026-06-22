@@ -82,16 +82,17 @@
         "Stick to position sizing discipline"
       ],
       "sector_targets": {
-        "_comment": "Target % allocation per sector (must sum to 100). Based on medium-term growth strategy with balanced risk. Banking 25% (core stability), Tech 20% (growth satellite), Consumer 15% (defensive), Real Estate 12% (value rotation), Manufacturing 10% (industrial recovery), Energy 8% (utility anchor), Materials 5%, Transport 3%, Healthcare 2%.",
-        "BANKING_FINANCE": 25,
+        "_comment": "Target % allocation per sector (must sum to 100). Based on medium-term growth strategy with balanced risk. Banking 22% (core stability), Tech 18% (growth satellite), Consumer 14% (defensive), Real Estate 12% (value rotation), ETF 10% (index core), Manufacturing 10% (industrial recovery), Energy 8% (utility anchor), Materials 5%, Transport 2%, Healthcare 1%.",
+        "BANKING_FINANCE": 22,
         "REAL_ESTATE_CONSTRUCTION": 12,
-        "CONSUMER_RETAIL": 15,
+        "CONSUMER_RETAIL": 14,
         "MANUFACTURING_INDUSTRIALS": 10,
         "ENERGY": 8,
         "MATERIALS": 5,
-        "TECH_TELECOM": 20,
-        "TRANSPORT_LOGISTICS": 3,
-        "HEALTHCARE_PHARMA": 2
+        "TECH_TELECOM": 18,
+        "TRANSPORT_LOGISTICS": 2,
+        "HEALTHCARE_PHARMA": 1,
+        "ETF_INDEX": 8
       }
     },
     "dynamic_request": {

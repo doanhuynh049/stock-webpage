@@ -516,6 +516,7 @@ export function AnalysisView({
   sectorAnalysis,
   etfBundle,
   ownedSymbols,
+  sectorTargets,
 }: {
   portfolio: UniverseAnalysisBundle;
   vn30: UniverseAnalysisBundle;
@@ -523,6 +524,7 @@ export function AnalysisView({
   sectorAnalysis?: SectorAnalysisResult;
   etfBundle?: EtfAnalysisRow[];
   ownedSymbols?: string[];
+  sectorTargets?: Record<string, number>;
 }) {
   const [mainTab, setMainTab] = useState<MainTab>("portfolio");
   const [subTab, setSubTab] = useState<SubTab>("fundamental");
@@ -603,7 +605,7 @@ export function AnalysisView({
       )}
 
       {mainTab === "sector" && sectorAnalysis ? (
-        <SectorAnalysisView data={sectorAnalysis} />
+        <SectorAnalysisView data={sectorAnalysis} initialSectorTargets={sectorTargets} />
       ) : mainTab === "etf" ? (
         <EtfAnalysisView rows={etfBundle ?? []} />
       ) : (

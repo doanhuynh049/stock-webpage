@@ -168,49 +168,12 @@ export function EtfAnalysisView({ rows }: { rows: EtfAnalysisRow[] }) {
       if (!groups[r.benchmark]) groups[r.benchmark] = [];
       groups[r.benchmark].push(r);
     }
-    // Sort within each group by tech score
-    for (const g of Object.values(groups)) g.sort((a, b) => b.technicalScore - a.technicalScore);
     return groups;
   }, [rows, benchmarkFilter]);
-
-  const groupAvgScore = (group: EtfAnalysisRow[]) => {
-    const withData = group.filter((r) => r.hasData);
-    return withData.length
-      ? Math.round(withData.reduce((s, r) => s + r.technicalScore, 0) / withData.length)
-      : 0;
-  };
 
   return (
     <div className="space-y-4">
       <SummaryCards rows={rows} />
-
-      {/* Benchmark group heatmap */}
-      {benchmarkGroups && (
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          {BENCHMARK_ORDER.filter((b) => benchmarkGroups[b]?.length).map((b) => {
-            const group = benchmarkGroups[b]!;
-            const avg = groupAvgScore(group);
-            const best = group.find((r) => r.hasData) ?? group[0];
-            return (
-              <button
-                key={b}
-                type="button"
-                onClick={() => setBenchmarkFilter(b)}
-                className="rounded-lg bg-[var(--bg-secondary)] px-3 py-2.5 text-left ring-1 ring-[var(--border)] hover:ring-[var(--accent)]/40 transition-colors"
-              >
-                <BenchmarkBadge benchmark={b} />
-                <div className="mt-2 flex items-end justify-between">
-                  <div>
-                    <p className="text-[10px] text-subtle">{group.length} ETF{group.length > 1 ? "s" : ""}</p>
-                    <p className="text-[10px] text-subtle">Best: {best?.symbol}</p>
-                  </div>
-                  <Badge variant={scoreVariant(avg)} className="font-mono text-xs">{avg}</Badge>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      )}
 
       {/* Filter bar */}
       <div className="flex flex-wrap items-center gap-1.5">

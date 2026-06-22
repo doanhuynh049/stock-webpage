@@ -36,7 +36,14 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const session = await auth();
+  // JWTSessionError can occur when AUTH_SECRET rotates or cookies are stale.
+  // Catch gracefully so the app continues to load as a signed-out guest.
+  let session = null;
+  try {
+    session = await auth();
+  } catch {
+    // Silently ignore — stale/invalid session treated as signed out
+  }
 
   return (
     <html

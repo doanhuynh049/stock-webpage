@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardTitle } from "@/components/ui/card";
@@ -31,7 +31,14 @@ function statusVariant(status: SectorRollup["status"]) {
   return "default" as const;
 }
 
-function LeaderTable({ sector }: { sector: SectorRollup }) {
+const STATUS_ORDER: Record<SectorRollup["status"], number> = {
+  OVERWEIGHT: 0,
+  "ON TARGET": 1,
+  UNDERWEIGHT: 2,
+  "NO TARGET": 3,
+};
+
+function LeaderTable({ sector, tableRef }: { sector: SectorRollup; tableRef: React.RefObject<HTMLDivElement | null> }) {
   type SortKey =
     | "symbol"
     | "price"
@@ -78,35 +85,37 @@ function LeaderTable({ sector }: { sector: SectorRollup }) {
   }, [sector.stocks, sortKey, sortDir]);
 
   return (
-    <Card className="!p-4">
-      <CardTitle className="!mb-1 !text-base">{sector.name}</CardTitle>
-      <p className="mb-3 text-xs text-muted">
-        Target {sector.targetPct.toFixed(1)}% · Current {sector.currentPct.toFixed(2)}% ·{" "}
-        {sector.leaderCount} leaders
-      </p>
-      <div className="table-scroll overflow-x-auto rounded-lg ring-1 ring-[var(--border)]">
-        <table className="w-full min-w-[720px] text-sm">
-          <thead>
-            <tr className="border-b border-[var(--border)] bg-[var(--bg-secondary)] text-left text-[10px] uppercase text-subtle">
-              <th className="px-2 py-1.5">#</th>
-              <SortableTableHeader label="Symbol" column="symbol" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-2 py-1.5" />
-              <SortableTableHeader label="Price (k)" column="price" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} align="right" className="px-2 py-1.5" />
-              <SortableTableHeader label="Fund." column="fund" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} align="center" className="px-2 py-1.5" />
-              <SortableTableHeader label="Tech." column="tech" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} align="center" className="px-2 py-1.5" />
-              <SortableTableHeader label="Combined" column="combined" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} align="center" className="px-2 py-1.5" />
-              <SortableTableHeader label="Rec." column="rec" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} align="center" className="px-2 py-1.5" />
-              <SortableTableHeader label="RSI" column="rsi" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} align="center" className="px-2 py-1.5" />
-              <SortableTableHeader label="P/E" column="pe" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} align="center" className="px-2 py-1.5" />
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.map((r, i) => (
-              <LeaderRow key={r.symbol} row={r} rank={i + 1} sectorName={sector.name} />
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </Card>
+    <div ref={tableRef}>
+      <Card className="!p-4">
+        <CardTitle className="!mb-1 !text-base">{sector.name}</CardTitle>
+        <p className="mb-3 text-xs text-muted">
+          Target {sector.targetPct.toFixed(1)}% · Current {sector.currentPct.toFixed(2)}% ·{" "}
+          {sector.leaderCount} leaders
+        </p>
+        <div className="table-scroll overflow-x-auto rounded-lg ring-1 ring-[var(--border)]">
+          <table className="w-full min-w-[720px] text-sm">
+            <thead>
+              <tr className="border-b border-[var(--border)] bg-[var(--bg-secondary)] text-left text-[10px] uppercase text-subtle">
+                <th className="px-2 py-1.5">#</th>
+                <SortableTableHeader label="Symbol" column="symbol" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-2 py-1.5" />
+                <SortableTableHeader label="Price (k)" column="price" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} align="right" className="px-2 py-1.5" />
+                <SortableTableHeader label="Fund." column="fund" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} align="center" className="px-2 py-1.5" />
+                <SortableTableHeader label="Tech." column="tech" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} align="center" className="px-2 py-1.5" />
+                <SortableTableHeader label="Combined" column="combined" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} align="center" className="px-2 py-1.5" />
+                <SortableTableHeader label="Rec." column="rec" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} align="center" className="px-2 py-1.5" />
+                <SortableTableHeader label="RSI" column="rsi" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} align="center" className="px-2 py-1.5" />
+                <SortableTableHeader label="P/E" column="pe" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} align="center" className="px-2 py-1.5" />
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((r, i) => (
+                <LeaderRow key={r.symbol} row={r} rank={i + 1} sectorName={sector.name} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </div>
   );
 }
 
@@ -158,9 +167,61 @@ function LeaderRow({
   );
 }
 
-export function SectorAnalysisView({ data }: { data: SectorAnalysisResult }) {
-  type SectorSortKey = "sector" | "target" | "current" | "delta" | "leaders";
-  const { sortKey, sortDir, toggleSort } = useTableSort<SectorSortKey>("sector", "asc");
+export function SectorAnalysisView({
+  data,
+  initialSectorTargets,
+}: {
+  data: SectorAnalysisResult;
+  initialSectorTargets?: Record<string, number>;
+}) {
+  // Local editable target overrides — keyed by sector id
+  const [editTargets, setEditTargets] = useState<Record<string, string>>({});
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState<string | null>(null);
+
+  // Refs for each sector's LeaderTable so we can scroll to them
+  const sectorRefs = useRef<Record<string, React.RefObject<HTMLDivElement | null>>>({});
+  for (const s of data.sectors) {
+    if (!sectorRefs.current[s.id]) {
+      sectorRefs.current[s.id] = { current: null };
+    }
+  }
+
+  function scrollToSector(id: string) {
+    sectorRefs.current[id]?.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  async function saveSectorTarget(sectorId: string, rawValue: string) {
+    const parsed = parseFloat(rawValue);
+    if (isNaN(parsed) || parsed < 0 || parsed > 100) return;
+    setSaving(true);
+    setSaveMsg(null);
+    // Build updated sectorTargets from initial + any edits + this new one
+    const base = initialSectorTargets ?? {};
+    const updated: Record<string, number> = { ...base };
+    for (const [k, v] of Object.entries(editTargets)) {
+      const n = parseFloat(v);
+      if (!isNaN(n)) updated[k] = n;
+    }
+    updated[sectorId] = parsed;
+    try {
+      const res = await fetch("/api/strategy", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sectorTargets: updated }),
+      });
+      if (!res.ok) throw new Error("Save failed");
+      setSaveMsg("Saved");
+      setTimeout(() => setSaveMsg(null), 2000);
+    } catch {
+      setSaveMsg("Save failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  type SectorSortKey = "sector" | "target" | "current" | "delta" | "status" | "leaders";
+  const { sortKey, sortDir, toggleSort } = useTableSort<SectorSortKey>("status", "asc");
   const sortedSectors = useMemo(() => {
     if (!sortKey) return data.sectors;
     return [...data.sectors].sort((a, b) => {
@@ -178,6 +239,9 @@ export function SectorAnalysisView({ data }: { data: SectorAnalysisResult }) {
         case "delta":
           cmp = compareNumbers(a.deltaPct, b.deltaPct);
           break;
+        case "status":
+          cmp = (STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9);
+          break;
         case "leaders":
           cmp = compareNumbers(a.leaderCount, b.leaderCount);
           break;
@@ -185,6 +249,9 @@ export function SectorAnalysisView({ data }: { data: SectorAnalysisResult }) {
       return applySortDir(cmp, sortDir);
     });
   }, [data.sectors, sortKey, sortDir]);
+
+  // For LeaderTables we always render in original data order
+  const sectorById = useMemo(() => Object.fromEntries(data.sectors.map((s) => [s.id, s])), [data.sectors]);
 
   return (
     <div className="space-y-4">
@@ -198,6 +265,11 @@ export function SectorAnalysisView({ data }: { data: SectorAnalysisResult }) {
         <span className="font-mono font-semibold text-[var(--fg)]">
           Portfolio {formatPortfolioAmount(data.totalPortfolioValueK, 0)} k VND
         </span>
+        {saveMsg && (
+          <span className={`font-medium ${saveMsg === "Saved" ? "text-[var(--success)]" : "text-[var(--danger)]"}`}>
+            {saveMsg}
+          </span>
+        )}
       </div>
 
       {data.trendLeaders.length > 0 && (
@@ -226,11 +298,10 @@ export function SectorAnalysisView({ data }: { data: SectorAnalysisResult }) {
       )}
 
       <Card className="!p-4">
-        <CardTitle className="!mb-3 !text-base">Sector allocation — target vs current</CardTitle>
-        <p className="mb-3 text-xs text-muted">
-          Edit targets in Strategy → Edit strategy. Current % uses market value matched via sector
-          leader lists.
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <CardTitle className="!mb-0 !text-base">Sector allocation — target vs current</CardTitle>
+          <p className="text-[10px] text-subtle">Click target % to edit · Click sector name to jump to detail table</p>
+        </div>
         <div className="table-scroll overflow-x-auto rounded-lg ring-1 ring-[var(--border)]">
           <table className="w-full min-w-[640px] text-sm">
             <thead>
@@ -239,35 +310,92 @@ export function SectorAnalysisView({ data }: { data: SectorAnalysisResult }) {
                 <SortableTableHeader label="Target %" column="target" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} align="right" className="px-2 py-1.5" />
                 <SortableTableHeader label="Current %" column="current" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} align="right" className="px-2 py-1.5" />
                 <SortableTableHeader label="Δ" column="delta" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} align="right" className="px-2 py-1.5" />
-                <th className="px-2 py-1.5 text-center">Status</th>
+                <SortableTableHeader label="Status" column="status" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} align="center" className="px-2 py-1.5" />
                 <SortableTableHeader label="Leaders" column="leaders" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} align="center" className="px-2 py-1.5" />
               </tr>
             </thead>
             <tbody>
-              {sortedSectors.map((s) => (
-                <tr key={s.id} className="border-b border-[var(--border)] last:border-0">
-                  <td className="px-2 py-1.5 font-medium">{s.name}</td>
-                  <td className="px-2 py-1.5 text-right font-mono">{s.targetPct.toFixed(1)}%</td>
-                  <td className="px-2 py-1.5 text-right font-mono">{s.currentPct.toFixed(2)}%</td>
-                  <td className="px-2 py-1.5 text-right font-mono">
-                    {s.deltaPct >= 0 ? "+" : ""}
-                    {s.deltaPct.toFixed(2)}%
-                  </td>
-                  <td className="px-2 py-1.5 text-center">
-                    <Badge variant={statusVariant(s.status)} className="text-[9px]">
-                      {s.status}
-                    </Badge>
-                  </td>
-                  <td className="px-2 py-1.5 text-center font-mono">{s.leaderCount}</td>
-                </tr>
-              ))}
+              {sortedSectors.map((s) => {
+                const editKey = s.id;
+                const rawEdit = editTargets[editKey];
+                const displayTarget = rawEdit !== undefined ? rawEdit : s.targetPct.toFixed(1);
+                return (
+                  <tr key={s.id} className="border-b border-[var(--border)] last:border-0 hover:bg-[var(--card-hover)]">
+                    <td className="px-2 py-1.5 font-medium">
+                      <button
+                        type="button"
+                        className="text-left text-accent hover:underline"
+                        onClick={() => scrollToSector(s.id)}
+                      >
+                        {s.name}
+                      </button>
+                    </td>
+                    <td className="px-2 py-1.5 text-right">
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        disabled={saving}
+                        className="w-14 rounded bg-transparent px-1 py-0.5 text-right font-mono text-xs ring-1 ring-transparent hover:ring-[var(--border)] focus:ring-[var(--accent)] focus:outline-none"
+                        value={displayTarget}
+                        onChange={(e) => setEditTargets((prev) => ({ ...prev, [editKey]: e.target.value }))}
+                        onBlur={() => {
+                          if (rawEdit !== undefined) {
+                            void saveSectorTarget(editKey, rawEdit);
+                            setEditTargets((prev) => {
+                              const next = { ...prev };
+                              delete next[editKey];
+                              return next;
+                            });
+                          }
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.currentTarget.blur();
+                          } else if (e.key === "Escape") {
+                            setEditTargets((prev) => {
+                              const next = { ...prev };
+                              delete next[editKey];
+                              return next;
+                            });
+                          }
+                        }}
+                        title="Click to edit target %"
+                      />
+                      <span className="ml-0.5 text-xs text-muted">%</span>
+                    </td>
+                    <td className="px-2 py-1.5 text-right font-mono">{s.currentPct.toFixed(2)}%</td>
+                    <td className="px-2 py-1.5 text-right font-mono">
+                      <span className={
+                        Math.abs(s.deltaPct) <= 2
+                          ? "text-muted"
+                          : s.deltaPct > 0
+                            ? "text-amber-600 dark:text-amber-400"
+                            : "text-blue-600 dark:text-blue-400"
+                      }>
+                        {s.deltaPct >= 0 ? "+" : ""}
+                        {s.deltaPct.toFixed(2)}%
+                      </span>
+                    </td>
+                    <td className="px-2 py-1.5 text-center">
+                      <Badge variant={statusVariant(s.status)} className="text-[9px]">
+                        {s.status}
+                      </Badge>
+                    </td>
+                    <td className="px-2 py-1.5 text-center font-mono">{s.leaderCount}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       </Card>
 
-      {sortedSectors.map((sec) => (
-        <LeaderTable key={sec.id} sector={sec} />
+      {data.sectors.map((sec) => (
+        <LeaderTable
+          key={sec.id}
+          sector={sectorById[sec.id] ?? sec}
+          tableRef={sectorRefs.current[sec.id]!}
+        />
       ))}
     </div>
   );

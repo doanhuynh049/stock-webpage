@@ -23,4 +23,5 @@ export const SECTOR_TARGET_LABELS: Record<string, string> = {
   TECH_TELECOM: "Tech & Telecom",
   TRANSPORT_LOGISTICS: "Transport & Logistics",
   HEALTHCARE_PHARMA: "Healthcare & Pharma",
+  ETF_INDEX: "ETF & Index Funds",
 };
