@@ -147,6 +147,7 @@ export default async function AnalysisPage() {
         etfBundle={etfBundle}
         ownedSymbols={ownedSymbols}
         sectorTargets={strategyConfig.sectorTargets}
+        enrichedHoldings={enriched}
       />
     </div>
   );

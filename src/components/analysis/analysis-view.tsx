@@ -29,8 +29,10 @@ import {
   PRINCIPLES_IN_APP,
 } from "@/lib/content/investment-principles";
 import { StockEvaluationPanel } from "@/components/analysis/stock-evaluation-panel";
+import { AverageDownPanel } from "@/components/analysis/average-down-panel";
+import type { EnrichedHolding } from "@/lib/portfolio/holdings-enrichment";
 
-type MainTab = "portfolio" | "sector" | "etf" | "vn30" | "vn100" | "rules" | "principles";
+type MainTab = "portfolio" | "sector" | "etf" | "vn30" | "vn100" | "rules" | "principles" | "avg-down";
 type SubTab = "fundamental" | "technical" | "combined";
 
 const MAIN_TABS: { id: MainTab; label: string }[] = [
@@ -39,6 +41,7 @@ const MAIN_TABS: { id: MainTab; label: string }[] = [
   { id: "etf", label: "ETF" },
   { id: "vn30", label: "VN30" },
   { id: "vn100", label: "VN100" },
+  { id: "avg-down", label: "Avg Down" },
   { id: "rules", label: "Scoring rules" },
   { id: "principles", label: "Principles" },
 ];
@@ -517,6 +520,7 @@ export function AnalysisView({
   etfBundle,
   ownedSymbols,
   sectorTargets,
+  enrichedHoldings,
 }: {
   portfolio: UniverseAnalysisBundle;
   vn30: UniverseAnalysisBundle;
@@ -525,6 +529,7 @@ export function AnalysisView({
   etfBundle?: EtfAnalysisRow[];
   ownedSymbols?: string[];
   sectorTargets?: Record<string, number>;
+  enrichedHoldings?: EnrichedHolding[];
 }) {
   const [mainTab, setMainTab] = useState<MainTab>("portfolio");
   const [subTab, setSubTab] = useState<SubTab>("fundamental");
@@ -549,7 +554,7 @@ export function AnalysisView({
           ? INDEX_RULES.vn100
           : "";
 
-  const noSubTabs = mainTab === "rules" || mainTab === "principles" || mainTab === "sector" || mainTab === "etf";
+  const noSubTabs = mainTab === "rules" || mainTab === "principles" || mainTab === "sector" || mainTab === "etf" || mainTab === "avg-down";
 
   const selectedSymbol = selection?.row.symbol.toUpperCase() ?? null;
 
@@ -604,7 +609,20 @@ export function AnalysisView({
         />
       )}
 
-      {mainTab === "sector" && sectorAnalysis ? (
+      {mainTab === "avg-down" ? (
+        <Card className="!p-4">
+          <CardTitle className="!mb-1 !text-base">Average Down Decision Framework</CardTitle>
+          <p className="mb-4 text-xs text-muted">
+            6-point checklist to decide whether averaging down a losing position is rational — or just loss aversion.
+          </p>
+          <AverageDownPanel
+            holdings={enrichedHoldings ?? []}
+            fundamentalRows={portfolio.fundamental}
+            combinedRows={portfolio.combined}
+            sectorAnalysis={sectorAnalysis}
+          />
+        </Card>
+      ) : mainTab === "sector" && sectorAnalysis ? (
         <SectorAnalysisView data={sectorAnalysis} initialSectorTargets={sectorTargets} />
       ) : mainTab === "etf" ? (
         <EtfAnalysisView rows={etfBundle ?? []} />
