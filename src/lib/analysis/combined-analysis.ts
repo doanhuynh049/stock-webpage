@@ -25,6 +25,7 @@ export type CombinedAnalysisRow = {
   symbol: string;
   name: string;
   sector: string;
+  currentPrice: number;
   technicalScore: number;
   fundamentalScore: number;
   combinedScore: number;
@@ -103,6 +104,7 @@ export async function analyzeCombinedRow(
     symbol: a.symbol,
     name: stock.name,
     sector: stock.sector,
+    currentPrice: a.currentPrice,
     technicalScore: a.technicalScore,
     fundamentalScore: etf ? 0 : a.fundamentalScore,
     combinedScore,

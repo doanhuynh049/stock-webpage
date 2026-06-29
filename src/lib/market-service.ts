@@ -571,6 +571,19 @@ export async function getTechnicalSignals(stock: Stock): Promise<TechnicalSignal
       Math.min(50, closes.length)
     : stock.price * 0.97;
 
+  const ma20 = Math.round(
+    closes.slice(-20).reduce((a, b) => a + b, 0) / Math.min(20, closes.length || 1),
+  );
+
+  // Volume ratio: today vs 20-day average (signals institutional activity)
+  const vols = history.map((p) => p.volume ?? 0).filter((v) => v > 0);
+  const avgVol20d = vols.length > 0
+    ? vols.slice(-Math.min(20, vols.length)).reduce((a, b) => a + b, 0) / Math.min(20, vols.length)
+    : 0;
+  const volumeRatio = avgVol20d > 0 && stock.volume > 0
+    ? Math.round((stock.volume / avgVol20d) * 100) / 100
+    : 1;
+
   return [
     { indicator: "RSI (14)", value: rsi, signal: rsiSignal },
     { indicator: "MACD", value: stock.changePercent, signal: macdSignal },
@@ -581,10 +594,13 @@ export async function getTechnicalSignals(stock: Stock): Promise<TechnicalSignal
     },
     {
       indicator: "MA 20",
-      value: Math.round(
-        closes.slice(-20).reduce((a, b) => a + b, 0) / Math.min(20, closes.length || 1),
-      ),
+      value: ma20,
       signal: stock.price > ma50 ? "Bullish" : "Bearish",
+    },
+    {
+      indicator: "Volume Ratio",
+      value: volumeRatio,
+      signal: volumeRatio >= 2 ? "Bullish" : "Neutral",
     },
   ];
 }

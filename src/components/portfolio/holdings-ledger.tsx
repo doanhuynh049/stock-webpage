@@ -11,6 +11,7 @@ import {
   formatPortfolioPercent,
   changeColor,
 } from "@/lib/utils";
+import { writeLocalCache } from "@/lib/client/local-storage-cache";
 import type { EnrichedHolding } from "@/lib/portfolio/holdings-enrichment";
 
 type SortKey =
@@ -415,6 +416,7 @@ export function HoldingsLedger({
           setMessage(result.error ?? "Save failed");
           return;
         }
+        writeLocalCache("portfolio-holdings", next);
         router.refresh();
       })();
 

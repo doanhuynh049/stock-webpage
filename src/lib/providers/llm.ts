@@ -19,7 +19,7 @@ export const LLM_PROVIDERS = [
     url:       "https://cloud.cerebras.ai",
     envKey:    "CEREBRAS_API_KEY",
     envModel:  "CEREBRAS_MODEL",
-    default:   "gpt-oss-120b",
+    default:   "llama3.3-70b",
     tier:      "Free 1M TPM",
     speed:     "~800 tok/s",
     modelsUrl: "https://api.cerebras.ai/v1/models",
@@ -103,7 +103,7 @@ export async function callLlm(
   if (cerebrasKey) {
     try {
       const r = await callOpenAICompat("https://api.cerebras.ai/v1/chat/completions",
-        cerebrasKey, process.env.CEREBRAS_MODEL ?? "gpt-oss-120b", fullMessages, maxTokens);
+        cerebrasKey, process.env.CEREBRAS_MODEL ?? "llama3.3-70b", fullMessages, maxTokens);
       if (r) return { ...r, provider: "cerebras" };
     } catch (e) { console.error("[LLM] Cerebras error:", e); }
   }

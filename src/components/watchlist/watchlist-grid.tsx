@@ -7,7 +7,10 @@ import { Card } from "@/components/ui/card";
 import { ChangeBadge } from "@/components/stock/change-badge";
 import { StockAvatar } from "@/components/ui/stock-avatar";
 import { RemoveWatchlistButton } from "@/components/watchlist/remove-watchlist-button";
+import { readLocalCache, LOCAL_CACHE_KEYS } from "@/lib/client/local-storage-cache";
 import type { Stock } from "@/types/stock";
+
+type AddPriceEntry = { price: number; addedAt: string };
 
 type WatchlistItem = {
   symbol: string;
@@ -16,9 +19,23 @@ type WatchlistItem = {
 
 export function WatchlistGrid({ items }: { items: WatchlistItem[] }) {
   const [hidden, setHidden] = useState<string[]>([]);
+  // Defer localStorage reads to client-side to avoid hydration mismatch
+  const [addPrices, setAddPrices] = useState<Record<string, number | null>>({});
 
   useEffect(() => {
     setHidden((prev) => prev.filter((sym) => items.some((i) => i.symbol === sym)));
+  }, [items]);
+
+  useEffect(() => {
+    const map: Record<string, number | null> = {};
+    for (const item of items) {
+      const entry = readLocalCache<AddPriceEntry>(
+        LOCAL_CACHE_KEYS.watchlistAddPrice(item.symbol),
+        Infinity,
+      );
+      map[item.symbol] = entry?.price ?? null;
+    }
+    setAddPrices(map);
   }, [items]);
 
   const shown = items.filter((item) => !hidden.includes(item.symbol));
@@ -41,6 +58,11 @@ export function WatchlistGrid({ items }: { items: WatchlistItem[] }) {
         const sector = stock?.sector;
         const name = stock?.name ?? item.symbol;
         const hasPrice = stock != null && stock.price > 0;
+        const addPrice = addPrices[item.symbol] ?? null;
+        const priceDiff =
+          hasPrice && addPrice && addPrice > 0
+            ? ((stock!.price - addPrice) / addPrice) * 100
+            : null;
 
         return (
           <Card
@@ -80,8 +102,24 @@ export function WatchlistGrid({ items }: { items: WatchlistItem[] }) {
               </div>
               {hasPrice && <ChangeBadge value={stock!.changePercent} />}
             </div>
+            {addPrice != null && addPrice > 0 && (
+              <div className="mt-2 flex items-center gap-1.5 text-[10px] text-subtle">
+                <span>Added at:</span>
+                <span className="font-mono">{addPrice.toLocaleString("vi-VN")} ₫</span>
+                {priceDiff != null && (
+                  <span
+                    className={`font-semibold ${
+                      priceDiff >= 0 ? "text-success" : "text-danger"
+                    }`}
+                  >
+                    {priceDiff >= 0 ? "+" : ""}
+                    {priceDiff.toFixed(2)}%
+                  </span>
+                )}
+              </div>
+            )}
             {stock && (
-              <div className="mt-3 text-[10px] text-subtle">
+              <div className="mt-2 text-[10px] text-subtle">
                 {stock.sector} · {stock.exchange}
               </div>
             )}

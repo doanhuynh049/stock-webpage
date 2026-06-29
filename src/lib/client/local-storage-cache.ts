@@ -50,10 +50,14 @@ export function removeLocalCache(key: string): void {
 export const LOCAL_CACHE_TTL = {
   market: 6 * 60 * 60 * 1000,
   news: 60 * 60 * 1000,
+  portfolio: 24 * 60 * 60 * 1000,
+  watchlistAddPrice: Infinity,
 } as const;
 
 export const LOCAL_CACHE_KEYS = {
   market: "market-snapshot",
   newsMarket: "news-market",
   newsSymbol: (symbol: string) => `news-${symbol.toUpperCase()}`,
+  portfolioHoldings: "portfolio-holdings",
+  watchlistAddPrice: (symbol: string) => `watchlist-add-${symbol.toUpperCase()}`,
 } as const;

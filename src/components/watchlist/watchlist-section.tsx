@@ -6,6 +6,11 @@ import { WatchlistGrid } from "@/components/watchlist/watchlist-grid";
 import { WatchlistAddPanel } from "@/components/watchlist/watchlist-add-panel";
 import type { WatchlistSuggestion } from "@/components/watchlist/watchlist-add-panel";
 import type { WatchlistItemView } from "@/lib/user-data";
+import {
+  writeLocalCache,
+  readLocalCache,
+  LOCAL_CACHE_KEYS,
+} from "@/lib/client/local-storage-cache";
 
 export type { WatchlistSuggestion };
 
@@ -47,6 +52,7 @@ export function WatchlistSection({
   suggestions: WatchlistSuggestion[];
 }) {
   const optimisticRef = useRef<Map<string, WatchlistItemView>>(new Map());
+  const newlyAddedRef = useRef<Set<string>>(new Set());
   const [items, setItems] = useState(() => initialItems);
 
   const syncFromServer = useCallback((server: WatchlistItemView[]) => {
@@ -68,6 +74,7 @@ export function WatchlistSection({
 
   function handleAdded(symbol: string) {
     const sym = symbol.toUpperCase();
+    newlyAddedRef.current.add(sym);
     const optimistic: WatchlistItemView = { symbol: sym, stock: null };
     optimisticRef.current.set(sym, optimistic);
     setItems((prev) => {
@@ -97,6 +104,18 @@ export function WatchlistSection({
           if (!res.ok) continue;
           const data = (await res.json()) as { stock?: WatchlistItemView["stock"] };
           if (!data.stock) continue;
+          // Save "add price" for stocks explicitly added in this session
+          if (
+            newlyAddedRef.current.has(item.symbol) &&
+            data.stock.price > 0 &&
+            !readLocalCache(LOCAL_CACHE_KEYS.watchlistAddPrice(item.symbol), Infinity)
+          ) {
+            writeLocalCache(LOCAL_CACHE_KEYS.watchlistAddPrice(item.symbol), {
+              price: data.stock.price,
+              addedAt: new Date().toISOString(),
+            });
+            newlyAddedRef.current.delete(item.symbol);
+          }
           setItems((prev) =>
             prev.map((row) =>
               row.symbol === item.symbol ? { ...row, stock: data.stock! } : row,

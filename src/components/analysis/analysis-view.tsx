@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardTitle } from "@/components/ui/card";
@@ -32,7 +32,7 @@ import { StockEvaluationPanel } from "@/components/analysis/stock-evaluation-pan
 import { AverageDownPanel } from "@/components/analysis/average-down-panel";
 import type { EnrichedHolding } from "@/lib/portfolio/holdings-enrichment";
 
-type MainTab = "portfolio" | "sector" | "etf" | "vn30" | "vn100" | "rules" | "principles" | "avg-down";
+type MainTab = "portfolio" | "sector" | "etf" | "vn30" | "vn100" | "rules" | "principles" | "avg-down" | "swing";
 type SubTab = "fundamental" | "technical" | "combined";
 
 const MAIN_TABS: { id: MainTab; label: string }[] = [
@@ -42,6 +42,7 @@ const MAIN_TABS: { id: MainTab; label: string }[] = [
   { id: "vn30", label: "VN30" },
   { id: "vn100", label: "VN100" },
   { id: "avg-down", label: "Avg Down" },
+  { id: "swing", label: "Short Swing" },
   { id: "rules", label: "Scoring rules" },
   { id: "principles", label: "Principles" },
 ];
@@ -245,7 +246,7 @@ function TechnicalTable({
   selectedSymbol: string | null;
   onSelect: (row: TechnicalAnalysisRow) => void;
 }) {
-  type SortKey = "symbol" | "tech" | "rating" | "trend" | "momentum" | "sr";
+  type SortKey = "symbol" | "price" | "tech" | "rating" | "trend" | "momentum" | "sr";
 
   const { sortKey, sortDir, toggleSort } = useTableSort<SortKey>("tech", "desc");
   const sorted = useMemo(() => {
@@ -255,6 +256,9 @@ function TechnicalTable({
       switch (sortKey) {
         case "symbol":
           cmp = compareStrings(a.symbol, b.symbol);
+          break;
+        case "price":
+          cmp = compareNumbers(a.currentPrice, b.currentPrice);
           break;
         case "tech":
           cmp = compareNumbers(a.technicalScore, b.technicalScore);
@@ -278,11 +282,12 @@ function TechnicalTable({
 
   if (!rows?.length) return <Empty />;
   return (
-    <table className="w-full min-w-[900px] text-sm">
+    <table className="w-full min-w-[1000px] text-sm">
       <thead>
         <tr className="border-b border-[var(--border)] bg-[var(--bg-secondary)] text-left text-[10px] uppercase text-subtle">
           <th className="px-2 py-1.5">#</th>
           <SortableTableHeader label="Symbol" column="symbol" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-2 py-1.5" />
+          <SortableTableHeader label="Price ₫" column="price" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} align="right" className="px-2 py-1.5" />
           <SortableTableHeader label="Tech" column="tech" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} align="center" className="px-2 py-1.5" />
           <SortableTableHeader label="Rating" column="rating" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-2 py-1.5" />
           <SortableTableHeader label="Trend" column="trend" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="px-2 py-1.5" />
@@ -305,6 +310,7 @@ function TechnicalTable({
             <td className="px-2 py-1.5">
               <SymbolCell symbol={r.symbol} name={r.name} sector={r.sector} owned={owned} isEtf={r.isEtf} />
             </td>
+            <td className="px-2 py-1.5 text-right font-mono text-xs">{fmtPrice(r.currentPrice)}</td>
             <td className="px-2 py-1.5 text-center font-mono font-semibold">{r.technicalScore}</td>
             <td className="px-2 py-1.5 text-xs text-muted">{r.technicalRating}</td>
             <td className="max-w-[180px] truncate px-2 py-1.5 text-xs text-muted" title={r.maTrend}>{r.maTrend}</td>
@@ -402,6 +408,11 @@ function CombinedTable({
   );
 }
 
+function fmtPrice(price: number | null | undefined): string {
+  if (price == null || price <= 0) return "—";
+  return price.toLocaleString("vi-VN");
+}
+
 function Empty() {
   return <p className="py-6 text-center text-sm text-muted">No data for this panel.</p>;
 }
@@ -474,6 +485,394 @@ function RulesPanel() {
     </div>
   );
 }
+
+/* ───────────────────────────────────────────────────────────── */
+/*  Short Swing interactive screener                             */
+/* ───────────────────────────────────────────────────────────── */
+
+type TechSignal = { indicator: string; value: number; signal: string };
+
+type MarketCtx = {
+  vnIndexChange: number;
+  topSectors: string[];
+  sentiment: string;
+};
+
+type SwingResult = {
+  symbol: string;
+  name: string;
+  sector: string;
+  price: number;
+  changePercent: number;
+  rsi: number;
+  high52w: number;
+  // criteria (8 scored)
+  aboveMA20: boolean;       // C1 — price above MA20
+  aboveMA50: boolean;       // C2 — price above MA50
+  rsiStrong: boolean;       // C3 — RSI > 60
+  volumeSpike: boolean;     // C4 — volume ≥ 2× 20d avg
+  near52wHigh: boolean;     // C5 — within 15% of 52-week high
+  outperformsMarket: boolean; // C6 — change% > VN-Index change%
+  leadingSector: boolean;   // C7 — sector in top 3 performers
+  positiveMomentum: boolean;// C8 — positive daily change
+  score: number;
+  signal: "ENTRY" | "WATCH" | "SKIP";
+  error?: string;
+};
+
+function buildSwingResult(
+  stock: { symbol: string; name: string; sector: string; price: number; changePercent: number; rsi: number; high52w: number; analystRating?: string },
+  technicals: TechSignal[],
+  ctx: MarketCtx | null,
+): SwingResult {
+  const sig = (ind: string) => technicals.find((t) => t.indicator === ind);
+  const aboveMA20 = sig("MA 20")?.signal === "Bullish";
+  const aboveMA50 = sig("MA 50")?.signal === "Bullish";
+  const rsiStrong = stock.rsi > 60;
+  const volumeSpike = sig("Volume Ratio")?.signal === "Bullish";
+  const near52wHigh = stock.high52w > 0 && stock.price / stock.high52w > 0.85;
+  const outperformsMarket = ctx != null && stock.changePercent > ctx.vnIndexChange;
+  const leadingSector = ctx != null && ctx.topSectors.some(
+    (s) => s.toLowerCase() === stock.sector.toLowerCase(),
+  );
+  const positiveMomentum = stock.changePercent > 0;
+
+  const criteria = [aboveMA20, aboveMA50, rsiStrong, volumeSpike, near52wHigh, outperformsMarket, leadingSector, positiveMomentum];
+  const score = criteria.filter(Boolean).length;
+  const signal: SwingResult["signal"] = score >= 6 ? "ENTRY" : score >= 3 ? "WATCH" : "SKIP";
+
+  return { symbol: stock.symbol, name: stock.name, sector: stock.sector, price: stock.price, changePercent: stock.changePercent, rsi: stock.rsi, high52w: stock.high52w, aboveMA20, aboveMA50, rsiStrong, volumeSpike, near52wHigh, outperformsMarket, leadingSector, positiveMomentum, score, signal };
+}
+
+function Check({ ok }: { ok: boolean }) {
+  return (
+    <span className={`text-sm font-bold ${ok ? "text-success" : "text-subtle"}`}>
+      {ok ? "✓" : "✗"}
+    </span>
+  );
+}
+
+function SwingBadge({ signal }: { signal: SwingResult["signal"] }) {
+  const cls = signal === "ENTRY"
+    ? "bg-success/15 text-success ring-success/30"
+    : signal === "WATCH"
+      ? "bg-amber-500/15 text-amber-500 ring-amber-400/30"
+      : "bg-[var(--bg-secondary)] text-subtle ring-[var(--border)]";
+  return <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${cls}`}>{signal}</span>;
+}
+
+function ShortSwingPanel({ defaultSymbols }: { defaultSymbols: string[] }) {
+  const [input, setInput] = useState(defaultSymbols.join(", "));
+  const [results, setResults] = useState<SwingResult[]>([]);
+  const [marketCtx, setMarketCtx] = useState<MarketCtx | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [guideOpen, setGuideOpen] = useState(false);
+  const hasRun = useRef(false);
+
+  const runScreener = useCallback(async (overrideInput?: string) => {
+    const raw = overrideInput ?? input;
+    const symbols = raw.toUpperCase().split(/[\s,;]+/).map((s) => s.trim()).filter(Boolean);
+    if (!symbols.length) return;
+
+    setLoading(true);
+    setResults([]);
+
+    // Fetch market context + all stocks in parallel
+    const [marketRes, ...stockSettled] = await Promise.allSettled([
+      fetch("/api/market").then((r) => r.json()) as Promise<{ market: { indices: { symbol: string; changePercent: number }[]; sectors: { sector: string; changePercent: number }[]; sentiment: string } }>,
+      ...symbols.map(async (sym): Promise<SwingResult> => {
+        const res = await fetch(`/api/stocks/${sym}`);
+        if (!res.ok) {
+          const errResult: SwingResult = {
+            symbol: sym, name: sym, sector: "—", price: 0, changePercent: 0, rsi: 0, high52w: 0,
+            aboveMA20: false, aboveMA50: false, rsiStrong: false, volumeSpike: false,
+            near52wHigh: false, outperformsMarket: false, leadingSector: false, positiveMomentum: false,
+            score: 0, signal: "SKIP",
+            error: res.status === 404 ? "Symbol not found" : "Fetch failed",
+          };
+          return errResult;
+        }
+        const data = await res.json() as {
+          stock: { symbol: string; name: string; sector: string; price: number; changePercent: number; rsi: number; high52w: number; analystRating?: string };
+          technicals: TechSignal[];
+        };
+        return buildSwingResult(data.stock, data.technicals ?? [], null);
+      }),
+    ]);
+
+    // Resolve market context
+    let ctx: MarketCtx | null = null;
+    if (marketRes.status === "fulfilled") {
+      const m = marketRes.value.market;
+      const vnIdx = m.indices?.find((i) => i.symbol === "VNINDEX" || i.symbol === "VN-Index");
+      const topSectors = [...(m.sectors ?? [])].sort((a, b) => b.changePercent - a.changePercent).slice(0, 3).map((s) => s.sector);
+      ctx = { vnIndexChange: vnIdx?.changePercent ?? 0, topSectors, sentiment: m.sentiment ?? "Neutral" };
+      setMarketCtx(ctx);
+    }
+
+    // Re-score with market context
+    const rows: SwingResult[] = stockSettled.map((r) => {
+      if (r.status === "rejected") {
+        const errResult: SwingResult = {
+          symbol: "ERR", name: "—", sector: "—", price: 0, changePercent: 0, rsi: 0, high52w: 0,
+          aboveMA20: false, aboveMA50: false, rsiStrong: false, volumeSpike: false,
+          near52wHigh: false, outperformsMarket: false, leadingSector: false, positiveMomentum: false,
+          score: 0, signal: "SKIP", error: "Unknown error",
+        };
+        return errResult;
+      }
+      if (r.value.error) return r.value;
+      // Re-build with market context now available
+      return { ...r.value, outperformsMarket: ctx != null && r.value.changePercent > ctx.vnIndexChange, leadingSector: ctx != null && ctx.topSectors.some((s) => s.toLowerCase() === r.value.sector.toLowerCase()) };
+    }).map((r) => {
+      if (r.error) return r;
+      const score = [r.aboveMA20, r.aboveMA50, r.rsiStrong, r.volumeSpike, r.near52wHigh, r.outperformsMarket, r.leadingSector, r.positiveMomentum].filter(Boolean).length;
+      return { ...r, score, signal: (score >= 6 ? "ENTRY" : score >= 3 ? "WATCH" : "SKIP") as SwingResult["signal"] };
+    });
+
+    rows.sort((a, b) => b.score - a.score);
+    setResults(rows);
+    setLoading(false);
+  }, [input]);
+
+  // Auto-run once with VN30 on mount
+  useEffect(() => {
+    if (hasRun.current || !defaultSymbols.length) return;
+    hasRun.current = true;
+    void runScreener(defaultSymbols.join(", "));
+  }, [defaultSymbols, runScreener]);
+
+  return (
+    <div className="space-y-4 text-sm">
+      {/* Market context banner */}
+      {marketCtx && (
+        <div className={`flex flex-wrap items-center gap-3 rounded-lg border px-4 py-2.5 text-xs ${
+          marketCtx.sentiment === "Bullish" ? "border-success/30 bg-success/5 text-success" :
+          marketCtx.sentiment === "Bearish" ? "border-danger/30 bg-danger/5 text-danger" :
+          "border-[var(--border)] bg-[var(--bg-secondary)] text-muted"}`}
+        >
+          <span className="font-semibold">
+            VN-Index: {marketCtx.vnIndexChange >= 0 ? "+" : ""}{marketCtx.vnIndexChange.toFixed(2)}%
+          </span>
+          <span className="text-subtle">·</span>
+          <span>Market: <strong>{marketCtx.sentiment}</strong></span>
+          {marketCtx.topSectors.length > 0 && (
+            <>
+              <span className="text-subtle">·</span>
+              <span>Top sectors: {marketCtx.topSectors.join(", ")}</span>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Input */}
+      <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] p-4">
+        <p className="mb-2 text-xs font-semibold text-[var(--fg)]">
+          Tickers to screen for short swing entry <span className="font-normal text-muted">(1–2 week hold)</span>
+        </p>
+        <div className="flex gap-2">
+          <input
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") void runScreener(); }}
+            placeholder="e.g. FPT, VIC, VNM, HPG, MBB"
+            className="flex-1 rounded-lg border border-[var(--border)] bg-[var(--input-bg,var(--card))] px-3 py-2 text-sm outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+          />
+          <button
+            type="button"
+            disabled={loading || !input.trim()}
+            onClick={() => void runScreener()}
+            className="rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-fg hover:opacity-90 disabled:opacity-50"
+          >
+            {loading ? "Analyzing…" : "Analyze"}
+          </button>
+        </div>
+        <p className="mt-1.5 text-[10px] text-subtle">
+          Checks 8 criteria per stock. Auto-loaded with VN30 — edit to add/replace tickers.
+        </p>
+      </div>
+
+      {/* Results table */}
+      {loading && (
+        <div className="py-8 text-center text-sm text-muted">Fetching market data and technicals…</div>
+      )}
+
+      {results.length > 0 && !loading && (
+        <div className="overflow-x-auto rounded-lg ring-1 ring-[var(--border)]">
+          <table className="w-full min-w-[960px] text-xs">
+            <thead>
+              <tr className="border-b border-[var(--border)] bg-[var(--bg-secondary)] text-[9px] uppercase text-subtle">
+                <th className="px-2 py-2">#</th>
+                <th className="px-2 py-2 text-left">Symbol</th>
+                <th className="px-2 py-2 text-right">Price ₫</th>
+                <th className="px-2 py-2 text-center">Chg%</th>
+                <th className="px-2 py-2 text-center">RSI</th>
+                <th className="px-2 py-2 text-center" title="C1: Price above MA20">MA20↑</th>
+                <th className="px-2 py-2 text-center" title="C2: Price above MA50">MA50↑</th>
+                <th className="px-2 py-2 text-center" title="C3: RSI > 60">RSI&gt;60</th>
+                <th className="px-2 py-2 text-center" title="C4: Volume ≥ 2× 20-day average">Vol×2</th>
+                <th className="px-2 py-2 text-center" title="C5: Within 15% of 52-week high">52wHi</th>
+                <th className="px-2 py-2 text-center" title="C6: Outperforms VN-Index today">RS&gt;Idx</th>
+                <th className="px-2 py-2 text-center" title="C7: Sector in top 3 performers">Lead§</th>
+                <th className="px-2 py-2 text-center" title="C8: Positive daily change">+Mom</th>
+                <th className="px-2 py-2 text-center">Score</th>
+                <th className="px-2 py-2">Signal</th>
+              </tr>
+            </thead>
+            <tbody>
+              {results.map((r, i) => (
+                <tr key={r.symbol + i} className={`border-b border-[var(--border)] last:border-0 hover:bg-[var(--card-hover)] ${r.signal === "ENTRY" ? "bg-success/5" : ""}`}>
+                  <td className="px-2 py-2 text-subtle">{i + 1}</td>
+                  <td className="px-2 py-2">
+                    <Link href={`/stocks/${r.symbol}`} className="font-semibold text-accent hover:underline" onClick={(e) => e.stopPropagation()}>
+                      {r.symbol}
+                    </Link>
+                    {r.error ? (
+                      <div className="text-[9px] text-danger">{r.error}</div>
+                    ) : (
+                      <div className="max-w-[100px] truncate text-[9px] text-muted">{r.name}</div>
+                    )}
+                  </td>
+                  <td className="px-2 py-2 text-right font-mono">{r.price > 0 ? r.price.toLocaleString("vi-VN") : "—"}</td>
+                  <td className={`px-2 py-2 text-center font-mono ${r.changePercent >= 0 ? "text-success" : "text-danger"}`}>
+                    {r.price > 0 ? `${r.changePercent >= 0 ? "+" : ""}${r.changePercent.toFixed(2)}%` : "—"}
+                  </td>
+                  <td className="px-2 py-2 text-center font-mono">{r.price > 0 ? r.rsi.toFixed(0) : "—"}</td>
+                  <td className="px-2 py-2 text-center"><Check ok={r.aboveMA20} /></td>
+                  <td className="px-2 py-2 text-center"><Check ok={r.aboveMA50} /></td>
+                  <td className="px-2 py-2 text-center"><Check ok={r.rsiStrong} /></td>
+                  <td className="px-2 py-2 text-center"><Check ok={r.volumeSpike} /></td>
+                  <td className="px-2 py-2 text-center"><Check ok={r.near52wHigh} /></td>
+                  <td className="px-2 py-2 text-center"><Check ok={r.outperformsMarket} /></td>
+                  <td className="px-2 py-2 text-center"><Check ok={r.leadingSector} /></td>
+                  <td className="px-2 py-2 text-center"><Check ok={r.positiveMomentum} /></td>
+                  <td className="px-2 py-2 text-center">
+                    <span className={`font-bold ${r.score >= 6 ? "text-success" : r.score >= 3 ? "text-amber-500" : "text-subtle"}`}>
+                      {r.price > 0 ? `${r.score}/8` : "—"}
+                    </span>
+                  </td>
+                  <td className="px-2 py-2"><SwingBadge signal={r.signal} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {results.length > 0 && !loading && (
+        <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] px-4 py-2">
+          <div className="flex flex-wrap gap-4 text-[11px] text-muted">
+            <span><span className="font-semibold text-success">ENTRY</span> — 6–8/8. Strong setup, consider entering.</span>
+            <span><span className="font-semibold text-amber-500">WATCH</span> — 3–5/8. Wait for more confirmation.</span>
+            <span><span className="font-semibold text-subtle">SKIP</span> — 0–2/8. Setup not ready.</span>
+            <span className="text-subtle">C6 RS&gt;Idx and C7 Lead§ require live VN-Index & sector data.</span>
+          </div>
+        </div>
+      )}
+
+      {/* Collapsible 10-step guide */}
+      <div className="rounded-lg border border-[var(--border)]">
+        <button
+          type="button"
+          onClick={() => setGuideOpen((v) => !v)}
+          className="flex w-full items-center justify-between rounded-lg px-4 py-3 text-xs font-semibold text-[var(--fg)] hover:bg-[var(--bg-secondary)]"
+        >
+          <span>10-Step Methodology Guide</span>
+          <span className="text-subtle">{guideOpen ? "▲" : "▼"}</span>
+        </button>
+        {guideOpen && (
+          <div className="border-t border-[var(--border)] px-4 py-4">
+            <div className="grid gap-3 sm:grid-cols-2">
+              {SWING_GUIDE.map((step) => (
+                <div key={step.num} className="rounded-lg border border-[var(--border)] bg-[var(--card)] p-3">
+                  <div className="mb-1.5 flex items-center gap-2">
+                    <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-accent text-[10px] font-bold text-accent-fg">
+                      {step.num}
+                    </span>
+                    <p className="text-xs font-semibold text-[var(--fg)]">{step.title}</p>
+                  </div>
+                  <p className="text-[11px] text-muted">{step.body}</p>
+                  {step.bullets && (
+                    <ul className="mt-2 space-y-0.5">
+                      {step.bullets.map((b) => (
+                        <li key={b} className="flex items-center gap-1.5 text-[11px] text-muted">
+                          <span className="h-1 w-1 shrink-0 rounded-full bg-accent" />
+                          {b}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const SWING_GUIDE = [
+  {
+    num: 1,
+    title: "Assess the overall market first",
+    body: "If the main index is in an uptrend, trade success probability is higher. Vietnam: track VN-Index. Avoid buying strong stocks when the whole market is correcting sharply.",
+  },
+  {
+    num: 2,
+    title: "Find the strongest sector",
+    body: "Markets typically have 1–3 leading sectors: AI, Semiconductors, Banking, Securities, Energy, Defense. If 10 AI stocks all rise while others go sideways, AI is the leader.",
+  },
+  {
+    num: 3,
+    title: "Relative Strength (most important)",
+    body: "Ask: is this stock stronger than the market? Example: Index +2%, Stock A +12% → Stock A is outperforming. Leaders rarely fall hard on red days and surge on green days.",
+  },
+  {
+    num: 4,
+    title: "Volume must increase",
+    body: "This is the institutional footprint. Volume today = 2–3× 20-day average + price up >4% → strong money inflow signal. Rising price on low volume is unreliable.",
+  },
+  {
+    num: 5,
+    title: "Breakout from base consolidation",
+    body: "Leaders typically consolidate sideways for weeks, then break out with high volume. Avoid buying after a stock has already run 40–50% in just a few days.",
+  },
+  {
+    num: 6,
+    title: "Catalyst required",
+    body: "A catalyst focuses institutional capital: earnings report, major contract win, AI theme, new policy, Fed decision, oil price, chip shortage, trade tariffs.",
+  },
+  {
+    num: 7,
+    title: "Watch ETF money flows",
+    body: "When a sector ETF attracts heavy inflows, stocks within that sector benefit broadly from the rising tide.",
+  },
+  {
+    num: 8,
+    title: "Rank by Relative Strength criteria",
+    bullets: [
+      "Price above MA20",
+      "Price above MA50",
+      "Volume > 2× average",
+      "Breaking out of base",
+      "RS stronger than index",
+      "Has catalyst",
+      "Leading sector",
+    ],
+    body: "Stocks meeting 6–7 criteria are worth watching closely.",
+  },
+  {
+    num: 9,
+    title: 'Watch stocks that "refuse to fall"',
+    body: "This is a very strong signal. Market drops 2%, stock drops only 0.2% or still rises → institutions are likely accumulating.",
+  },
+  {
+    num: 10,
+    title: "Track High of Day / 52-week High lists",
+    body: "Leaders regularly make new highs with high volume, closing near the top of the day's range — behaviour driven by institutional priority buying.",
+  },
+];
 
 function PrinciplesPanel() {
   return (
@@ -554,7 +953,7 @@ export function AnalysisView({
           ? INDEX_RULES.vn100
           : "";
 
-  const noSubTabs = mainTab === "rules" || mainTab === "principles" || mainTab === "sector" || mainTab === "etf" || mainTab === "avg-down";
+  const noSubTabs = mainTab === "rules" || mainTab === "principles" || mainTab === "sector" || mainTab === "etf" || mainTab === "avg-down" || mainTab === "swing";
 
   const selectedSymbol = selection?.row.symbol.toUpperCase() ?? null;
 
@@ -609,7 +1008,15 @@ export function AnalysisView({
         />
       )}
 
-      {mainTab === "avg-down" ? (
+      {mainTab === "swing" ? (
+        <Card className="!p-4">
+          <CardTitle className="!mb-1 !text-base">Short Swing Screener</CardTitle>
+          <p className="mb-4 text-xs text-muted">
+            Analyze stocks against all 10 swing-trading criteria. Auto-loaded with VN30.
+          </p>
+          <ShortSwingPanel defaultSymbols={vn30.combined.map((r) => r.symbol)} />
+        </Card>
+      ) : mainTab === "avg-down" ? (
         <Card className="!p-4">
           <CardTitle className="!mb-1 !text-base">Average Down Decision Framework</CardTitle>
           <p className="mb-4 text-xs text-muted">
