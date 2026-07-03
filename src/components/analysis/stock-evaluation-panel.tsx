@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   BarChart2,
   Building2,
@@ -160,12 +160,34 @@ function CategoryRow({ cat, open, onToggle }: {
 
 // ─── main panel ───────────────────────────────────────────────────────────────
 
+const LS_KEY = "vnstocks:stock-eval-state";
+
+type PersistedEvalState = {
+  input: string;
+  result: StockEvalResult | null;
+};
+
 export function StockEvaluationPanel() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<StockEvalResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [openCats, setOpenCats] = useState<Set<string>>(new Set(["business"]));
+
+  // Restore last evaluated stock from localStorage on mount
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(LS_KEY);
+      if (raw) {
+        const saved = JSON.parse(raw) as PersistedEvalState;
+        if (saved.input) setInput(saved.input);
+        if (saved.result) {
+          setResult(saved.result);
+          setOpenCats(new Set(["business"]));
+        }
+      }
+    } catch { /* ignore parse errors */ }
+  }, []);
 
   async function evaluate(sym: string) {
     const symbol = sym.toUpperCase().trim();
@@ -182,6 +204,9 @@ export function StockEvaluationPanel() {
         setError(data.error ?? "Evaluation failed");
       } else {
         setResult(data);
+        try {
+          localStorage.setItem(LS_KEY, JSON.stringify({ input: symbol, result: data } satisfies PersistedEvalState));
+        } catch { /* quota exceeded or SSR */ }
       }
     } catch {
       setError("Network error — please try again");
@@ -232,7 +257,7 @@ export function StockEvaluationPanel() {
           {input && !loading && (
             <button
               type="button"
-              onClick={() => { setInput(""); setResult(null); setError(null); }}
+              onClick={() => { setInput(""); setResult(null); setError(null); try { localStorage.removeItem(LS_KEY); } catch { /* ignore */ } }}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-muted hover:text-[var(--fg)]"
             >
               <X className="h-3.5 w-3.5" />

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { BarChart2, Loader2 } from "lucide-react";
 import { Card, CardTitle } from "@/components/ui/card";
 import { PriceChart } from "@/components/stock/price-chart";
 import { cn } from "@/lib/utils";
@@ -39,11 +39,9 @@ export function PriceChartPanel({
       setDays(nextDays);
       setLoading(true);
       try {
-        const res = await fetch(
-          `/api/stocks/${symbol}/history?days=${nextDays}`,
-        );
+        const res = await fetch(`/api/stocks/${symbol}/history?days=${nextDays}`);
         if (res.ok) {
-          const json = await res.json();
+          const json = await res.json() as { history?: PricePoint[] };
           setData(json.history ?? []);
         }
       } finally {
@@ -53,23 +51,43 @@ export function PriceChartPanel({
     [symbol, days],
   );
 
+  // Compute summary stats
+  const stats = useMemo(() => {
+    if (!data.length) return null;
+    const closes = data.map((d) => d.close);
+    const hi = Math.max(...closes);
+    const lo = Math.min(...closes);
+    const first = closes[0];
+    const last = closes[closes.length - 1];
+    const chg = first > 0 ? ((last - first) / first) * 100 : 0;
+    const avgVol =
+      data.reduce((s, d) => s + (d.volume ?? 0), 0) / data.length;
+    return { hi, lo, chg, avgVol };
+  }, [data]);
+
   return (
     <Card>
+      {/* Header row */}
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <CardTitle className="mb-0">
-          Price Chart · {periodLabel}
-        </CardTitle>
+        <div className="flex items-center gap-2">
+          <BarChart2 className="h-4 w-4 text-accent" />
+          <CardTitle className="mb-0">
+            Price Chart
+            <span className="ml-1.5 text-sm font-normal text-muted">· {periodLabel}</span>
+          </CardTitle>
+        </div>
+        {/* Period selector */}
         <div className="flex flex-wrap gap-1 rounded-xl bg-[var(--bg-secondary)] p-1 ring-1 ring-[var(--border)]">
           {PERIODS.map((p) => (
             <button
               key={p.days}
               type="button"
-              onClick={() => loadPeriod(p.days)}
+              onClick={() => void loadPeriod(p.days)}
               disabled={loading}
               className={cn(
                 "rounded-lg px-3 py-1.5 text-xs font-semibold transition-all",
                 days === p.days
-                  ? "bg-[var(--accent)] text-white shadow-sm"
+                  ? "bg-accent text-accent-fg shadow-sm ring-1 ring-accent/20"
                   : "text-muted hover:bg-[var(--card)] hover:text-[var(--fg)]",
                 loading && days !== p.days && "opacity-50",
               )}
@@ -79,6 +97,48 @@ export function PriceChartPanel({
           ))}
         </div>
       </div>
+
+      {/* Summary stats bar */}
+      {stats && (
+        <div className="mb-4 flex flex-wrap gap-4 rounded-xl bg-[var(--bg-secondary)] px-4 py-2.5 text-xs ring-1 ring-[var(--border)]">
+          <span className="flex items-center gap-1.5 text-muted">
+            Period High
+            <strong className="font-mono text-[var(--fg)]">{stats.hi.toLocaleString("vi-VN")}</strong>
+          </span>
+          <span className="text-[var(--border)]">·</span>
+          <span className="flex items-center gap-1.5 text-muted">
+            Period Low
+            <strong className="font-mono text-[var(--fg)]">{stats.lo.toLocaleString("vi-VN")}</strong>
+          </span>
+          <span className="text-[var(--border)]">·</span>
+          <span className="flex items-center gap-1.5 text-muted">
+            Chg
+            <strong
+              className={cn(
+                "font-mono",
+                stats.chg >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400",
+              )}
+            >
+              {stats.chg >= 0 ? "+" : ""}{stats.chg.toFixed(2)}%
+            </strong>
+          </span>
+          {stats.avgVol > 0 && (
+            <>
+              <span className="text-[var(--border)]">·</span>
+              <span className="flex items-center gap-1.5 text-muted">
+                Avg Vol
+                <strong className="font-mono text-[var(--fg)]">
+                  {stats.avgVol >= 1_000_000
+                    ? `${(stats.avgVol / 1_000_000).toFixed(1)}M`
+                    : stats.avgVol >= 1_000
+                    ? `${(stats.avgVol / 1_000).toFixed(0)}K`
+                    : stats.avgVol.toFixed(0)}
+                </strong>
+              </span>
+            </>
+          )}
+        </div>
+      )}
 
       <div className="relative min-h-[320px]">
         {loading && (

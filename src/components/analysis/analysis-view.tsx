@@ -562,7 +562,7 @@ function SwingBadge({ signal }: { signal: SwingResult["signal"] }) {
 }
 
 function ShortSwingPanel({ defaultSymbols }: { defaultSymbols: string[] }) {
-  const [input, setInput] = useState(defaultSymbols.join(", "));
+  const [input, setInput] = useState("");
   const [results, setResults] = useState<SwingResult[]>([]);
   const [marketCtx, setMarketCtx] = useState<MarketCtx | null>(null);
   const [loading, setLoading] = useState(false);
@@ -635,7 +635,7 @@ function ShortSwingPanel({ defaultSymbols }: { defaultSymbols: string[] }) {
     setLoading(false);
   }, [input]);
 
-  // Auto-run once with VN30 on mount
+  // Auto-run once with VN30 on mount (input stays empty — user types to re-run)
   useEffect(() => {
     if (hasRun.current || !defaultSymbols.length) return;
     hasRun.current = true;
@@ -668,7 +668,7 @@ function ShortSwingPanel({ defaultSymbols }: { defaultSymbols: string[] }) {
       {/* Input */}
       <div className="rounded-lg border border-[var(--border)] bg-[var(--bg-secondary)] p-4">
         <p className="mb-2 text-xs font-semibold text-[var(--fg)]">
-          Tickers to screen for short swing entry <span className="font-normal text-muted">(1–2 week hold)</span>
+          Enter tickers to screen <span className="font-normal text-muted">(1–2 week swing hold)</span>
         </p>
         <div className="flex gap-2">
           <input
@@ -687,8 +687,40 @@ function ShortSwingPanel({ defaultSymbols }: { defaultSymbols: string[] }) {
             {loading ? "Analyzing…" : "Analyze"}
           </button>
         </div>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            disabled={loading}
+            onClick={() => setInput(defaultSymbols.join(", "))}
+            className="rounded-md bg-accent/10 px-2.5 py-1 text-[11px] font-semibold text-accent ring-1 ring-accent/20 transition hover:bg-accent/20 disabled:opacity-50"
+          >
+            Load VN30
+          </button>
+          <span className="text-[10px] text-subtle">or click a symbol:</span>
+          <div className="flex flex-wrap gap-1">
+            {defaultSymbols.slice(0, 15).map((sym) => (
+              <button
+                key={sym}
+                type="button"
+                disabled={loading}
+                onClick={() => {
+                  const current = input.toUpperCase().split(/[\s,;]+/).map((s) => s.trim()).filter(Boolean);
+                  if (!current.includes(sym)) {
+                    setInput(current.length ? `${input}, ${sym}` : sym);
+                  }
+                }}
+                className="rounded bg-[var(--bg-secondary)] px-1.5 py-0.5 text-[10px] font-medium text-muted ring-1 ring-[var(--border)] transition hover:bg-[var(--card)] hover:text-accent disabled:opacity-50"
+              >
+                {sym}
+              </button>
+            ))}
+            {defaultSymbols.length > 15 && (
+              <span className="text-[10px] text-subtle">+{defaultSymbols.length - 15} more in VN30</span>
+            )}
+          </div>
+        </div>
         <p className="mt-1.5 text-[10px] text-subtle">
-          Checks 8 criteria per stock. Auto-loaded with VN30 — edit to add/replace tickers.
+          Checks 8 swing criteria per stock. Type tickers or click chips to add, then click Analyze.
         </p>
       </div>
 
@@ -1012,7 +1044,7 @@ export function AnalysisView({
         <Card className="!p-4">
           <CardTitle className="!mb-1 !text-base">Short Swing Screener</CardTitle>
           <p className="mb-4 text-xs text-muted">
-            Analyze stocks against all 10 swing-trading criteria. Auto-loaded with VN30.
+            Score any VN tickers against 8 swing-trading criteria (1–2 week hold). Enter tickers to begin.
           </p>
           <ShortSwingPanel defaultSymbols={vn30.combined.map((r) => r.symbol)} />
         </Card>

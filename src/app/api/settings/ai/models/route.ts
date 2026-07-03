@@ -97,7 +97,8 @@ async function fetchModels(provider: string): Promise<ModelInfo[]> {
 function getFallbackModels(provider: string): ModelInfo[] {
   const fallbacks: Record<string, ModelInfo[]> = {
     cerebras: [
-      { id: "llama-3.3-70b", name: "Llama 3.3 70B" },
+      { id: "llama3.3-70b",  name: "Llama 3.3 70B" },
+      { id: "llama3.1-70b",  name: "Llama 3.1 70B" },
       { id: "llama3.1-8b",   name: "Llama 3.1 8B" },
     ],
     groq: [

@@ -99,13 +99,14 @@ export async function callLlm(
   const k  = (envVar: string | undefined, id: LlmProvider) => uk[id] || envVar || "";
 
   // 1. Cerebras — ~800 tok/s, 1M TPM free
+  // Correct model name: llama3.3-70b (no hyphen before version)
   const cerebrasKey = k(process.env.CEREBRAS_API_KEY, "cerebras");
   if (cerebrasKey) {
     try {
       const r = await callOpenAICompat("https://api.cerebras.ai/v1/chat/completions",
         cerebrasKey, process.env.CEREBRAS_MODEL ?? "llama3.3-70b", fullMessages, maxTokens);
-      if (r) return { ...r, provider: "cerebras" };
-    } catch (e) { console.error("[LLM] Cerebras error:", e); }
+      if (r) { console.log("[LLM] Using Cerebras"); return { ...r, provider: "cerebras" }; }
+    } catch (e) { console.error("[LLM] Cerebras error (falling through to next provider):", e); }
   }
 
   // 2. Groq — 600 tok/s, 12k TPM free
@@ -114,8 +115,8 @@ export async function callLlm(
     try {
       const r = await callOpenAICompat("https://api.groq.com/openai/v1/chat/completions",
         groqKey, process.env.GROQ_MODEL ?? "llama-3.3-70b-versatile", fullMessages, maxTokens);
-      if (r) return { ...r, provider: "groq" };
-    } catch (e) { console.error("[LLM] Groq error:", e); }
+      if (r) { console.log("[LLM] Using Groq"); return { ...r, provider: "groq" }; }
+    } catch (e) { console.error("[LLM] Groq error (falling through):", e); }
   }
 
   // 3. Gemini — 1M input TPM, 1500 req/day free
@@ -123,8 +124,8 @@ export async function callLlm(
   if (geminiKey) {
     try {
       const r = await callGemini(fullMessages, geminiKey, maxTokens);
-      if (r) return r;
-    } catch (e) { console.error("[LLM] Gemini error:", e); }
+      if (r) { console.log("[LLM] Using Gemini"); return r; }
+    } catch (e) { console.error("[LLM] Gemini error (falling through):", e); }
   }
 
   // 4. Mistral — free trial tier
@@ -133,8 +134,8 @@ export async function callLlm(
     try {
       const r = await callOpenAICompat("https://api.mistral.ai/v1/chat/completions",
         mistralKey, process.env.MISTRAL_MODEL ?? "mistral-small-latest", fullMessages, maxTokens);
-      if (r) return { ...r, provider: "mistral" };
-    } catch (e) { console.error("[LLM] Mistral error:", e); }
+      if (r) { console.log("[LLM] Using Mistral"); return { ...r, provider: "mistral" }; }
+    } catch (e) { console.error("[LLM] Mistral error (falling through):", e); }
   }
 
   // 5. OpenRouter — aggregates many free ":free" models
@@ -145,10 +146,11 @@ export async function callLlm(
         orKey, process.env.OPENROUTER_MODEL ?? "meta-llama/llama-3.3-70b-instruct:free",
         fullMessages, maxTokens,
         { "HTTP-Referer": "https://vn-stocks.app", "X-Title": "VN Stocks" });
-      if (r) return { ...r, provider: "openrouter" };
-    } catch (e) { console.error("[LLM] OpenRouter error:", e); }
+      if (r) { console.log("[LLM] Using OpenRouter"); return { ...r, provider: "openrouter" }; }
+    } catch (e) { console.error("[LLM] OpenRouter error (falling through):", e); }
   }
 
+  console.warn("[LLM] All providers failed or unconfigured — using rule-based fallback. Configure GROQ_API_KEY or GEMINI_API_KEY for AI responses.");
   return { content: "", provider: "fallback", model: "rule-based" };
 }
 
@@ -232,7 +234,7 @@ export function getLlmStatus() {
 
   return {
     cerebras,   groq,     gemini,   mistral,   openrouter,
-    cerebrasModel:   process.env.CEREBRAS_MODEL   ?? "gpt-oss-120b",
+    cerebrasModel:   process.env.CEREBRAS_MODEL   ?? "llama3.3-70b",
     groqModel:       process.env.GROQ_MODEL        ?? "llama-3.3-70b-versatile",
     geminiModel:     process.env.GEMINI_MODEL      ?? "gemini-2.0-flash",
     mistralModel:    process.env.MISTRAL_MODEL     ?? "mistral-small-latest",
