@@ -629,6 +629,47 @@ function computeVerdict(
   };
 }
 
+// ─── per-holding score helper (used for the holdings list preview) ────────────
+
+function computeHoldingScore(
+  h: EnrichedHolding,
+  fundRow: FundamentalAnalysisRow | undefined,
+  thesis: ThesisAnswer,
+  sectorAnalysis: SectorAnalysisResult | undefined,
+  combinedRows: CombinedAnalysisRow[] | undefined,
+  allFundRows: FundamentalAnalysisRow[],
+  totalValueK: number,
+): ScoreBreakdown | null {
+  if (thesis === null) return null;
+
+  const sectorRollup =
+    sectorAnalysis?.sectors.find((s) => s.stocks.some((st) => st.symbol === h.symbol)) ??
+    sectorAnalysis?.sectors.find((s) =>
+      s.name.toLowerCase().includes((h.sector ?? "").toLowerCase().split(" ")[0])
+    );
+
+  const thisCombined = combinedRows?.find((r) => r.symbol.toUpperCase() === h.symbol.toUpperCase());
+  const peers = sectorRollup?.stocks.filter((s) => s.symbol !== h.symbol) ?? [];
+  const sectorAvgTech = peers.length >= 2
+    ? Math.round(peers.reduce((s, p) => s + p.techScore, 0) / peers.length)
+    : null;
+  const thisTechScore =
+    thisCombined?.technicalScore ?? sectorRollup?.stocks.find((s) => s.symbol === h.symbol)?.techScore ?? null;
+  const weightPct = totalValueK > 0 && h.currentValueK != null ? (h.currentValueK / totalValueK) * 100 : null;
+
+  return computeScore(
+    thesis,
+    analyzeFundamentals(fundRow),
+    analyzeEarningsTrend(fundRow),
+    analyzeSector(sectorRollup),
+    classifyDeclineType(fundRow, sectorAvgTech, thisTechScore),
+    analyzePositionSize(weightPct),
+    analyzeValuation3Part(fundRow, sectorRollup, h.gainPct ?? null),
+    analyzeCatalyst(fundRow, sectorRollup),
+    analyzeOpportunityCost(h.symbol, fundRow, combinedRows, allFundRows),
+  );
+}
+
 // ─── UI helpers ───────────────────────────────────────────────────────────────
 
 function StatusIcon({ status }: { status: AutoStatus }) {
@@ -706,8 +747,8 @@ function ScoreBar({ label, score, max, showCap }: { label: string; score: number
   );
 }
 
-function HoldingRow({ h, totalValueK, selected, onClick }: {
-  h: EnrichedHolding; totalValueK: number; selected: boolean; onClick: () => void;
+function HoldingRow({ h, totalValueK, selected, onClick, score }: {
+  h: EnrichedHolding; totalValueK: number; selected: boolean; onClick: () => void; score: ScoreBreakdown | null;
 }) {
   const gainPct = h.gainPct;
   const weightPct = totalValueK > 0 && h.currentValueK != null ? (h.currentValueK / totalValueK) * 100 : null;
@@ -734,6 +775,14 @@ function HoldingRow({ h, totalValueK, selected, onClick }: {
             ? <span className={`font-mono text-xs font-semibold ${gainPct < 0 ? "text-red-500" : "text-emerald-500"}`}>{gainPct >= 0 ? "+" : ""}{gainPct.toFixed(1)}%</span>
             : <span className="font-mono text-xs text-subtle">—</span>}
           {weightPct !== null && <div className="text-[10px] text-subtle">{weightPct.toFixed(1)}% wt</div>}
+          {score !== null && (
+            <div className={`font-mono text-[10px] font-semibold ${
+              score.total >= 75 ? "text-emerald-500"
+              : score.total >= 55 ? "text-amber-500"
+              : score.total >= 38 ? "text-orange-500"
+              : "text-red-500"
+            }`}>{score.total}/100</div>
+          )}
         </div>
       </div>
     </button>
@@ -763,6 +812,16 @@ export function AverageDownPanel({
   const [showDeclineDetail, setShowDeclineDetail] = useState(false);
 
   const totalValueK = holdings.reduce((sum, h) => sum + (h.currentValueK ?? h.costBasis), 0);
+
+  const allScores = useMemo(() => {
+    const map: Record<string, ScoreBreakdown | null> = {};
+    for (const h of sorted) {
+      const fRow = fundamentalRows.find((r) => r.symbol.toUpperCase() === h.symbol.toUpperCase());
+      const t: ThesisAnswer = thesisMap[h.symbol] ?? "yes";
+      map[h.symbol] = computeHoldingScore(h, fRow, t, sectorAnalysis, combinedRows, fundamentalRows, totalValueK);
+    }
+    return map;
+  }, [sorted, fundamentalRows, thesisMap, sectorAnalysis, combinedRows, totalValueK]);
 
   const holding = holdings.find((h) => h.symbol === selected);
   const fundRow = fundamentalRows.find((r) => r.symbol.toUpperCase() === selected?.toUpperCase());
@@ -797,7 +856,7 @@ export function AverageDownPanel({
   const checkCatalyst = useMemo(() => analyzeCatalyst(fundRow, sectorRollup), [fundRow, sectorRollup]);
   const checkOpCost = useMemo(() => analyzeOpportunityCost(selected ?? "", fundRow, combinedRows, fundamentalRows), [selected, fundRow, combinedRows, fundamentalRows]);
 
-  const thesis = selected ? (thesisMap[selected] ?? null) : null;
+  const thesis = selected ? (thesisMap[selected] ?? "yes") : null;
 
   const score = useMemo(() => thesis !== null
     ? computeScore(thesis, checkFund, checkEarnings, checkSector, declineCheck, checkPosition, valCheck, checkCatalyst, checkOpCost)
@@ -845,6 +904,7 @@ export function AverageDownPanel({
           : sorted.map((h) => (
             <HoldingRow key={h.symbol} h={h} totalValueK={totalValueK}
               selected={selected === h.symbol}
+              score={allScores[h.symbol] ?? null}
               onClick={() => { setSelected((p) => p === h.symbol ? null : h.symbol); setShowDeclineDetail(false); }}
             />
           ))}

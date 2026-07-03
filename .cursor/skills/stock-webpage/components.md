@@ -14,8 +14,8 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 | `/login` | `login/page.tsx` | Client | Email/password login & registration | `actions` |
 | `/news` | `news/page.tsx` | Server | **AI News Digest** + **Earnings Calendar** | `AiNewsSummary`, `EarningsCalendar` (both client) |
 | `/portfolio` | `portfolio/page.tsx` | Server | Holdings ledger (sortable), allocation charts | `advisory-portfolio`, `holdings-enrichment`, `page-cache` |
-| `/watchlist` | `watchlist/page.tsx` | Server | **Quick-add panel** + watchlist grid | `user-data`, `stocks` |
-| `/analysis` | `analysis/page.tsx` | Server | Portfolio / Sector / VN30 / VN100 / Scoring rules / **Principles** | `combined-analysis`, `sector-analysis`, `recommendations`, shared portfolio cache |
+| `/watchlist` | `watchlist/page.tsx` | Server | **Quick-add panel** + watchlist grid; cards show **"Added at" price + % Δ** | `user-data`, `stocks` |
+| `/analysis` | `analysis/page.tsx` | Server | Portfolio / Sector / VN30 / VN100 / ETF / **Short Swing** screener / Scoring rules / **Principles** | `combined-analysis`, `sector-analysis`, `etf-analysis`, shared portfolio cache |
 | `/ai-analyst` | `ai-analyst/page.tsx` | Server | AI chat shell | `auth`; chat via `/api/ai` |
 | `/stocks/[symbol]` | `stocks/[symbol]/page.tsx` | Server | Stock detail: quote, charts, fundamentals | `stocks`, `stock-analysis`, `user-data`; news via **`CachedNewsFeed`** |
 | `/trading` | `trading/page.tsx` | Server | Trade ledger wrapper | `auth`; `TradingLedger` → `/api/trading` |
@@ -100,7 +100,7 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 | File | Type | Purpose |
 |------|------|---------|
 | `portfolio-charts.tsx` | Client | Sector allocation donut + breakdown cards; interactive donut; gradient progress bars; uses `shortSectorName()` |
-| `holdings-ledger.tsx` | Client | **Sortable** holdings table; optimistic save → `POST /api/portfolio` |
+| `holdings-ledger.tsx` | Client | **Sortable** holdings table; optimistic save → `POST /api/portfolio`; on success also writes `vnstocks:portfolio-holdings` to localStorage as 24h cache |
 
 ### `trading/`
 
@@ -112,11 +112,12 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 
 | File | Type | Purpose |
 |------|------|---------|
-| `analysis-view.tsx` | Client | Tabs: Portfolio / Sector / VN30 / VN100 / Scoring rules / **Principles**; Principles tab = left (StockEvaluationPanel) + right (principles) |
+| `analysis-view.tsx` | Client | Tabs: Portfolio / Sector / VN30 / VN100 / ETF / **Short Swing** / Scoring rules / Principles; `TechnicalTable` has **current price (₫)** and **Volume Ratio** columns; passes VN30 symbols as `defaultSymbols` to `ShortSwingPanel` |
 | `sector-analysis-view.tsx` | Client | Per-sector leaders + trend leaders panel |
 | `analysis-detail-panel.tsx` | Client | Slide-over detail for scored row |
 | `stock-evaluation-panel.tsx` | Client | **NEW (Jun 2026)** — 8-category AI stock evaluation; ticker input → `/api/stock-eval` → accordion (Business / Financial / Valuation / Risks / Growth / Management / Timing / Fit) + verdict |
 | `etf-analysis-view.tsx` | Client | ETF-specific analysis rows |
+| `ShortSwingPanel` (in `analysis-view.tsx`) | Client | **NEW (Jun 2026)** — interactive swing screener; auto-runs VN30 on tab open (via `useEffect` + `hasRun` ref); fetches `/api/stocks/{sym}?lite=true` (skips news) for each symbol; scores 8 criteria: `aboveMA20`, `aboveMA50`, `rsiStrong`, `volumeSpike`, `near52wHigh`, `outperformsMarket`, `leadingSector`, `positiveMomentum`; ENTRY (≥6) / WATCH (3–5) / SKIP (<3); collapsible 10-step methodology guide |
 
 ### `settings/`
 
@@ -150,7 +151,8 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 | File | Type | Purpose |
 |------|------|---------|
 | `watchlist-add-panel.tsx` | Client | Quick-add symbol search + add to watchlist |
-| `watchlist-grid.tsx` | Client | Watchlist cards with optimistic remove |
+| `watchlist-grid.tsx` | Client | Watchlist cards; reads `vnstocks:watchlist-add-{SYMBOL}` from localStorage to show **"Added at: price ₫ +/−%"** badge; uses `useEffect` for SSR-safe localStorage read |
+| `watchlist-section.tsx` | Client | Orchestrates add-panel + grid; on new add tracks symbol in `newlyAddedRef`; when price is first fetched for a new add, stores `{price, addedAt}` in `vnstocks:watchlist-add-{SYMBOL}` (permanent TTL) |
 | `remove-watchlist-button.tsx` | Client | Remove symbol — optimistic hide |
 
 ---
@@ -160,7 +162,7 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 | File | Purpose |
 |------|---------|
 | `src/hooks/use-cached-fetch.ts` | Stale-while-revalidate fetch; reads/writes localStorage |
-| `src/lib/client/local-storage-cache.ts` | `readLocalCache` / `writeLocalCache`; keys prefixed `vnstocks:` |
+| `src/lib/client/local-storage-cache.ts` | `readLocalCache` / `writeLocalCache` / `removeLocalCache`; keys prefixed `vnstocks:` |
 
 **localStorage keys**
 
@@ -169,7 +171,9 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 | `vnstocks:news-market` | 1h | Dashboard `CachedNewsFeed` |
 | `vnstocks:news-{SYMBOL}` | 1h | Stock detail news |
 | `vnstocks:market-snapshot` | 6h | `MarketTicker` |
-| `vnstocks:report-settings` | browser | `ReportSettingsPanel` config |
+| `vnstocks:report-settings` | permanent | `ReportSettingsPanel` config |
+| `vnstocks:portfolio-holdings` | 24h | `HoldingsLedger` — fast reload after edit |
+| `vnstocks:watchlist-add-{SYMBOL}` | permanent | `WatchlistGrid` — "Added at" price display |
 
 ---
 
@@ -208,9 +212,9 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 
 | Module | Purpose |
 |--------|---------|
-| `market-service.ts` | Sync, quotes (Entrade + Yahoo fallback); disk cache guarded by `canWriteLocalCache()` |
+| `market-service.ts` | Sync, quotes (Entrade + Yahoo fallback); disk cache guarded by `canWriteLocalCache()`; `getTechnicalSignals` returns RSI, MA20, MA50, MACD, **Volume Ratio** (today vs 20-day avg) |
 | `news-service.ts` | Yahoo + Google + CafeF + VnExpress RSS; in-memory + optional `.cache/news.json` (local only); `deduplicateNews()` |
-| `providers/rss-news.ts` | RSS parse, HTML entity decode, tag strip; `googleEarningsNewsRssUrl`, `googleMacroNewsRssUrl`, `cafeFRssUrl`, `vnExpressFinanceRssUrl` |
+| `providers/rss-news.ts` | RSS parse, HTML entity decode, tag strip |
 | `stocks.ts` | Re-export barrel → market-service |
 | `stock-metadata.ts` | Index/universe metadata |
 | `stock-picks.ts` | Scored picks for dashboard |
@@ -228,12 +232,13 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 | `analysis/fundamental-analysis.ts` | Universe fundamental rows (batch snapshots) |
 | `analysis/fundamental-scoring.ts` | PE/PB/ROE scoring |
 | `analysis/technical-scoring.ts` | RSI/MACD/MA/volume scoring (base 50 + adjustments) |
-| `analysis/combined-analysis.ts` | Bundled universes (portfolio, VN30, VN100); **0.60×Tech + 0.40×Fund** |
+| `analysis/combined-analysis.ts` | Bundled universes (portfolio, VN30, VN100); **0.60×Tech + 0.40×Fund**; `TechnicalAnalysisRow` includes `currentPrice` |
 | `analysis/sector-universe.ts` | Load `data/sector-stocks.json` |
 | `analysis/sector-analysis.ts` | Sector scores, trend leaders, P/E from snapshot store |
 | `analysis/index-universe.ts` | VN30 / VN100 lists |
 | `analysis/scoring-rules.ts` | Scoring rules tab copy |
 | `analysis/strategy-review.ts` | Portfolio vs targets |
+| `analysis/etf-analysis.ts` | ETF universe analysis |
 
 ### Content
 
@@ -272,7 +277,7 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 | `/api/health` | GET | Health + cache age | Public |
 | `/api/market` | GET | Market snapshot | Public |
 | `/api/stocks` | GET | All/screened stocks | Public |
-| `/api/stocks/[symbol]` | GET | Stock detail | Public |
+| `/api/stocks/[symbol]` | GET | Stock detail + technicals + news + AI summary; **`?lite=true`** skips news + AI (for batch screeners) | Public |
 | `/api/stocks/[symbol]/history` | GET | Price history | Public |
 | `/api/news` | GET | Live RSS news | Public |
 | `/api/news/summary` | GET | **AI news digest** (`?refresh=true` bypasses 30-min cache); 20 items max; compact context; 3500 output tokens; Cerebras→Groq→rule fallback; returns `NewsSummaryResponse` with `sectorTrends`, `stockMovers`, `items[]` | None |
@@ -317,7 +322,7 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 ```
 layout (Sidebar → UserMenu, NavLink, MarketTicker)
   └── pages (Server prefetch + pageCache)
-        └── client components (AiNewsSummary, EarningsCalendar, ledgers, charts, analysis tabs, settings panels, chat)
+        └── client components (AiNewsSummary, EarningsCalendar, ledgers, charts, analysis tabs, ShortSwingPanel, settings panels, chat)
               └── /api routes
                     └── lib/db (trading-store → portfolio-sync)
                           └── market-service + news-service + analysis + llm
@@ -328,3 +333,5 @@ layout (Sidebar → UserMenu, NavLink, MarketTicker)
 **News path (preferred)**: `CachedNewsFeed` → `/api/news` → `news-service` (RSS); browser caches in localStorage.
 
 **AI news path**: `AiNewsSummary` → `/api/news/summary` → `news-service` + `callLlm` (5-provider chain); in-memory 30-min cache.
+
+**Swing screener path**: `ShortSwingPanel` → `GET /api/market` (once) + `GET /api/stocks/{sym}?lite=true` (per symbol, parallel) → score 8 criteria → ENTRY/WATCH/SKIP.

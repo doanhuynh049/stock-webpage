@@ -1,0 +1,208 @@
+---
+description: >-
+  Rules for working with, debugging, and extending the three auto-update
+  pipelines: market quotes, VN30/VN100 index composition, and unknown stock
+  classification. Apply whenever touching cron jobs, update-index, stock-ai-classifier,
+  stock-metadata, tcbs provider, or any data freshness concern.
+---
+
+# Auto-Update Pipelines — Rules & Guidelines
+
+## The three pipelines at a glance
+
+| # | Name | Trigger | Route / Function | Updates |
+|---|------|---------|-----------------|---------|
+| 1 | **Market quotes** | Vercel cron weekdays 07:00 UTC | `POST /api/data/sync` | Live prices for all seed stocks |
+| 2 | **VN30/VN100 index** | Vercel cron Monday 08:00 UTC | `POST /api/admin/update-index` | `stock_symbol.is_vn30 / is_vn100` in DB |
+| 3 | **Unknown stock classifier** | Auto on first `getStock()` for unknown ticker | `classifyUnknownStock()` in `stock-ai-classifier.ts` | `stock_symbol` name + sector + exchange |
+
+---
+
+## Monitoring — always check here first
+
+```bash
+# Index composition status (session required — open in browser or with cookie)
+GET /api/admin/update-index
+
+# Market sync status
+GET /api/data/sync
+
+# Vercel cron execution history
+Dashboard → Logs → filter path: /api/admin/update-index
+```
+
+Key fields in the index status response:
+- `lastIndexSync` — timestamp of last successful run
+- `vn30.count` — should be ~30 (HOSE rebalances quarterly)
+- `vn100.count` — should be ~100
+- `db.totalSymbolsWithSector` — grows as classifier runs for unknown stocks
+
+**If `vn30.count = 0`**: both TCBS and SSI APIs failed last run. Check Vercel logs for the error.
+**If `lastIndexSync` is stale (> 2 weeks ago)**: cron may have been disabled or CRON_SECRET changed.
+
+---
+
+## Authentication & security
+
+All auto-update POST routes accept either:
+1. `Authorization: Bearer $CRON_SECRET` (Vercel cron passes this automatically)
+2. Authenticated user session (admin manual trigger via browser/curl)
+
+**Never expose CRON_SECRET in client code or logs.**
+
+Pattern used in all cron-capable routes:
+```ts
+const isCron = process.env.CRON_SECRET && authHeader === `Bearer ${process.env.CRON_SECRET}`;
+if (!isCron) {
+  const session = await auth();
+  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+}
+```
+
+---
+
+## Unknown stock classifier — resolution order
+
+When any stock has `sector === "Unknown"` after JSON lookup, `enrichStockDetails()` runs:
+
+```
+1. lookupIndexStockFromDB(symbol)    ← DB cache (instant, no external API)
+2. getTcbsStockMeta(symbol)          ← TCBS company API (authoritative real data)
+   https://apipubaws.tcbs.com.vn/tcanalysis/v1/ticker/{symbol}/overview
+   Returns: organName (VI), organNameEn (EN), icbName3, icbName4, exchange
+3. callLlm(classify prompt)          ← LLM fallback only if TCBS misses
+```
+
+**Always prefer step 2 over step 3.** TCBS gives real data; LLM can hallucinate company identity (e.g. classifying HHV as "Real Estate" when it's "Infrastructure").
+
+Result is always saved to `stock_symbol` DB. Future requests never leave step 1.
+
+### If classifier returns wrong sector
+
+1. Check `stock_symbol` DB row — delete or update it manually.
+2. The next `getStock()` call will re-classify.
+3. Check `normalizeSector()` in `src/lib/providers/tcbs.ts` — add the ICB label mapping if it's missing.
+
+### If TCBS is unavailable
+
+The classifier falls through to LLM. LLM classification is marked with `provider !== "tcbs"` (implicit — check if the saved name matches TCBS data after recovery). Set the correct sector manually in `stock_symbol` if LLM produced wrong data.
+
+---
+
+## VN30/VN100 update — data flow
+
+```
+POST /api/admin/update-index
+  → fetchTcbsIndex("VN30")    https://apipubaws.tcbs.com.vn/stock-insight/v1/index/VN30/components
+  → fetchTcbsIndex("VN100")
+  → [fallback] fetchSsiIndex  https://iboard-query.ssi.com.vn/v2/stock/watchlist?watchlistCode=VN30
+  → upsertIndexMembers(vn30Set, vn100Set)
+      prisma.stockSymbol.update/create  (is_vn30, is_vn100, updated_at)
+      prisma.stockSymbol.updateMany     (clears stale flags for removed members)
+  → clearMetaCache()           resets in-memory JSON-backed map
+```
+
+**VN30 rebalancing calendar:** HOSE reviews quarterly (Mar, Jun, Sep, Dec). Weekly Monday cron is enough — no same-day latency requirement.
+
+### Extending to include name/sector during index update
+
+Currently `update-index` only sets `is_vn30`/`is_vn100`. If you want to also populate name + sector for all VN30/VN100 members in one pass, extend `upsertIndexMembers` to call `fetchTcbsCompanyOverview(symbol)` per member and include `name`, `sector` in the upsert. This avoids the lazy-load cost when users first view those stocks.
+
+---
+
+## Adding a new external data provider
+
+Pattern used by `src/lib/providers/tcbs.ts`:
+
+```ts
+const HEADERS = { Accept: "application/json", "User-Agent": "Mozilla/5.0 ..." };
+
+export async function fetchMyProvider(symbol: string): Promise<MyData | null> {
+  try {
+    const res = await fetch(`https://api.myprovider.com/v1/${symbol}`, {
+      headers: HEADERS,
+      next: { revalidate: 3600 },   // CDN cache; 0 for always-fresh
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!res.ok) return null;
+    const raw = await res.json();
+    if (!raw.someRequiredField) return null;
+    return raw;
+  } catch {
+    return null;
+  }
+}
+```
+
+Rules:
+- Always `AbortSignal.timeout(N)` — external APIs can hang.
+- Always `return null` on failure — never throw from a provider; callers chain providers.
+- Set `next: { revalidate: 0 }` only for data that must be real-time (index composition fetch). Use `3600` for company metadata that rarely changes.
+- Add the provider to `src/lib/providers/` — one file per provider.
+
+---
+
+## Neon HTTP — upsert safety for stock_symbol
+
+`prisma.stockSymbol.upsert()` works because `stock_symbol` has a single-field PK; Prisma generates one `INSERT … ON CONFLICT DO UPDATE` without a transaction wrapper. If you see `"Transactions are not supported in HTTP mode"`, replace with:
+
+```ts
+import { Prisma } from "@/generated/prisma/client";
+await prisma.$executeRaw(
+  Prisma.sql`INSERT INTO stock_symbol (symbol, name, sector, exchange, updated_at)
+    VALUES (${sym}, ${name}, ${sector}, ${exchange}, NOW())
+    ON CONFLICT (symbol) DO UPDATE SET
+      name = EXCLUDED.name, sector = EXCLUDED.sector,
+      exchange = EXCLUDED.exchange, updated_at = NOW()`,
+);
+```
+
+Do NOT use `createMany + skipDuplicates` or multi-model transactions in any route that runs on Vercel (`DB_DRIVER=http`).
+
+---
+
+## Common debugging scenarios
+
+### "Index update succeeded but stock still shows Unknown sector"
+
+1. The classifier result is cached in DB — check `stock_symbol` row.
+2. If row has correct sector: the stock-eval prompt may be getting an old enriched stock. Check if `getStock()` is using a stale quote cache.
+3. If row has wrong sector: TCBS returned wrong ICB code. Update `normalizeSector()` mapping or fix the DB row.
+
+### "VN30/VN100 count is 0 in monitoring endpoint"
+
+1. Check Vercel logs for the last Monday 08:00 UTC run — look for TCBS/SSI HTTP errors.
+2. Try manual trigger: `POST /api/admin/update-index` with CRON_SECRET.
+3. If TCBS returns 404/503: the API endpoint may have changed. Check `fetchTcbsIndex()` URL in `update-index/route.ts`.
+
+### "Stock classifier ran but used LLM (not TCBS) and got wrong answer"
+
+TCBS returned null for this ticker (HNX/UPCOM stocks are sometimes missing from TCBS). Options:
+1. Try VNDirect `api-finfo.vndirect.com.vn/v4/company_info?q=code={symbol}` as an additional source.
+2. Manually insert the correct row: `stock_symbol (symbol, name, sector, exchange)`.
+3. Add the ticker to `data/vn30-stock-info.json` or `data/vn100-stock-info.json` if it belongs there.
+
+### "clearMetaCache() not taking effect"
+
+The in-memory `metaCache` in `stock-metadata.ts` lives in the module scope of a single lambda. Vercel spins up multiple lambda instances — `clearMetaCache()` only clears the map in the instance that handled the update-index request. Other warm instances will clear on their next cold start. This is acceptable — DB is always the fallback.
+
+---
+
+## File index for auto-update system
+
+```
+src/
+  app/api/
+    data/sync/route.ts              ← Process 1: market quotes cron route
+    admin/update-index/route.ts     ← Process 2: VN30/VN100 index cron route + monitoring GET
+  lib/
+    providers/
+      tcbs.ts                       ← TCBS company overview + index composition APIs
+      vndirect.ts                   ← VNDirect fundamentals (existing)
+      entrade.ts                    ← Entrade quotes (existing)
+    stock-ai-classifier.ts          ← Process 3: DB → TCBS → LLM ladder + DB save
+    stock-metadata.ts               ← lookupIndexStock (JSON), lookupIndexStockFromDB (DB), clearMetaCache
+    market-service.ts               ← enrichStockDetails() calls classifier when sector = "Unknown"
+
+vercel.json                         ← cron schedules for processes 1 + 2
+```

@@ -5,6 +5,7 @@ import { callLlm } from "@/lib/providers/llm";
 import { analyzeStock } from "@/lib/analysis/stock-analysis";
 import { isEtfSymbol } from "@/lib/analysis/etf-utils";
 import { fetchVNDirectFundamentals } from "@/lib/providers/vndirect";
+import { fetchTcbsCompanyOverview } from "@/lib/providers/tcbs";
 import type { Stock } from "@/types/stock";
 
 // ─── types ───────────────────────────────────────────────────────────────────
@@ -33,6 +34,7 @@ export type StockEvalResult = {
 async function buildStockContext(
   stock: Stock,
   prefetchedVnd?: Awaited<ReturnType<typeof fetchVNDirectFundamentals>>,
+  tcbsOverview?: Awaited<ReturnType<typeof fetchTcbsCompanyOverview>>,
 ): Promise<string> {
   const lines: string[] = [];
 
@@ -50,9 +52,23 @@ async function buildStockContext(
   const high52w = stock.high52w > 0 ? stock.high52w : (vnd?.high52w ?? 0);
   const low52w = stock.low52w > 0 ? stock.low52w : (vnd?.low52w ?? 0);
 
-  lines.push(`=== ${stock.symbol} — ${stock.name} ===`);
-  lines.push(`Exchange: ${stock.exchange ?? "HOSE"} | Sector: ${stock.sector ?? "N/A"}`);
-  if (stock.profile) lines.push(`Profile: ${stock.profile}`);
+  // Prefer TCBS name/sector (authoritative) over the stock object when the
+  // stock was built from a minimal quote (sector = "Unknown" / name = symbol)
+  const displayName =
+    tcbsOverview?.organNameEn?.trim() ||
+    (stock.name !== stock.symbol ? stock.name : null) ||
+    tcbsOverview?.organName?.trim() ||
+    stock.symbol;
+  const displaySector =
+    stock.sector && stock.sector !== "Unknown"
+      ? stock.sector
+      : tcbsOverview?.icbName3 || tcbsOverview?.icbName4 || "N/A";
+
+  lines.push(`=== ${stock.symbol} — ${displayName} ===`);
+  lines.push(`Exchange: ${stock.exchange ?? "HOSE"} | Sector: ${displaySector}`);
+  if (tcbsOverview?.organName) lines.push(`Vietnamese name: ${tcbsOverview.organName}`);
+  if (tcbsOverview?.icbName4) lines.push(`ICB classification: ${tcbsOverview.icbName3} → ${tcbsOverview.icbName4}`);
+  if (stock.profile && stock.profile !== stock.symbol) lines.push(`Profile: ${stock.profile}`);
 
   lines.push("");
   lines.push("--- Live Market Data ---");
@@ -382,11 +398,18 @@ export async function GET(request: Request) {
   const isEtf = isEtfSymbol(symbol);
 
   // For non-ETFs: pre-fetch VNDirect fundamentals when stock cache is empty,
-  // so buildStockContext (which also calls fetchVNDirectFundamentals) and the
-  // hasFundamentals flag both see the same enriched data.
+  // and always fetch TCBS company overview for unknown/minimal stocks to give
+  // the LLM accurate name, Vietnamese name, and ICB sector classification.
   let vndFund = null;
-  if (!isEtf && stock.pe === 0 && stock.pb === 0) {
-    vndFund = await fetchVNDirectFundamentals(symbol);
+  let tcbsOverview = null;
+  if (!isEtf) {
+    const isMinimalStock = stock.sector === "Unknown" || stock.name === symbol;
+    const [vnd, tcbs] = await Promise.all([
+      stock.pe === 0 && stock.pb === 0 ? fetchVNDirectFundamentals(symbol) : Promise.resolve(null),
+      isMinimalStock ? fetchTcbsCompanyOverview(symbol) : Promise.resolve(null),
+    ]);
+    vndFund = vnd;
+    tcbsOverview = tcbs;
   }
 
   const hasFundamentals =
@@ -395,7 +418,7 @@ export async function GET(request: Request) {
 
   const context = isEtf
     ? await buildEtfContext(stock)
-    : await buildStockContext(stock, vndFund);
+    : await buildStockContext(stock, vndFund ?? undefined, tcbsOverview ?? undefined);
 
   const systemInstruction = isEtf
     ? buildEtfSystemInstruction()

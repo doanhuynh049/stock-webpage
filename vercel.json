@@ -10,6 +10,10 @@
     {
       "path": "/api/data/sync",
       "schedule": "0 7 * * 1-5"
+    },
+    {
+      "path": "/api/admin/update-index",
+      "schedule": "0 8 * * 1"
     }
   ]
 }

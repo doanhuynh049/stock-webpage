@@ -155,6 +155,8 @@ Used by `useCachedFetch` for stale-while-revalidate:
 | `vnstocks:news-market` | 1h | Dashboard news |
 | `vnstocks:news-{SYMBOL}` | 1h | Stock detail news |
 | `vnstocks:market-snapshot` | 6h | Market ticker |
+| `vnstocks:portfolio-holdings` | 24h | `HoldingsLedger` — instant reload after DB save |
+| `vnstocks:watchlist-add-{SYMBOL}` | permanent | `WatchlistGrid` — "Added at" price per watchlist symbol |
 
 Flow: show cached data immediately → background fetch → update UI + localStorage.
 
@@ -209,6 +211,7 @@ Set `DB_CACHE_FIRST=0` on Vercel to avoid confusion.
 
 - **Combined score**: `0.60 × Technical + 0.40 × Fundamental`
 - **Technical**: base 50 + MA/RSI/MACD/volume/S-R adjustments (`technical-scoring.ts`)
+- **Volume Ratio signal**: `getTechnicalSignals` now returns a `Volume Ratio` indicator = today's volume ÷ 20-day average volume; ≥ 2× = Bullish signal; used in swing screener `volumeSpike` criterion
 - **Signals**: ACCUMULATE / WATCH / HOLD / TRIM / AVOID / SELL (context-aware)
 - UI copy: `scoring-rules.ts`, `investment-principles.ts`
 
@@ -271,6 +274,101 @@ StockEvaluationPanel (client)
 
 ---
 
+## Auto-Update Pipelines
+
+Three processes keep data fresh automatically. All server-side routes require `Authorization: Bearer $CRON_SECRET`.
+
+### Pipeline overview
+
+```
+PROCESS 1 — Market Quotes
+  Schedule: weekdays 07:00 UTC  Route: POST /api/data/sync
+  syncMarketData(true)
+    Entrade + Yahoo quotes for all seed stocks
+    in-memory memoryCache + .cache/market-data.json (local dev only)
+  Monitor: GET /api/data/sync (session required)
+
+PROCESS 2 — VN30/VN100 Index Composition
+  Schedule: every Monday 08:00 UTC  Route: POST /api/admin/update-index
+    fetchTcbsIndex("VN30/VN100")   [TCBS primary]
+    fetchSsiIndex("VN30/VN100")    [SSI fallback]
+    stock_symbol: upsert is_vn30 / is_vn100 flags
+    clearMetaCache() invalidates in-memory JSON meta cache
+  Monitor: GET /api/admin/update-index (session required)
+
+PROCESS 3 — Unknown Stock Classification (automatic)
+  Trigger: first getStock() for any non-VN30/VN100 ticker
+  enrichStockDetails() -> sector = "Unknown"
+    lookupIndexStockFromDB()   DB cache (instant if classified before)
+    getTcbsStockMeta()         TCBS authoritative company data
+    callLlm(classify prompt)   LLM fallback if TCBS misses
+    saveToDB(stock_symbol)     persists; future requests hit DB only
+```
+
+### Monitoring endpoints
+
+| Route | Method | Auth | Returns |
+|-------|--------|------|---------|
+| `GET /api/admin/update-index` | GET | session | `lastIndexSync`, VN30 members, VN100-only symbols, DB count |
+| `GET /api/data/sync` | GET | session | last market sync time, quote count, LLM status |
+
+**Sample index monitoring response:**
+```json
+{
+  "status": "ok",
+  "lastIndexSync": "2026-07-07T08:03:22.000Z",
+  "vn30": { "count": 30, "members": [{"symbol":"ACB","sector":"Banking"}] },
+  "vn100": { "count": 100, "vn100OnlySymbols": ["AGR","ANV"] },
+  "db": { "totalSymbolsWithSector": 147 }
+}
+```
+
+**Vercel cron logs:** Dashboard → Logs → filter path `/api/admin/update-index`.
+
+### Manual triggers
+
+```bash
+curl -X POST https://your-app.vercel.app/api/admin/update-index \
+  -H "Authorization: Bearer $CRON_SECRET"
+
+curl -X POST https://your-app.vercel.app/api/data/sync \
+  -H "Authorization: Bearer $CRON_SECRET"
+```
+
+### vercel.json cron schedule
+
+```json
+"crons": [
+  { "path": "/api/data/sync",          "schedule": "0 7 * * 1-5" },
+  { "path": "/api/admin/update-index", "schedule": "0 8 * * 1"   }
+]
+```
+
+### stock_symbol writes
+
+| Writer | Trigger | Fields set |
+|--------|---------|------------|
+| `POST /api/admin/update-index` | Weekly cron or manual | `is_vn30`, `is_vn100`, `updated_at` |
+| `classifyUnknownStock()` via TCBS | First unknown stock load | `name`, `sector`, `exchange`, `updated_at` |
+| `classifyUnknownStock()` via LLM | First unknown stock load (TCBS miss) | `name`, `sector`, `exchange`, `updated_at` |
+
+### Neon HTTP: stock_symbol upsert safety
+
+`stock-ai-classifier.ts` uses `prisma.stockSymbol.upsert()` (single-field PK — Prisma generates one SQL statement, no transaction). If this fails, replace with:
+
+```ts
+import { Prisma } from "@/generated/prisma/client";
+await prisma.$executeRaw(
+  Prisma.sql\`INSERT INTO stock_symbol (symbol, name, sector, exchange, updated_at)
+    VALUES (\${sym}, \${name}, \${sector}, \${exchange}, NOW())
+    ON CONFLICT (symbol) DO UPDATE SET
+      name = EXCLUDED.name, sector = EXCLUDED.sector,
+      exchange = EXCLUDED.exchange, updated_at = NOW()\`,
+);
+```
+
+---
+
 ## Sync scripts
 
 | Script | Command | Purpose |
@@ -308,6 +406,33 @@ revalidateTag(`analysis-${userId}`, { expire: 0 });
 ```
 
 Used in `/api/portfolio`, `/api/trading`, `/api/trading/[id]`.
+
+---
+
+## Short Swing screener (Jun 2026)
+
+Runs inside `ShortSwingPanel` (client component in `analysis-view.tsx`):
+
+```
+ShortSwingPanel (useEffect on mount)
+  → GET /api/market                  (once — VN-Index %, sector context)
+  → Promise.allSettled(symbols.map)
+      → GET /api/stocks/{sym}?lite=true   (skips news + AI — price + technicals only)
+  → buildSwingResult(stock, technicals, marketCtx)
+  → sort by score → ENTRY / WATCH / SKIP
+```
+
+**`?lite=true` param** on `/api/stocks/[symbol]`:
+- Without: `getStock` + `getTechnicalSignals` + `getNewsLive` (~3 network requests per symbol)
+- With: `getStock` + `getTechnicalSignals` only (1 network path)
+- Always use `?lite=true` in any screener or batch component fetching 5+ symbols concurrently
+
+**`getTechnicalSignals` signals returned**:
+- RSI (14-day)
+- MACD (Signal vs Line)
+- MA50 (above/below 50-day MA)
+- MA20 (above/below 20-day MA)
+- **Volume Ratio** = today's volume ÷ 20-day avg volume; ≥ 2× = Bullish
 
 ---
 
@@ -359,7 +484,7 @@ ETFs / illiquid tickers may still show `—` if both providers fail.
 `callLlm(messages, context, opts?)` tries providers in order, skipping any without a key:
 
 ```
-1. Cerebras   — api.cerebras.ai        (model: llama3.1-70b,   1M TPM free)
+1. Cerebras   — api.cerebras.ai        (model: llama3.3-70b,   1M TPM free)
 2. Groq       — api.groq.com           (model: llama-3.3-70b-versatile, 12k TPM free)
 3. Gemini     — generativelanguage...  (model: gemini-2.0-flash, 1.5M TPM free)
 4. Mistral    — api.mistral.ai         (model: mistral-small-latest, free trial)
@@ -489,5 +614,5 @@ Common production errors:
 | `sync:trades` hangs/fails locally | Neon HTTP endpoint blocked by local firewall (`fetch failed`) | Use `psql "$DATABASE_URL"` directly (wire protocol works) |
 | `value too long for character varying(16)` — settings save | `ai_response_cache.symbol` is VARCHAR(16); `"__user_ai_settings__"` (20 chars) overflows | Use `"_ai_cfg_"` (8 chars) as the settings symbol key |
 | LLM `429 Rate limit reached` on news summary | 30 items × ~300 token summaries exceeded Groq 12k TPM | Compact context format + 20 items + max_tokens=3500; add Cerebras (1M TPM free) as #1 provider |
-| Cerebras `404 model not found` | Model ID `llama-3.3-70b` doesn't exist | Use `llama3.1-70b` (no dash before version number) |
+| Cerebras `404 model not found` | Old model ID `llama3.1-70b` (or `llama-3.3-70b`) no longer available | Set `CEREBRAS_MODEL=llama3.3-70b` in `.env`; update default in `llm.ts` to match |
 | Tab / button text invisible in light mode | `bg-accent` no-op in Tailwind v4 (missing `--color-accent` in `@theme inline`); `text-white` on white card | Added `--color-accent` + `--color-accent-fg` to `@theme inline`; use `text-accent-fg` not `text-white` with `bg-accent` |

@@ -7,7 +7,7 @@ import {
 import { getNewsLive } from "@/lib/news-service";
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ symbol: string }> },
 ) {
   const { symbol } = await params;
@@ -15,6 +15,15 @@ export async function GET(
 
   if (!stock) {
     return NextResponse.json({ error: "Stock not found" }, { status: 404 });
+  }
+
+  // ?lite=true — skip news and AI summary (used by batch screeners)
+  const { searchParams } = new URL(request.url);
+  const lite = searchParams.get("lite") === "true";
+
+  if (lite) {
+    const technicals = await getTechnicalSignals(stock);
+    return NextResponse.json({ stock, technicals });
   }
 
   const [technicals, news] = await Promise.all([

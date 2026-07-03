@@ -20,7 +20,8 @@ import { canWriteLocalCache } from "@/lib/serverless";
 import { extractLastMentionedSymbol, extractTickersFromQuestion, isFollowUpQuestion } from "@/lib/symbol-utils";
 import { isEtfSymbol } from "@/lib/analysis/etf-utils";
 import { getEtfMeta, type EtfInfo } from "@/lib/analysis/etf-universe";
-import { lookupIndexStock } from "@/lib/stock-metadata";
+import { lookupIndexStock, lookupIndexStockFromDB } from "@/lib/stock-metadata";
+import { classifyUnknownStock } from "@/lib/stock-ai-classifier";
 import type {
   MarketSnapshot,
   NewsItem,
@@ -290,6 +291,29 @@ async function enrichStockDetails(stock: Stock): Promise<Stock> {
     }
     if (!s.profile) {
       s.profile = `${meta.name} (${meta.symbol}) operates in the ${meta.sector} sector on ${s.exchange}.`;
+    }
+  }
+
+  // For stocks not in curated JSON, try DB cache then AI classifier
+  if (!meta && s.sector === "Unknown") {
+    const dbMeta = await lookupIndexStockFromDB(s.symbol);
+    if (dbMeta) {
+      s.name = dbMeta.name;
+      s.sector = dbMeta.sector;
+      if (dbMeta.exchange === "HOSE" || dbMeta.exchange === "HNX" || dbMeta.exchange === "UPCOM") {
+        s.exchange = dbMeta.exchange as Stock["exchange"];
+      }
+      if (!s.profile) s.profile = `${dbMeta.name} (${s.symbol}) operates in the ${dbMeta.sector} sector on ${s.exchange}.`;
+    } else {
+      // AI classification — uses LLM and caches result to DB
+      const hint = s.name !== s.symbol ? s.name : undefined;
+      const aiMeta = await classifyUnknownStock(s.symbol, hint);
+      if (aiMeta) {
+        s.name = aiMeta.name;
+        s.sector = aiMeta.sector;
+        s.exchange = aiMeta.exchange;
+        if (!s.profile) s.profile = aiMeta.profile;
+      }
     }
   }
 

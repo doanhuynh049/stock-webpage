@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import type { IndexStock } from "@/lib/analysis/index-universe";
+import { prisma } from "@/lib/prisma";
+import { isPersistenceEnabled } from "@/lib/persistence";
 
 type Meta = IndexStock & { exchange?: string };
 
@@ -30,6 +32,40 @@ function loadMetaMap(): Map<string, Meta> {
   return metaCache;
 }
 
+/** Sync JSON-backed lookup (VN30/VN100 members only). */
 export function lookupIndexStock(symbol: string): Meta | undefined {
   return loadMetaMap().get(symbol.toUpperCase());
+}
+
+/**
+ * Clears the in-memory JSON cache so the next call to lookupIndexStock()
+ * re-reads the JSON files. Called after the update-index admin route runs.
+ */
+export function clearMetaCache(): void {
+  metaCache = null;
+}
+
+/**
+ * Async DB-backed lookup for stocks that have been AI-classified or manually
+ * entered into the stock_symbol table but are not in the VN30/VN100 JSON files.
+ */
+export async function lookupIndexStockFromDB(symbol: string): Promise<Meta | undefined> {
+  if (!isPersistenceEnabled()) return undefined;
+  try {
+    const row = await prisma.stockSymbol.findUnique({
+      where: { symbol: symbol.toUpperCase() },
+      select: { symbol: true, name: true, sector: true, exchange: true },
+    });
+    if (row?.name && row.name !== symbol && row.sector && row.sector !== "Unknown") {
+      return {
+        symbol: row.symbol,
+        name: row.name,
+        sector: row.sector,
+        exchange: row.exchange ?? "HOSE",
+      };
+    }
+  } catch {
+    /* DB unavailable */
+  }
+  return undefined;
 }

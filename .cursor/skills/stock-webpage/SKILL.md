@@ -13,7 +13,7 @@ description: >-
 | [components.md](components.md) | Full component & API catalog |
 | [data-flow.md](data-flow.md) | DB, trading→portfolio, cache layers, Vercel ops |
 
-**Cursor rules**: `action-first-navigation.mdc`, `page-state-cache.mdc`, `vercel-cache.mdc`, `theme-aware-interactive.mdc`
+**Cursor rules**: `action-first-navigation.mdc`, `page-state-cache.mdc`, `vercel-cache.mdc`, `theme-aware-interactive.mdc`, `auto-update-monitoring.mdc`
 
 ---
 
@@ -36,9 +36,9 @@ description: >-
 | `/news` | **AI News Digest** + **Earnings Calendar** (2-col layout) |
 | `/portfolio` | Sortable holdings ledger + allocation charts |
 | `/trading` | BUY/SELL ledger → rebuilds `portfolio_holding` |
-| `/analysis` | Portfolio / Sector / VN30 / VN100 / Scoring rules / **Principles** (Stock Evaluator) |
+| `/analysis` | Portfolio / Sector / VN30 / VN100 / ETF / **Short Swing** screener / Scoring rules / **Principles** (Stock Evaluator) |
 | `/strategy-review` | Core–Satellite compliance, sell/trim signals |
-| `/watchlist` | Quick-add panel + grid |
+| `/watchlist` | Quick-add panel + grid; cards show **"Added at" price + % change** stored in localStorage |
 | `/screener` | Auto-runs default filters on first visit (URL redirect) |
 | `/stocks/[symbol]` | Detail + CachedNewsFeed |
 | `/ai-analyst` | Chat (Neon + localStorage session hydrate) |
@@ -57,7 +57,7 @@ description: >-
 | **`unstable_cache`** | `page-cache.ts` | Server pages (portfolio, analysis) |
 | **In-memory** | module vars | Warm lambda only; news/market server |
 | **`.cache/`** | local dev only | `canWriteLocalCache()` — **never on Vercel** |
-| **localStorage** | browser | News, market ticker (`vnstocks:*`), report settings |
+| **localStorage** | browser | News, market ticker, report settings, portfolio-holdings cache, watchlist add-prices (`vnstocks:*`) |
 | **`data/neon-cache/`** | local dev | DB read fallback when TCP blocked |
 
 See [data-flow.md](data-flow.md) and `.cursor/rules/vercel-cache.mdc`.
@@ -66,7 +66,7 @@ See [data-flow.md](data-flow.md) and `.cursor/rules/vercel-cache.mdc`.
 
 ## Core data model
 
-- **Portfolio** (`portfolio_holding`) — direct edits or rebuilt from trades
+- **Portfolio** (`portfolio_holding`) — direct edits or rebuilt from trades; after successful edit, client also writes `vnstocks:portfolio-holdings` in localStorage for instant reload
 - **Trading** (`trading_transaction`) — scoped by id prefix `{userId.slice(0,8)}__`
 - **Strategy overrides** — per user: local `data/user-strategy/` or Neon `ai_response_cache`
 - **AI settings** — per user: Neon `ai_response_cache` where `symbol="_ai_cfg_"`, `analysisType="ai_config"`, `modelName=userId`
@@ -79,7 +79,7 @@ Priority order (first enabled provider with a valid key wins):
 
 | # | Provider | Free tier | Model | Env var |
 |---|----------|-----------|-------|---------|
-| 1 | **Cerebras** | 1M TPM | `llama3.1-70b` | `CEREBRAS_API_KEY` |
+| 1 | **Cerebras** | 1M TPM | `llama3.3-70b` | `CEREBRAS_API_KEY` |
 | 2 | **Groq** | 12k TPM | `llama-3.3-70b-versatile` | `GROQ_API_KEY` |
 | 3 | **Google Gemini** | 1.5M TPM · 1500 req/day | `gemini-2.0-flash` | `GEMINI_API_KEY` |
 | 4 | **Mistral AI** | Free trial | `mistral-small-latest` | `MISTRAL_API_KEY` |
@@ -96,7 +96,7 @@ Key points:
 
 ## Analysis & scoring
 
-**Tabs**: Portfolio | Sector | VN30 | VN100 | Scoring rules | Principles
+**Tabs**: Portfolio | Sector | VN30 | VN100 | ETF | **Short Swing** | Scoring rules | Principles
 
 - **Batch DB**: `loadAnalysisSnapshotStore(symbols)` — 2 queries per universe
 - **Combined**: `0.60 × Technical + 0.40 × Fundamental`
@@ -105,6 +105,19 @@ Key points:
 - **Principles copy**: `src/lib/content/investment-principles.ts`, `data/investment-principles.json`
 - **Sector P/E**: from snapshot store + `.cache/pe-ratios.json` (local disk only)
 - **Principles tab**: side-by-side layout — left = **Stock Evaluator** (`StockEvaluationPanel` → `/api/stock-eval`), right = investment principles reference
+- **Technical table**: includes **current price (₫)** column and **Volume Ratio** (today vs 20-day avg) as a signal
+
+### Short Swing tab (Jun 2026)
+
+Interactive stock screener for short-term swing trading:
+
+- **Auto-runs** on tab open with all VN30 symbols (passed as `defaultSymbols` from `AnalysisView`)
+- **Input**: comma-separated symbols or accept defaults → "Analyze" button
+- **Data fetched**: `GET /api/market` (VN-Index context once) + `GET /api/stocks/{sym}?lite=true` per symbol (price, technicals; **skips news/AI**)
+- **8 scored criteria**: `aboveMA20`, `aboveMA50`, `rsiStrong` (RSI 40–70), `volumeSpike` (ratio ≥ 1.5×), `near52wHigh` (within 15%), `outperformsMarket` (stock % > VN-Index %), `leadingSector`, `positiveMomentum` (price > 0)
+- **Signal**: ENTRY (≥ 6/8) · WATCH (3–5/8) · SKIP (< 3/8)
+- **Guide**: collapsible 10-step methodology guide (English)
+- **Performance note**: uses `?lite=true` on the stocks API to skip 30 news RSS fetches for batch screener calls
 
 ---
 
@@ -112,8 +125,86 @@ Key points:
 
 - Enter any VN ticker → 8-category AI analysis (Business / Financial / Valuation / Risks / Growth / Management / Timing / Fit)
 - Uses 5-provider AI chain: quantitative from live data, qualitative from LLM training knowledge
+- For **unknown stocks** (not in VN30/VN100 JSON): parallel-fetches **TCBS company overview** (`/api/stock-eval` route) to inject real Vietnamese name + ICB sector into the prompt — prevents LLM hallucination about company identity
 - Falls back to `buildRuleBasedEval(stock)` if LLM unavailable
 - Returns `StockEvalResult` from `src/app/api/stock-eval/route.ts`
+
+---
+
+## Unknown Stock Resolution (Jul 2026)
+
+When any stock is not in the curated JSON files (VN30/VN100), `enrichStockDetails()` runs a 3-step ladder:
+
+```
+1. stock_symbol DB cache   → instant lookup (populated by prior classification runs)
+2. TCBS company API        → authoritative real data (no LLM hallucination)
+   apipubaws.tcbs.com.vn/tcanalysis/v1/ticker/{symbol}/overview
+   → returns organName (VI), organNameEn (EN), icbName3, icbName4, exchange
+3. LLM classification      → last resort (TCBS doesn't know this ticker)
+```
+
+Result is always saved to `stock_symbol` DB table. Future requests hit step 1 instantly.
+
+**Key files:**
+| File | Role |
+|------|------|
+| `src/lib/providers/tcbs.ts` | TCBS API: `fetchTcbsCompanyOverview()`, `getTcbsStockMeta()`, `normalizeSector()` |
+| `src/lib/stock-ai-classifier.ts` | 3-step classifier: DB → TCBS → LLM → saveToDB |
+| `src/lib/stock-metadata.ts` | `lookupIndexStock()` (JSON), `lookupIndexStockFromDB()` (async DB), `clearMetaCache()` |
+| `src/lib/market-service.ts` | `enrichStockDetails()` calls DB lookup then `classifyUnknownStock()` when sector = "Unknown" |
+
+**TCBS sector normalization** (`normalizeSector` in `tcbs.ts`): maps raw ICB labels to the app vocabulary (Banking, Technology, Infrastructure, Real Estate, …). HHV example: `icbName3 = "Industrial Transportation"` → sector `"Infrastructure"`.
+
+---
+
+## Auto-Update Pipelines (Jul 2026)
+
+Three scheduled/triggered processes keep data fresh. See [data-flow.md](data-flow.md#auto-update-pipelines) for full details.
+
+| Process | Schedule | Route | What it updates |
+|---------|----------|-------|-----------------|
+| **Market quotes** | Weekdays 07:00 UTC | `POST /api/data/sync` | Live prices, market snapshot for seed stocks |
+| **VN30/VN100 index** | Every Monday 08:00 UTC | `POST /api/admin/update-index` | `stock_symbol.is_vn30 / is_vn100` flags in DB; calls `clearMetaCache()` |
+| **Stock classifier** | On first encounter of unknown ticker | (triggered by `getStock()`) | `stock_symbol` name + sector + exchange (TCBS → LLM) |
+
+**Monitoring** — authenticated users:
+```
+GET /api/admin/update-index   → last sync time, VN30/VN100 member counts, DB stats
+GET /api/data/sync            → last market sync status, LLM provider status
+```
+
+**Manual trigger:**
+```bash
+# VN30/VN100 index update
+curl -X POST https://your-app.vercel.app/api/admin/update-index \
+  -H "Authorization: Bearer $CRON_SECRET"
+
+# Market data sync
+curl -X POST https://your-app.vercel.app/api/data/sync \
+  -H "Authorization: Bearer $CRON_SECRET"
+```
+
+**Vercel cron logs:** Dashboard → Logs → filter by `/api/admin/update-index` or `/api/data/sync`.
+
+---
+
+## TCBS Provider (`src/lib/providers/tcbs.ts`)
+
+Public API — no auth required. Used for:
+1. Company overview/classification (stock classifier)
+2. Index composition fetch (update-index route)
+
+| Function | Endpoint | Use |
+|----------|----------|-----|
+| `fetchTcbsCompanyOverview(symbol)` | `/tcanalysis/v1/ticker/{sym}/overview` | Get real company name + ICB sector |
+| `getTcbsStockMeta(symbol)` | same | Returns normalized `{name, nameVi, sector, exchange, profile}` |
+| `fetchTcbsIndex(indexCode)` | `/stock-insight/v1/index/{code}/components` | Get current VN30/VN100 member symbols |
+
+**Rate limits:** No known strict limits for public endpoints. Uses `next: { revalidate: 3600 }` for company data (changes rarely) and `next: { revalidate: 0 }` for index composition (changes quarterly).
+
+**Fallback:** If TCBS fails for index composition, `update-index` falls back to SSI iBoard API (`iboard-query.ssi.com.vn`).
+
+---
 
 ---
 
@@ -206,8 +297,11 @@ DATABASE_URL, AUTH_SECRET, AUTH_URL
 PERSISTENCE_ENABLED=true, DB_DRIVER=http, DB_CACHE_FIRST=0
 CACHE_USER_ID=   # match bundled data/user-trades/{id}.json if needed
 
+# Cron protection
+CRON_SECRET=     # sent as "Authorization: Bearer $CRON_SECRET" by Vercel crons
+
 # AI providers (in priority order)
-CEREBRAS_API_KEY, CEREBRAS_MODEL=llama3.1-70b
+CEREBRAS_API_KEY, CEREBRAS_MODEL=llama3.3-70b
 GROQ_API_KEY, GROQ_MODEL=llama-3.3-70b-versatile
 GEMINI_API_KEY, GEMINI_MODEL=gemini-2.0-flash
 MISTRAL_API_KEY, MISTRAL_MODEL=mistral-small-latest
@@ -241,6 +335,9 @@ Settings pages must NOT use `mx-auto max-w-*` — they fill the full right panel
 
 ### New LLM provider
 Add to `LLM_PROVIDERS` array in `llm.ts` + add `callOpenAICompat(...)` call in `callLlm()`. One-liner for OpenAI-compatible APIs.
+
+### Batch screener API calls
+Use `GET /api/stocks/{symbol}?lite=true` to skip news + AI summary. Reduces per-call cost from ~3 network requests (stock + news + AI) to 1 (stock + technicals only). Required for any component that calls the stocks endpoint for 5+ symbols concurrently.
 
 ---
 

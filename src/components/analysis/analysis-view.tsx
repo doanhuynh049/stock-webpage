@@ -581,7 +581,7 @@ function ShortSwingPanel({ defaultSymbols }: { defaultSymbols: string[] }) {
     const [marketRes, ...stockSettled] = await Promise.allSettled([
       fetch("/api/market").then((r) => r.json()) as Promise<{ market: { indices: { symbol: string; changePercent: number }[]; sectors: { sector: string; changePercent: number }[]; sentiment: string } }>,
       ...symbols.map(async (sym): Promise<SwingResult> => {
-        const res = await fetch(`/api/stocks/${sym}`);
+        const res = await fetch(`/api/stocks/${sym}?lite=true`);
         if (!res.ok) {
           const errResult: SwingResult = {
             symbol: sym, name: sym, sector: "—", price: 0, changePercent: 0, rsi: 0, high52w: 0,
