@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { Loader2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardTitle } from "@/components/ui/card";
 import { StockAvatar } from "@/components/ui/stock-avatar";
@@ -31,6 +32,14 @@ import {
 import { StockEvaluationPanel } from "@/components/analysis/stock-evaluation-panel";
 import { AverageDownPanel } from "@/components/analysis/average-down-panel";
 import type { EnrichedHolding } from "@/lib/portfolio/holdings-enrichment";
+
+const EMPTY_BUNDLE: UniverseAnalysisBundle = {
+  fundamental: [],
+  technical: [],
+  combined: [],
+};
+
+type LazyUniverse = "vn30" | "vn100" | "etf";
 
 type MainTab = "portfolio" | "sector" | "etf" | "vn30" | "vn100" | "rules" | "principles" | "avg-down" | "swing";
 type SubTab = "fundamental" | "technical" | "combined";
@@ -945,19 +954,15 @@ function PrinciplesPanel() {
 
 export function AnalysisView({
   portfolio,
-  vn30,
-  vn100,
   sectorAnalysis,
-  etfBundle,
+  vn30Symbols,
   ownedSymbols,
   sectorTargets,
   enrichedHoldings,
 }: {
   portfolio: UniverseAnalysisBundle;
-  vn30: UniverseAnalysisBundle;
-  vn100: UniverseAnalysisBundle;
   sectorAnalysis?: SectorAnalysisResult;
-  etfBundle?: EtfAnalysisRow[];
+  vn30Symbols: string[];
   ownedSymbols?: string[];
   sectorTargets?: Record<string, number>;
   enrichedHoldings?: EnrichedHolding[];
@@ -965,7 +970,46 @@ export function AnalysisView({
   const [mainTab, setMainTab] = useState<MainTab>("portfolio");
   const [subTab, setSubTab] = useState<SubTab>("fundamental");
   const [selection, setSelection] = useState<Selection | null>(null);
+  const [vn30, setVn30] = useState<UniverseAnalysisBundle>(EMPTY_BUNDLE);
+  const [vn100, setVn100] = useState<UniverseAnalysisBundle>(EMPTY_BUNDLE);
+  const [etfBundle, setEtfBundle] = useState<EtfAnalysisRow[]>([]);
+  const [lazyLoading, setLazyLoading] = useState<LazyUniverse | null>(null);
+  const loadedRef = useRef<Record<LazyUniverse, boolean>>({
+    vn30: false,
+    vn100: false,
+    etf: false,
+  });
   const owned = new Set((ownedSymbols ?? []).map((s) => s.toUpperCase()));
+
+  const loadLazyUniverse = useCallback(async (universe: LazyUniverse) => {
+    if (loadedRef.current[universe]) return;
+    loadedRef.current[universe] = true;
+    setLazyLoading(universe);
+    try {
+      const res = await fetch(`/api/analysis/bundle?universe=${universe}`);
+      if (!res.ok) {
+        loadedRef.current[universe] = false;
+        return;
+      }
+      const data = (await res.json()) as {
+        bundle?: UniverseAnalysisBundle;
+        etfBundle?: EtfAnalysisRow[];
+      };
+      if (universe === "vn30" && data.bundle) setVn30(data.bundle);
+      if (universe === "vn100" && data.bundle) setVn100(data.bundle);
+      if (universe === "etf" && data.etfBundle) setEtfBundle(data.etfBundle);
+    } catch {
+      loadedRef.current[universe] = false;
+    } finally {
+      setLazyLoading(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (mainTab === "vn30") void loadLazyUniverse("vn30");
+    if (mainTab === "vn100") void loadLazyUniverse("vn100");
+    if (mainTab === "etf") void loadLazyUniverse("etf");
+  }, [mainTab, loadLazyUniverse]);
 
   const bundle =
     mainTab === "portfolio"
@@ -1046,7 +1090,7 @@ export function AnalysisView({
           <p className="mb-4 text-xs text-muted">
             Score any VN tickers against 8 swing-trading criteria (1–2 week hold). Enter tickers to begin.
           </p>
-          <ShortSwingPanel defaultSymbols={vn30.combined.map((r) => r.symbol)} />
+          <ShortSwingPanel defaultSymbols={vn30Symbols} />
         </Card>
       ) : mainTab === "avg-down" ? (
         <Card className="!p-4">
@@ -1064,7 +1108,16 @@ export function AnalysisView({
       ) : mainTab === "sector" && sectorAnalysis ? (
         <SectorAnalysisView data={sectorAnalysis} initialSectorTargets={sectorTargets} />
       ) : mainTab === "etf" ? (
-        <EtfAnalysisView rows={etfBundle ?? []} />
+        lazyLoading === "etf" ? (
+          <Card className="!p-8">
+            <div className="flex items-center justify-center gap-2 text-sm text-muted">
+              <Loader2 className="h-4 w-4 animate-spin text-accent" />
+              Loading ETF analysis…
+            </div>
+          </Card>
+        ) : (
+          <EtfAnalysisView rows={etfBundle} />
+        )
       ) : (
         <Card className="!p-4">
           <>
@@ -1079,7 +1132,13 @@ export function AnalysisView({
               </p>
             )}
             <div className="table-scroll overflow-x-auto rounded-lg ring-1 ring-[var(--border)]">
-              {mainTab === "rules" ? (
+              {(mainTab === "vn30" && lazyLoading === "vn30") ||
+              (mainTab === "vn100" && lazyLoading === "vn100") ? (
+                <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted">
+                  <Loader2 className="h-4 w-4 animate-spin text-accent" />
+                  Loading {mainTab.toUpperCase()} analysis…
+                </div>
+              ) : mainTab === "rules" ? (
                 <div className="p-2">
                   <RulesPanel />
                 </div>

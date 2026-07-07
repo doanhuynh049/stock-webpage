@@ -84,16 +84,18 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 | `ai-news-summary.tsx` | Client | **NEW (Jun 2026)** — AI news digest; tabs: Outlook / Hot / All / Guide; sector trends; stock movers; BEAT/MISS signals; 7-signal framework; rule-based fallback when LLM unavailable |
 | `investment-picks.tsx` | Server | Curated picks card |
 | `stock-analysis-panel.tsx` | Server | Combined analysis on detail page |
-| `price-chart.tsx` | Client | Recharts line chart |
-| `price-chart-panel.tsx` | Client | Chart + range; fetches history API |
+| `price-chart.tsx` | Client | **Upgraded (Jul 2026)** — `ComposedChart` with MA20 dashed overlay, volume histogram, % change pill, custom tooltip; `computeMA(closes, 20)` helper |
+| `price-chart-panel.tsx` | Client | **Upgraded (Jul 2026)** — stats bar (period hi/lo, % change, avg volume), modern period selector; fetches history API |
 | `financial-chart.tsx` | Client | Revenue/profit bar chart |
 | `watchlist-button.tsx` | Client | Toggle watchlist — optimistic UI |
+| `back-button.tsx` | Client | **NEW (Jul 2026)** — `router.back()` arrow button; shown at top of `/stocks/[symbol]` |
 
 ### `news/`
 
 | File | Type | Purpose |
 |------|------|---------|
 | `earnings-calendar.tsx` | Client | **NEW (Jun 2026)** — VN quarterly earnings calendar; **Track ›** button on active season switches to "Earnings News" tab; BEAT/MISS tracker header; tabs: VN Season Calendar / Earnings News |
+| `hot-picks-panel.tsx` | Client | **NEW (Jul 2026)** — full-width AI hot picks at top of `/news`; calls `/api/news/summary`; `buildPicks()` extracts bullish picks from `stockMovers` → `sectorTrends` → `allItems` (3-source fallback for rule-based mode); groups into Short-term (1–5 days) and Long-term (1–3 months) |
 
 ### `portfolio/`
 
@@ -115,9 +117,9 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 | `analysis-view.tsx` | Client | Tabs: Portfolio / Sector / VN30 / VN100 / ETF / **Short Swing** / Scoring rules / Principles; `TechnicalTable` has **current price (₫)** and **Volume Ratio** columns; passes VN30 symbols as `defaultSymbols` to `ShortSwingPanel` |
 | `sector-analysis-view.tsx` | Client | Per-sector leaders + trend leaders panel |
 | `analysis-detail-panel.tsx` | Client | Slide-over detail for scored row |
-| `stock-evaluation-panel.tsx` | Client | **NEW (Jun 2026)** — 8-category AI stock evaluation; ticker input → `/api/stock-eval` → accordion (Business / Financial / Valuation / Risks / Growth / Management / Timing / Fit) + verdict |
+| `stock-evaluation-panel.tsx` | Client | **Updated (Jul 2026)** — 8-category AI stock evaluation; ticker input → `/api/stock-eval` → accordion; **persists last result** to `vnstocks:stock-eval-state` localStorage; restores on mount (survives tab switches) |
 | `etf-analysis-view.tsx` | Client | ETF-specific analysis rows |
-| `ShortSwingPanel` (in `analysis-view.tsx`) | Client | **NEW (Jun 2026)** — interactive swing screener; auto-runs VN30 on tab open (via `useEffect` + `hasRun` ref); fetches `/api/stocks/{sym}?lite=true` (skips news) for each symbol; scores 8 criteria: `aboveMA20`, `aboveMA50`, `rsiStrong`, `volumeSpike`, `near52wHigh`, `outperformsMarket`, `leadingSector`, `positiveMomentum`; ENTRY (≥6) / WATCH (3–5) / SKIP (<3); collapsible 10-step methodology guide |
+| `ShortSwingPanel` (in `analysis-view.tsx`) | Client | **Updated (Jul 2026)** — auto-runs VN30 on mount (table pre-populated); **input starts empty** for custom tickers; **"Load VN30" button** fills input; **VN30 chips** (click to append); scores 8 criteria: `aboveMA20`, `aboveMA50`, `rsiStrong`, `volumeSpike`, `near52wHigh`, `outperformsMarket`, `leadingSector`, `positiveMomentum`; ENTRY (≥6) / WATCH (3–5) / SKIP (<3); collapsible 10-step guide |
 
 ### `settings/`
 
@@ -174,6 +176,7 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 | `vnstocks:report-settings` | permanent | `ReportSettingsPanel` config |
 | `vnstocks:portfolio-holdings` | 24h | `HoldingsLedger` — fast reload after edit |
 | `vnstocks:watchlist-add-{SYMBOL}` | permanent | `WatchlistGrid` — "Added at" price display |
+| `vnstocks:stock-eval-state` | permanent | `StockEvaluationPanel` — last ticker + full result; restored on mount |
 
 ---
 

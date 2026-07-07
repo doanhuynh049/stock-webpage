@@ -1,12 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   AlertTriangle,
   BarChart2,
   BarChart3,
   Building2,
+  CalendarDays,
   Clock,
   ExternalLink,
   FileText,
@@ -21,6 +22,7 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardTitle } from "@/components/ui/card";
+import { buildPicks, type PickItem } from "@/lib/news/hot-picks";
 import type {
   AiNewsItem,
   FinancialImpact,
@@ -397,9 +399,128 @@ function MoodBanner({ mood, summary, provider }: {
   );
 }
 
+// ─── Hot picks (merged from HotPicksPanel) ────────────────────────────────────
+
+function PickCard({ pick }: { pick: PickItem }) {
+  const isHigh = pick.impact === "HIGH";
+  return (
+    <div className="flex items-start gap-3 rounded-xl ring-1 ring-[var(--border)] p-3 hover:bg-[var(--bg-secondary)] transition-colors">
+      <div className="mt-0.5 shrink-0 rounded-lg bg-emerald-500/10 p-1.5 ring-1 ring-emerald-500/25">
+        <TrendingUp className="h-3.5 w-3.5 text-emerald-500" />
+      </div>
+      <div className="min-w-0 flex-1 space-y-1">
+        <div className="flex items-center gap-2 flex-wrap">
+          <Link
+            href={`/stocks/${pick.symbol}`}
+            className="rounded-md bg-emerald-500/10 px-2 py-0.5 text-xs font-bold text-emerald-700 ring-1 ring-emerald-500/25 hover:bg-emerald-500/20 dark:text-emerald-300"
+          >
+            {pick.symbol}
+          </Link>
+          {pick.name && (
+            <span className="text-[10px] text-subtle truncate max-w-[120px]">{pick.name}</span>
+          )}
+          {isHigh && (
+            <span className="rounded-md bg-red-500/10 px-1.5 py-0.5 text-[9px] font-bold uppercase text-red-600 ring-1 ring-red-500/25 dark:text-red-400">
+              HIGH
+            </span>
+          )}
+          {pick.signalType && (
+            <span className="rounded-md bg-[var(--bg-secondary)] px-1.5 py-0.5 text-[9px] text-subtle ring-1 ring-[var(--border)] capitalize">
+              {pick.signalType}
+            </span>
+          )}
+        </div>
+        <p className="text-[12px] leading-snug text-muted">{pick.reason}</p>
+        {pick.newsTitle && pick.newsLink && (
+          <a
+            href={pick.newsLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[10px] text-accent hover:underline line-clamp-1"
+          >
+            {pick.newsTitle}
+          </a>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function EmptyPicks({ label, isRuleBased }: { label: string; isRuleBased?: boolean }) {
+  return (
+    <div className="rounded-xl border border-dashed border-[var(--border)] px-4 py-4 text-center space-y-1">
+      <AlertTriangle className="h-4 w-4 text-subtle mx-auto" />
+      <p className="text-sm text-muted">{label}</p>
+      {isRuleBased && (
+        <p className="text-[10px] text-subtle">
+          Keyword mode active — LLM enrichment (Groq/Gemini) produces richer picks. Check{" "}
+          <strong className="text-muted">/settings/ai</strong> to configure an API key.
+        </p>
+      )}
+    </div>
+  );
+}
+
+function HotPicksTab({ data }: { data: NewsSummaryResponse }) {
+  const picks = buildPicks(data);
+  return (
+    <div className="space-y-5">
+      <p className="text-[11px] text-muted">
+        AI-analyzed stocks likely to increase based on current news signals. Grouped by expected time horizon.
+      </p>
+
+      <div>
+        <div className="mb-2 flex items-center gap-2">
+          <div className="rounded-lg bg-blue-500/10 p-1 ring-1 ring-blue-500/20">
+            <Clock className="h-3.5 w-3.5 text-blue-500" />
+          </div>
+          <p className="text-xs font-semibold text-[var(--fg)]">Short-term</p>
+          <span className="text-[10px] text-subtle">1–5 days · catalysts: earnings, filings, analyst upgrades</span>
+        </div>
+        {picks.short.length > 0 ? (
+          <div className="grid gap-2 sm:grid-cols-2">
+            {picks.short.map((p) => (
+              <PickCard key={p.symbol} pick={p} />
+            ))}
+          </div>
+        ) : (
+          <EmptyPicks label="No short-term bullish picks detected from current news" isRuleBased={data.isRuleBased} />
+        )}
+      </div>
+
+      <div>
+        <div className="mb-2 flex items-center gap-2">
+          <div className="rounded-lg bg-violet-500/10 p-1 ring-1 ring-violet-500/20">
+            <CalendarDays className="h-3.5 w-3.5 text-violet-500" />
+          </div>
+          <p className="text-xs font-semibold text-[var(--fg)]">Long-term</p>
+          <span className="text-[10px] text-subtle">1–3 months · drivers: macro trends, M&A, guidance</span>
+        </div>
+        {picks.long.length > 0 ? (
+          <div className="grid gap-2 sm:grid-cols-2">
+            {picks.long.map((p) => (
+              <PickCard key={p.symbol} pick={p} />
+            ))}
+          </div>
+        ) : (
+          <EmptyPicks label="No long-term bullish picks detected from current news" isRuleBased={data.isRuleBased} />
+        )}
+      </div>
+
+      <div className="flex items-start gap-2 rounded-xl bg-[var(--bg-secondary)] px-3 py-2.5 ring-1 ring-[var(--border)]">
+        <TrendingDown className="mt-0.5 h-3.5 w-3.5 shrink-0 text-amber-500" />
+        <p className="text-[10px] text-subtle">
+          <strong className="text-muted">AI picks are based on news signals only</strong> — not financial advice. Always verify with technical & fundamental analysis.
+          {data.isRuleBased && " (keyword analysis mode — LLM enrichment active in production)"}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 // ─── main component ───────────────────────────────────────────────────────────
 
-type TabId = "outlook" | "hot" | "all" | "guide";
+type TabId = "outlook" | "picks" | "hot" | "all" | "guide";
 
 export function AiNewsSummary() {
   const [data, setData] = useState<NewsSummaryResponse | null>(null);
@@ -432,8 +553,12 @@ export function AiNewsSummary() {
       })).filter((s) => s.count > 0)
     : [];
 
+  const picks = useMemo(() => (data ? buildPicks(data) : null), [data]);
+  const picksCount = picks ? picks.short.length + picks.long.length : 0;
+
   const tabs: { id: TabId; label: string }[] = [
     { id: "outlook", label: `Outlook (${outlookCount})` },
+    { id: "picks",   label: `Hot Picks (${picksCount})` },
     { id: "hot",     label: `Hot (${data?.hotItems.length ?? 0})` },
     { id: "all",     label: `All (${data?.allItems.length ?? 0})` },
     { id: "guide",   label: "Guide" },
@@ -595,6 +720,9 @@ export function AiNewsSummary() {
               )}
             </div>
           )}
+
+          {/* Tab: Hot Picks */}
+          {tab === "picks" && <HotPicksTab data={data} />}
 
           {/* Tab: Hot / All */}
           {(tab === "hot" || tab === "all") && (

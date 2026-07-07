@@ -33,14 +33,14 @@ description: >-
 | Route | Purpose |
 |-------|---------|
 | `/` | Dashboard — market, movers, **AiNewsSummary**, **CachedNewsFeed**, picks |
-| `/news` | **AI News Digest** + **Earnings Calendar** (2-col layout) |
+| `/news` | **HotPicksPanel** (full-width, short/long-term AI picks) + **AI News Digest** + **Earnings Calendar** |
 | `/portfolio` | Sortable holdings ledger + allocation charts |
 | `/trading` | BUY/SELL ledger → rebuilds `portfolio_holding` |
 | `/analysis` | Portfolio / Sector / VN30 / VN100 / ETF / **Short Swing** screener / Scoring rules / **Principles** (Stock Evaluator) |
 | `/strategy-review` | Core–Satellite compliance, sell/trim signals |
 | `/watchlist` | Quick-add panel + grid; cards show **"Added at" price + % change** stored in localStorage |
 | `/screener` | Auto-runs default filters on first visit (URL redirect) |
-| `/stocks/[symbol]` | Detail + CachedNewsFeed |
+| `/stocks/[symbol]` | Detail — **BackButton**, improved price chart (MA20 + volume), **Suggested Entry Price** (P/E & P/B fair value), ETF-specific layout when `isEtfSymbol()`; CachedNewsFeed |
 | `/ai-analyst` | Chat (Neon + localStorage session hydrate) |
 | `/settings` | Settings hub — account overview, links to sub-pages |
 | `/settings/ai` | AI provider config — keys, model selection, priority order |
@@ -91,6 +91,9 @@ Key points:
 - User can override any key via `/settings/ai` (stored in DB `ai_response_cache`)
 - `callLlm(messages, context, opts)` accepts `opts.apiKeys` map for user-provided key overrides
 - `getLlmStatus()` returns active provider + all model names for display
+- **Chain logging (Jul 2026)**: each provider logs `[LLM] Using Cerebras/Groq/…` on success and `[LLM] … falling through to next provider` on error; final `[LLM] All providers failed — configure GROQ_API_KEY…` when hitting rule-based
+- **Cerebras model name**: correct ID is `llama3.3-70b` (no hyphen before `3.3`). `CEREBRAS_MODEL` env var must match. Fallback models list in `/api/settings/ai/models` also uses `llama3.3-70b`.
+- **Rule-based fallback**: `stockMovers = []` always in fallback — features that need directional picks must derive them from `allItems` instead
 
 ---
 
@@ -107,12 +110,13 @@ Key points:
 - **Principles tab**: side-by-side layout — left = **Stock Evaluator** (`StockEvaluationPanel` → `/api/stock-eval`), right = investment principles reference
 - **Technical table**: includes **current price (₫)** column and **Volume Ratio** (today vs 20-day avg) as a signal
 
-### Short Swing tab (Jun 2026)
+### Short Swing tab (Jul 2026)
 
 Interactive stock screener for short-term swing trading:
 
-- **Auto-runs** on tab open with all VN30 symbols (passed as `defaultSymbols` from `AnalysisView`)
-- **Input**: comma-separated symbols or accept defaults → "Analyze" button
+- **Auto-runs VN30 on tab open** (`useEffect` + `hasRun` ref) — table is populated immediately; **input stays empty** so the user can type custom tickers
+- **VN30 chips + "Load VN30" button** — click any chip to append a symbol to input; "Load VN30" fills all VN30 symbols at once
+- **Input**: comma-separated symbols → "Analyze" button re-runs with whatever is in the box
 - **Data fetched**: `GET /api/market` (VN-Index context once) + `GET /api/stocks/{sym}?lite=true` per symbol (price, technicals; **skips news/AI**)
 - **8 scored criteria**: `aboveMA20`, `aboveMA50`, `rsiStrong` (RSI 40–70), `volumeSpike` (ratio ≥ 1.5×), `near52wHigh` (within 15%), `outperformsMarket` (stock % > VN-Index %), `leadingSector`, `positiveMomentum` (price > 0)
 - **Signal**: ENTRY (≥ 6/8) · WATCH (3–5/8) · SKIP (< 3/8)
@@ -121,13 +125,48 @@ Interactive stock screener for short-term swing trading:
 
 ---
 
-## Stock Evaluator (Jun 2026)
+## Stock Evaluator (Jul 2026)
 
 - Enter any VN ticker → 8-category AI analysis (Business / Financial / Valuation / Risks / Growth / Management / Timing / Fit)
 - Uses 5-provider AI chain: quantitative from live data, qualitative from LLM training knowledge
 - For **unknown stocks** (not in VN30/VN100 JSON): parallel-fetches **TCBS company overview** (`/api/stock-eval` route) to inject real Vietnamese name + ICB sector into the prompt — prevents LLM hallucination about company identity
 - Falls back to `buildRuleBasedEval(stock)` if LLM unavailable
 - Returns `StockEvalResult` from `src/app/api/stock-eval/route.ts`
+- **State persistence**: last evaluated ticker + result saved to `vnstocks:stock-eval-state` in localStorage; restored on mount so the result survives tab-switching
+
+---
+
+## Stock Detail Page (`/stocks/[symbol]`) — Jul 2026
+
+### BackButton
+- `src/components/stock/back-button.tsx` — client component; calls `useRouter().back()`
+- Renders as a small pill button in the page header so users can return to the previous page
+
+### Price Chart (redesigned)
+- `PriceChart` switched from `AreaChart` to `ComposedChart` (Recharts)
+- Overlays: **Price area** + **MA20 dashed line** (amber `#f59e0b`) + **Volume histogram** (separate bar set)
+- % change pill above chart shows period performance (green/red)
+- Custom `ChartTooltip`: date, close price, MA20, volume
+- Period selector on `PriceChartPanel` + stats bar: period high, low, % change, avg volume
+
+### ETF-Specific Layout
+- Detect with `isEtfSymbol(symbol)` from `src/lib/analysis/etf-utils.ts`
+- If ETF: show **ETF meta block** (Benchmark index, Fund Manager, AUM, RSI) from `getEtfMeta(symbol)` in `src/lib/analysis/etf-universe.ts`
+- Replaces standard company profile section and hides fundamentals (P/E, P/B, Revenue Growth)
+- Shows an ETF investment guide section instead of stock-specific analysis text
+
+### Suggested Entry Price Panel
+- Displayed for all non-ETF stocks with enough data
+- Calculates:
+  - `entryLow` / `entryHigh` from MA20/MA50 band with RSI adjustment
+  - `stopLoss` at 6–8% below entry
+  - **`fairValue`** — calculated from fundamentals (replaces "Analyst Consensus" price target):
+    - If P/E available (0 < P/E < 60): `impliedEps × targetPE` where `targetPE = clamp(14 + growthRate×0.4, 10, 25)`
+    - If P/B also available: blended 65% P/E + 35% P/B
+    - If only P/B: `impliedBookValue × targetPB`
+    - Fair value is capped at ±60% of current price for realism
+- `fairValueMethod` string shown in UI so the user understands which formula was applied
+- Displays: "Fair Value / R:R" header (not "Price Target")
 
 ---
 
@@ -208,15 +247,27 @@ Public API — no auth required. Used for:
 
 ---
 
-## AI News Digest (`/news`)
+## AI News Digest & Hot Picks (`/news`) — Jul 2026
 
-- `AiNewsSummary` component (client) → `/api/news/summary` → RSS (Yahoo + Google + CafeF + VnExpress) → LLM
+### `AiNewsSummary` component
+- Client → `/api/news/summary` → RSS (Yahoo + Google + CafeF + VnExpress) → LLM
 - 7-signal classification: `earnings | guidance | filing | analyst | insider | ma | macro | noise`
 - Tabs: Outlook (sector trends) | Hot (HIGH impact) | All | Guide
 - `EarningsCalendar` component — VN quarterly deadlines, BEAT/MISS tracker; **Track ›** button opens earnings news tab
 - Rate-limit mitigation: compact context format, 20 items max per LLM call, max_tokens=3500
 - Fallback: Vietnamese keyword-based rule engine when LLM rate-limited or unavailable
 - In-memory cache: 30 min
+
+### `HotPicksPanel` component (NEW Jul 2026)
+- Full-width banner at top of `/news` page above the existing 2-col grid
+- Calls `/api/news/summary` (reuses same cache) — no new API route needed
+- **`buildPicks()`** derives bullish stock picks from 3 sources (in priority order):
+  1. `stockMovers` direction=UP (LLM mode only)
+  2. `sectorTrends` direction=UP + keySymbols (LLM + rule-based)
+  3. `allItems` + `hotItems` where `sentiment=Bullish` and `affectedSymbols` non-empty (**primary path in rule-based mode**)
+- Splits picks into **Short-term (1–5 days)** — earnings/filing/analyst catalysts — and **Long-term (1–3 months)** — macro/guidance/M&A drivers
+- In rule-based mode: `stockMovers = []` always; picks come from news items with extracted ticker symbols
+- Empty state shows hint to configure `GROQ_API_KEY` or `GEMINI_API_KEY` for richer picks
 
 ---
 

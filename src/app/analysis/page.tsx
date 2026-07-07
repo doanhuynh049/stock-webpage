@@ -4,8 +4,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { AnalysisView } from "@/components/analysis/analysis-view";
 import { analyzeUniverseBundle } from "@/lib/analysis/combined-analysis";
 import { computeSectorAnalysis } from "@/lib/analysis/sector-analysis";
-import { getVN100Universe, getVN30Universe } from "@/lib/analysis/index-universe";
-import { analyzeEtfUniverse } from "@/lib/analysis/etf-analysis";
+import { getVN30Universe } from "@/lib/analysis/index-universe";
 import { auth } from "@/lib/auth";
 import { getPortfolioWithStocks } from "@/lib/db/advisory-portfolio";
 import { enrichHoldings } from "@/lib/portfolio/holdings-enrichment";
@@ -64,58 +63,42 @@ export default async function AnalysisPage() {
   const strategyConfig =
     (await getUserStrategyConfig(userId)) ?? loadDefaultStrategyConfig();
 
-  const vn30 = getVN30Universe();
-  const vn100 = getVN100Universe();
+  const vn30Symbols = getVN30Universe().map((s) => s.symbol);
   const ownedSymbols = portfolio.holdings.map((h) => h.symbol);
 
-  const [portfolioBundle, vn30Bundle, vn100Bundle, sectorAnalysis, etfBundle] =
-    await Promise.all([
-      portfolioMeta.length
-        ? pageCache(
-            ["analysis-bundle-portfolio", userId, symbolKey],
-            () =>
-              analyzeUniverseBundle(
-                portfolioMeta.map((h) => ({
-                  symbol: h.symbol,
-                  name: h.name ?? h.symbol,
-                  sector: h.sector ?? "Unknown",
-                })),
-              ),
-            {
-              revalidate: CACHE_TTL.analysis,
-              tags: [`analysis-${userId}`, `portfolio-${userId}`],
-            },
-          )
-        : Promise.resolve({ fundamental: [], technical: [], combined: [] }),
-      pageCache(
-        ["analysis-bundle-vn30"],
-        () => analyzeUniverseBundle(vn30),
-        { revalidate: CACHE_TTL.analysis, tags: ["analysis-vn30"] },
-      ),
-      pageCache(
-        ["analysis-bundle-vn100"],
-        () => analyzeUniverseBundle(vn100, 30),
-        { revalidate: CACHE_TTL.analysis, tags: ["analysis-vn100"] },
-      ),
-      pageCache(
-        ["analysis-sector", userId, symbolKey],
-        () =>
-          computeSectorAnalysis(
-            enriched,
-            strategyConfig.sectorTargets,
-            ownedSymbols,
-          ),
-        {
-          revalidate: CACHE_TTL.analysis,
-          tags: [`analysis-${userId}`, `portfolio-${userId}`],
-        },
-      ),
-      pageCache(
-        ["analysis-etf"],
-        () => analyzeEtfUniverse(),
-        { revalidate: CACHE_TTL.analysis, tags: ["analysis-etf"] },
-      ),
-    ]);
+  // Portfolio + sector only on first paint; VN30/VN100/ETF load on tab open (client).
+  const [portfolioBundle, sectorAnalysis] = await Promise.all([
+    portfolioMeta.length
+      ? pageCache(
+          ["analysis-bundle-portfolio", userId, symbolKey],
+          () =>
+            analyzeUniverseBundle(
+              portfolioMeta.map((h) => ({
+                symbol: h.symbol,
+                name: h.name ?? h.symbol,
+                sector: h.sector ?? "Unknown",
+              })),
+            ),
+          {
+            revalidate: CACHE_TTL.analysis,
+            tags: [`analysis-${userId}`, `portfolio-${userId}`],
+          },
+        )
+      : Promise.resolve({ fundamental: [], technical: [], combined: [] }),
+    pageCache(
+      ["analysis-sector", userId, symbolKey],
+      () =>
+        computeSectorAnalysis(
+          enriched,
+          strategyConfig.sectorTargets,
+          ownedSymbols,
+        ),
+      {
+        revalidate: CACHE_TTL.analysis,
+        tags: [`analysis-${userId}`, `portfolio-${userId}`],
+      },
+    ),
+  ]);
 
   return (
     <div className="space-y-4">
@@ -124,10 +107,7 @@ export default async function AnalysisPage() {
         description="Portfolio · Sector · VN30 · VN100 — fundamental, technical, and combined panels"
         badge={
           <span className="rounded-md bg-[var(--bg-secondary)] px-2.5 py-1 text-xs ring-1 ring-[var(--border)]">
-            {portfolioBundle.fundamental.length} holdings · VN30{" "}
-            {vn30Bundle.fundamental.length} · VN100 top{" "}
-            {vn100Bundle.fundamental.length} · ETF{" "}
-            {etfBundle.length}
+            {portfolioBundle.fundamental.length} holdings · VN30 / VN100 / ETF on demand
           </span>
         }
       />
@@ -141,10 +121,8 @@ export default async function AnalysisPage() {
 
       <AnalysisView
         portfolio={portfolioBundle}
-        vn30={vn30Bundle}
-        vn100={vn100Bundle}
         sectorAnalysis={sectorAnalysis}
-        etfBundle={etfBundle}
+        vn30Symbols={vn30Symbols}
         ownedSymbols={ownedSymbols}
         sectorTargets={strategyConfig.sectorTargets}
         enrichedHoldings={enriched}
