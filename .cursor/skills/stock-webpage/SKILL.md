@@ -99,8 +99,10 @@ Key points:
 
 ## Analysis & scoring
 
-**Tabs**: Portfolio | Sector | VN30 | VN100 | ETF | **Short Swing** | Scoring rules | Principles
+**Tabs**: Portfolio | Sector | ETF | VN30 | VN100 | Avg Down | **Exit Strategy** | **Short Swing** | Scoring rules | Principles
 
+- **Lazy + background loading**: VN30/VN100/ETF load on tab open and are also background-prefetched once after first paint (idle callback → sequential fetch of `/api/analysis/bundle`), so tab switches are instant. Portfolio + Sector still render server-side on first paint.
+- **Exit Strategy tab** (Jul 2026): `ExitStrategyPanel` — number-driven 6-factor sell framework (overvaluation, thesis, profit target, trailing stop, concentration, opportunity cost) → HOLD/TRIM/SELL verdict with suggested shares + proceeds. Uses portfolio props + live 52w-high fetch for the trailing stop.
 - **Batch DB**: `loadAnalysisSnapshotStore(symbols)` — 2 queries per universe
 - **Combined**: `0.60 × Technical + 0.40 × Fundamental`
 - **Signals**: ACCUMULATE / WATCH / HOLD / TRIM / AVOID / SELL (context-aware, not score bands alone)

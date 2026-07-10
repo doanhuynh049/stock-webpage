@@ -31,6 +31,7 @@ import {
 } from "@/lib/content/investment-principles";
 import { StockEvaluationPanel } from "@/components/analysis/stock-evaluation-panel";
 import { AverageDownPanel } from "@/components/analysis/average-down-panel";
+import { ExitStrategyPanel } from "@/components/analysis/exit-strategy-panel";
 import type { EnrichedHolding } from "@/lib/portfolio/holdings-enrichment";
 
 const EMPTY_BUNDLE: UniverseAnalysisBundle = {
@@ -41,7 +42,7 @@ const EMPTY_BUNDLE: UniverseAnalysisBundle = {
 
 type LazyUniverse = "vn30" | "vn100" | "etf";
 
-type MainTab = "portfolio" | "sector" | "etf" | "vn30" | "vn100" | "rules" | "principles" | "avg-down" | "swing";
+type MainTab = "portfolio" | "sector" | "etf" | "vn30" | "vn100" | "rules" | "principles" | "avg-down" | "exit" | "swing";
 type SubTab = "fundamental" | "technical" | "combined";
 
 const MAIN_TABS: { id: MainTab; label: string }[] = [
@@ -51,6 +52,7 @@ const MAIN_TABS: { id: MainTab; label: string }[] = [
   { id: "vn30", label: "VN30" },
   { id: "vn100", label: "VN100" },
   { id: "avg-down", label: "Avg Down" },
+  { id: "exit", label: "Exit Strategy" },
   { id: "swing", label: "Short Swing" },
   { id: "rules", label: "Scoring rules" },
   { id: "principles", label: "Principles" },
@@ -973,18 +975,23 @@ export function AnalysisView({
   const [vn30, setVn30] = useState<UniverseAnalysisBundle>(EMPTY_BUNDLE);
   const [vn100, setVn100] = useState<UniverseAnalysisBundle>(EMPTY_BUNDLE);
   const [etfBundle, setEtfBundle] = useState<EtfAnalysisRow[]>([]);
-  const [lazyLoading, setLazyLoading] = useState<LazyUniverse | null>(null);
+  // Track in-flight loads per universe so the active tab shows a spinner while
+  // background prefetch of the other universes stays silent.
+  const [loadingUniverses, setLoadingUniverses] = useState<Set<LazyUniverse>>(
+    () => new Set(),
+  );
   const loadedRef = useRef<Record<LazyUniverse, boolean>>({
     vn30: false,
     vn100: false,
     etf: false,
   });
+  const bgStartedRef = useRef(false);
   const owned = new Set((ownedSymbols ?? []).map((s) => s.toUpperCase()));
 
   const loadLazyUniverse = useCallback(async (universe: LazyUniverse) => {
     if (loadedRef.current[universe]) return;
     loadedRef.current[universe] = true;
-    setLazyLoading(universe);
+    setLoadingUniverses((prev) => new Set(prev).add(universe));
     try {
       const res = await fetch(`/api/analysis/bundle?universe=${universe}`);
       if (!res.ok) {
@@ -1001,15 +1008,55 @@ export function AnalysisView({
     } catch {
       loadedRef.current[universe] = false;
     } finally {
-      setLazyLoading(null);
+      setLoadingUniverses((prev) => {
+        const next = new Set(prev);
+        next.delete(universe);
+        return next;
+      });
     }
   }, []);
 
+  // Load the active lazy tab immediately when opened.
   useEffect(() => {
     if (mainTab === "vn30") void loadLazyUniverse("vn30");
     if (mainTab === "vn100") void loadLazyUniverse("vn100");
     if (mainTab === "etf") void loadLazyUniverse("etf");
   }, [mainTab, loadLazyUniverse]);
+
+  // Background-prefetch every lazy universe once, after first paint, so
+  // switching to VN30 / VN100 / ETF is instant. Runs sequentially and defers
+  // to browser idle time to avoid competing with the active tab's fetch.
+  useEffect(() => {
+    if (bgStartedRef.current) return;
+    bgStartedRef.current = true;
+    let cancelled = false;
+
+    const prefetchAll = () => {
+      if (cancelled) return;
+      // Fire all universes in parallel so the slowest (ETF) starts immediately
+      // instead of waiting behind VN30/VN100.
+      for (const universe of ["vn30", "vn100", "etf"] as LazyUniverse[]) {
+        void loadLazyUniverse(universe);
+      }
+    };
+
+    const win = window as Window & {
+      requestIdleCallback?: (cb: () => void) => number;
+      cancelIdleCallback?: (id: number) => void;
+    };
+    if (typeof win.requestIdleCallback === "function") {
+      const id = win.requestIdleCallback(() => prefetchAll());
+      return () => {
+        cancelled = true;
+        win.cancelIdleCallback?.(id);
+      };
+    }
+    const timer = setTimeout(() => prefetchAll(), 800);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [loadLazyUniverse]);
 
   const bundle =
     mainTab === "portfolio"
@@ -1029,7 +1076,7 @@ export function AnalysisView({
           ? INDEX_RULES.vn100
           : "";
 
-  const noSubTabs = mainTab === "rules" || mainTab === "principles" || mainTab === "sector" || mainTab === "etf" || mainTab === "avg-down" || mainTab === "swing";
+  const noSubTabs = mainTab === "rules" || mainTab === "principles" || mainTab === "sector" || mainTab === "etf" || mainTab === "avg-down" || mainTab === "exit" || mainTab === "swing";
 
   const selectedSymbol = selection?.row.symbol.toUpperCase() ?? null;
 
@@ -1054,6 +1101,13 @@ export function AnalysisView({
           </button>
         ))}
       </div>
+
+      {loadingUniverses.size > 0 && (
+        <p className="flex items-center gap-1.5 px-1 text-[10px] text-subtle">
+          <Loader2 className="h-3 w-3 animate-spin text-accent" />
+          Preparing {[...loadingUniverses].map((u) => u.toUpperCase()).join(" · ")} in background…
+        </p>
+      )}
 
       {!noSubTabs && (
         <div className="tab-scroll -mx-1 flex gap-1.5 overflow-x-auto pb-0.5">
@@ -1105,10 +1159,24 @@ export function AnalysisView({
             sectorAnalysis={sectorAnalysis}
           />
         </Card>
+      ) : mainTab === "exit" ? (
+        <Card className="!p-4">
+          <CardTitle className="!mb-1 !text-base">Exit Strategy Framework</CardTitle>
+          <p className="mb-4 text-xs text-muted">
+            6-factor sell analysis per holding — valuation, thesis, profit target, trailing stop,
+            concentration, and opportunity cost — with a number-driven action suggestion.
+          </p>
+          <ExitStrategyPanel
+            holdings={enrichedHoldings ?? []}
+            fundamentalRows={portfolio.fundamental}
+            combinedRows={portfolio.combined}
+            sectorAnalysis={sectorAnalysis}
+          />
+        </Card>
       ) : mainTab === "sector" && sectorAnalysis ? (
         <SectorAnalysisView data={sectorAnalysis} initialSectorTargets={sectorTargets} />
       ) : mainTab === "etf" ? (
-        lazyLoading === "etf" ? (
+        loadingUniverses.has("etf") && etfBundle.length === 0 ? (
           <Card className="!p-8">
             <div className="flex items-center justify-center gap-2 text-sm text-muted">
               <Loader2 className="h-4 w-4 animate-spin text-accent" />
@@ -1132,8 +1200,8 @@ export function AnalysisView({
               </p>
             )}
             <div className="table-scroll overflow-x-auto rounded-lg ring-1 ring-[var(--border)]">
-              {(mainTab === "vn30" && lazyLoading === "vn30") ||
-              (mainTab === "vn100" && lazyLoading === "vn100") ? (
+              {(mainTab === "vn30" && loadingUniverses.has("vn30") && vn30.combined.length === 0) ||
+              (mainTab === "vn100" && loadingUniverses.has("vn100") && vn100.combined.length === 0) ? (
                 <div className="flex items-center justify-center gap-2 py-12 text-sm text-muted">
                   <Loader2 className="h-4 w-4 animate-spin text-accent" />
                   Loading {mainTab.toUpperCase()} analysis…
