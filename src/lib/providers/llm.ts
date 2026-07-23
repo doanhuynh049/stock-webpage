@@ -19,9 +19,9 @@ export const LLM_PROVIDERS = [
     url:       "https://cloud.cerebras.ai",
     envKey:    "CEREBRAS_API_KEY",
     envModel:  "CEREBRAS_MODEL",
-    default:   "llama3.3-70b",
+    default:   "gpt-oss-120b",
     tier:      "Free 1M TPM",
-    speed:     "~800 tok/s",
+    speed:     "~2100 tok/s",
     modelsUrl: "https://api.cerebras.ai/v1/models",
   },
   {
@@ -98,15 +98,24 @@ export async function callLlm(
   const uk = opts?.apiKeys ?? {};
   const k  = (envVar: string | undefined, id: LlmProvider) => uk[id] || envVar || "";
 
-  // 1. Cerebras — ~800 tok/s, 1M TPM free
-  // Correct model name: llama3.3-70b (no hyphen before version)
+  // 1. Cerebras — ~2100 tok/s, 1M TPM free.
+  // NOTE: model availability is account-specific. This account serves reasoning
+  // models (gpt-oss-120b, zai-glm-4.7) + gemma-4-31b — NOT Llama. For reasoning
+  // models we pin reasoning_effort=low so the token budget is spent on the
+  // answer (JSON) rather than hidden reasoning.
   const cerebrasKey = k(process.env.CEREBRAS_API_KEY, "cerebras");
   if (cerebrasKey) {
+    const cerebrasModel = process.env.CEREBRAS_MODEL ?? "gpt-oss-120b";
+    const cerebrasBody = /oss|glm/i.test(cerebrasModel)
+      ? { reasoning_effort: "low" as const }
+      : undefined;
     try {
       const r = await callOpenAICompat("https://api.cerebras.ai/v1/chat/completions",
-        cerebrasKey, process.env.CEREBRAS_MODEL ?? "llama3.3-70b", fullMessages, maxTokens);
+        cerebrasKey, cerebrasModel, fullMessages, maxTokens, undefined, cerebrasBody);
       if (r) { console.log("[LLM] Using Cerebras"); return { ...r, provider: "cerebras" }; }
-    } catch (e) { console.error("[LLM] Cerebras error (falling through to next provider):", e); }
+    } catch (e) {
+      console.warn("[LLM] Cerebras failed (falling through):", e instanceof Error ? e.message : e);
+    }
   }
 
   // 2. Groq — 600 tok/s, 12k TPM free
@@ -163,6 +172,7 @@ async function callOpenAICompat(
   messages: LlmMessage[],
   maxTokens: number,
   extraHeaders?: Record<string, string>,
+  extraBody?: Record<string, unknown>,
 ): Promise<{ content: string; model: string } | null> {
   const res = await fetch(url, {
     method: "POST",
@@ -171,7 +181,13 @@ async function callOpenAICompat(
       "Content-Type": "application/json",
       ...extraHeaders,
     },
-    body: JSON.stringify({ model, messages, temperature: 0.6, max_tokens: maxTokens }),
+    body: JSON.stringify({
+      model,
+      messages,
+      temperature: 0.6,
+      max_tokens: maxTokens,
+      ...extraBody,
+    }),
   });
 
   if (!res.ok) {
@@ -234,7 +250,7 @@ export function getLlmStatus() {
 
   return {
     cerebras,   groq,     gemini,   mistral,   openrouter,
-    cerebrasModel:   process.env.CEREBRAS_MODEL   ?? "llama3.3-70b",
+    cerebrasModel:   process.env.CEREBRAS_MODEL   ?? "gpt-oss-120b",
     groqModel:       process.env.GROQ_MODEL        ?? "llama-3.3-70b-versatile",
     geminiModel:     process.env.GEMINI_MODEL      ?? "gemini-2.0-flash",
     mistralModel:    process.env.MISTRAL_MODEL     ?? "mistral-small-latest",

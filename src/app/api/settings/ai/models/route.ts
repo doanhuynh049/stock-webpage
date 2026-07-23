@@ -97,9 +97,10 @@ async function fetchModels(provider: string): Promise<ModelInfo[]> {
 function getFallbackModels(provider: string): ModelInfo[] {
   const fallbacks: Record<string, ModelInfo[]> = {
     cerebras: [
-      { id: "llama3.3-70b",  name: "Llama 3.3 70B" },
-      { id: "llama3.1-70b",  name: "Llama 3.1 70B" },
-      { id: "llama3.1-8b",   name: "Llama 3.1 8B" },
+      { id: "gpt-oss-120b",  name: "GPT-OSS 120B (reasoning)" },
+      { id: "zai-glm-4.7",   name: "GLM 4.7 (reasoning)" },
+      { id: "gemma-4-31b",   name: "Gemma 4 31B" },
+      { id: "llama-3.3-70b", name: "Llama 3.3 70B (if enabled)" },
     ],
     groq: [
       { id: "llama-3.3-70b-versatile",   name: "Llama 3.3 70B Versatile", contextLength: 128000 },

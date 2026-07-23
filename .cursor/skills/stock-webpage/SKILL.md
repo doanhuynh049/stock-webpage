@@ -41,6 +41,7 @@ description: >-
 | `/watchlist` | Quick-add panel + grid; cards show **"Added at" price + % change** stored in localStorage |
 | `/screener` | Auto-runs default filters on first visit (URL redirect) |
 | `/stocks/[symbol]` | Detail — **BackButton**, improved price chart (MA20 + volume), **Suggested Entry Price** (P/E & P/B fair value), ETF-specific layout when `isEtfSymbol()`; CachedNewsFeed |
+| `/analyst` | **Multi-agent Investment Analyst** — enter a ticker → 6 specialized agents → decision engine → rated report (verdict, stars, buy zone, target, thesis) |
 | `/ai-analyst` | Chat (Neon + localStorage session hydrate) |
 | `/settings` | Settings hub — account overview, links to sub-pages |
 | `/settings/ai` | AI provider config — keys, model selection, priority order |
@@ -79,7 +80,7 @@ Priority order (first enabled provider with a valid key wins):
 
 | # | Provider | Free tier | Model | Env var |
 |---|----------|-----------|-------|---------|
-| 1 | **Cerebras** | 1M TPM | `llama3.3-70b` | `CEREBRAS_API_KEY` |
+| 1 | **Cerebras** | 1M TPM | `gpt-oss-120b` | `CEREBRAS_API_KEY` |
 | 2 | **Groq** | 12k TPM | `llama-3.3-70b-versatile` | `GROQ_API_KEY` |
 | 3 | **Google Gemini** | 1.5M TPM · 1500 req/day | `gemini-2.0-flash` | `GEMINI_API_KEY` |
 | 4 | **Mistral AI** | Free trial | `mistral-small-latest` | `MISTRAL_API_KEY` |
@@ -92,14 +93,22 @@ Key points:
 - `callLlm(messages, context, opts)` accepts `opts.apiKeys` map for user-provided key overrides
 - `getLlmStatus()` returns active provider + all model names for display
 - **Chain logging (Jul 2026)**: each provider logs `[LLM] Using Cerebras/Groq/…` on success and `[LLM] … falling through to next provider` on error; final `[LLM] All providers failed — configure GROQ_API_KEY…` when hitting rule-based
-- **Cerebras model name**: correct ID is `llama3.3-70b` (no hyphen before `3.3`). `CEREBRAS_MODEL` env var must match. Fallback models list in `/api/settings/ai/models` also uses `llama3.3-70b`.
+- **Cerebras model name (Jul 2026 fix)**: model availability is **account-specific**. Older IDs `llama3.3-70b` / `llama-3.3-70b` now **404** on some accounts (`model_not_found`). This key's account serves **`gpt-oss-120b`**, `zai-glm-4.7`, `gemma-4-31b` — no Llama. Default + `CEREBRAS_MODEL` are now `gpt-oss-120b`. These are **reasoning models**, so `llm.ts` sends `reasoning_effort: "low"` (via `callOpenAICompat` `extraBody`) for any Cerebras model matching `/oss|glm/i` — otherwise reasoning tokens starve the JSON answer and it truncates. Verify a key's real models with `GET https://api.cerebras.ai/v1/models`.
 - **Rule-based fallback**: `stockMovers = []` always in fallback — features that need directional picks must derive them from `allItems` instead
 
 ---
 
 ## Analysis & scoring
 
-**Tabs**: Portfolio | Sector | ETF | VN30 | VN100 | Avg Down | **Exit Strategy** | **Short Swing** | Scoring rules | Principles
+**Tabs**: Portfolio | **AI Analyst** | Sector | ETF | VN30 | VN100 | Avg Down | **Exit Strategy** | **Short Swing** | Scoring rules | Principles
+
+### AI Analyst tab (Jul 2026) — auto-runs multi-agent analyst on holdings
+
+- `AiHoldingsPanel` (client, in `analysis-view.tsx`) — **auto-runs on tab open** (once, cached to `vnstocks:ai-holdings` for 30 min; "Re-run" button forces refresh).
+- Calls `GET /api/analyst/portfolio` → `runPortfolioAnalyst(userId)` in `src/lib/analyst/portfolio.ts`.
+- Pipeline: loads holdings (`getPortfolioWithStocks` + `enrichHoldings` for weight/P&L) → runs the 6-agent `runAnalyst(sym, {skipLlm:true})` **per holding in parallel** (deterministic, no per-holding LLM) → **one** portfolio-level LLM synthesis (`portfolioSynthesis`, rule fallback) for summary/actions/risks.
+- UI: value-weighted **health score /100**, verdict distribution chips, portfolio summary, Suggested Actions + Portfolio Risks columns, and a per-holding table (weight · P/L · conviction bar · verdict · action) with **expandable 6-agent breakdown** per row.
+- `runAnalyst` gained a `skipLlm?: boolean` opt so the per-stock orchestrator uses `ruleSynthesis` and makes zero LLM calls — keeps N-holdings cost to one LLM call total. (Note: `getStock` may still trigger the unknown-stock classifier LLM once per new ticker; that result is DB-cached.)
 
 - **Lazy + background loading**: VN30/VN100/ETF load on tab open and are also background-prefetched once after first paint (idle callback → sequential fetch of `/api/analysis/bundle`), so tab switches are instant. Portfolio + Sector still render server-side on first paint.
 - **Exit Strategy tab** (Jul 2026): `ExitStrategyPanel` — number-driven 6-factor sell framework (overvaluation, thesis, profit target, trailing stop, concentration, opportunity cost) → HOLD/TRIM/SELL verdict with suggested shares + proceeds. Uses portfolio props + live 52w-high fetch for the trailing stop.
@@ -135,6 +144,36 @@ Interactive stock screener for short-term swing trading:
 - Falls back to `buildRuleBasedEval(stock)` if LLM unavailable
 - Returns `StockEvalResult` from `src/app/api/stock-eval/route.ts`
 - **State persistence**: last evaluated ticker + result saved to `vnstocks:stock-eval-state` in localStorage; restored on mount so the result survives tab-switching
+
+---
+
+## Multi-Agent Investment Analyst (`/analyst`) — Jul 2026
+
+Professional "investment committee" for a single ticker. Orchestrator runs 6 **deterministic** specialist agents in parallel (fast, always work on free tiers), a **decision engine** blends their scores, and **one** LLM pass writes the narrative thesis (rule-based fallback).
+
+```
+POST /api/analyst { symbol }
+  → gatherAnalystContext(symbol)          # reuses getStock + getTechnicalSignals + analyzeStock + getNewsLive + getMarketSnapshot (1 batched Promise.all)
+  → [financial, valuation, technical, news, risk, macro] agents  # each returns AgentReport {score 0-100, stance, headline, bullets, metrics}
+  → decision engine: weighted blend → overallScore, stars, verdict, confidence, buy zone/target/stop
+  → llmSynthesis(agents) → thesis + reasons + risks  # falls back to ruleSynthesis
+  → InvestmentReport
+```
+
+**Key files** (`src/lib/analyst/`):
+| File | Role |
+|------|------|
+| `types.ts` | `AgentReport`, `ValuationDetail`, `InvestmentReport`, `Verdict` |
+| `context.ts` | `gatherAnalystContext(symbol)` — one batched data fetch; `findSignal()` |
+| `specialized.ts` | 6 pure agents: `financialAgent`, `valuationAgent` (returns `{report, detail}`), `technicalAgent`, `newsAgent` (keyword sentiment), `riskAgent` (safety score = 100−risk), `macroAgent` |
+| `orchestrator.ts` | `runAnalyst(symbol, {apiKeys?, skipLlm?})` — `WEIGHTS` blend (financial .26 / valuation .24 / technical .18 / risk .14 / news .10 / macro .08), `verdictFromScore`, `priceLevels`, LLM/rule `synthesis`; `skipLlm:true` → rule-based thesis, no LLM |
+| `portfolio.ts` | `runPortfolioAnalyst(userId)` — runs `runAnalyst` per holding (`skipLlm`), value-weighted health score, one portfolio-level LLM synthesis → `PortfolioAnalystResult`. Powers the `/analysis` **AI Analyst** tab |
+
+**Route**: `POST /api/analyst` (session auth) — loads per-user provider keys from `ai_response_cache` (`_ai_cfg_`), calls `runAnalyst`.
+**UI**: `src/app/analyst/page.tsx` (server, auth gate) + `src/components/analyst/analyst-report.tsx` (client). Persists last report to `vnstocks:analyst-report` (localStorage, restored on mount); supports `?symbol=`.
+**Naming**: folder is `src/lib/analyst/` (multi-agent report) — do NOT confuse with `src/lib/agent/` (the ReAct tool-loop for the `/ai-analyst` chat).
+
+**Verdicts**: `STRONG BUY | BUY | ACCUMULATE | HOLD | TRIM | AVOID`. Agents are rule-based by design; per-agent LLM deep-dives are a future extension (see roadmap in the analyst modules).
 
 ---
 

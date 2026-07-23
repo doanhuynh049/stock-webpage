@@ -32,6 +32,7 @@ import {
 import { StockEvaluationPanel } from "@/components/analysis/stock-evaluation-panel";
 import { AverageDownPanel } from "@/components/analysis/average-down-panel";
 import { ExitStrategyPanel } from "@/components/analysis/exit-strategy-panel";
+import { AiHoldingsPanel } from "@/components/analysis/ai-holdings-panel";
 import type { EnrichedHolding } from "@/lib/portfolio/holdings-enrichment";
 
 const EMPTY_BUNDLE: UniverseAnalysisBundle = {
@@ -42,11 +43,12 @@ const EMPTY_BUNDLE: UniverseAnalysisBundle = {
 
 type LazyUniverse = "vn30" | "vn100" | "etf";
 
-type MainTab = "portfolio" | "sector" | "etf" | "vn30" | "vn100" | "rules" | "principles" | "avg-down" | "exit" | "swing";
+type MainTab = "portfolio" | "sector" | "etf" | "vn30" | "vn100" | "rules" | "principles" | "avg-down" | "exit" | "swing" | "ai";
 type SubTab = "fundamental" | "technical" | "combined";
 
 const MAIN_TABS: { id: MainTab; label: string }[] = [
   { id: "portfolio", label: "Portfolio" },
+  { id: "ai", label: "AI Analyst" },
   { id: "sector", label: "Sector" },
   { id: "etf", label: "ETF" },
   { id: "vn30", label: "VN30" },
@@ -1076,7 +1078,7 @@ export function AnalysisView({
           ? INDEX_RULES.vn100
           : "";
 
-  const noSubTabs = mainTab === "rules" || mainTab === "principles" || mainTab === "sector" || mainTab === "etf" || mainTab === "avg-down" || mainTab === "exit" || mainTab === "swing";
+  const noSubTabs = mainTab === "rules" || mainTab === "principles" || mainTab === "sector" || mainTab === "etf" || mainTab === "avg-down" || mainTab === "exit" || mainTab === "swing" || mainTab === "ai";
 
   const selectedSymbol = selection?.row.symbol.toUpperCase() ?? null;
 
@@ -1138,7 +1140,9 @@ export function AnalysisView({
         />
       )}
 
-      {mainTab === "swing" ? (
+      {mainTab === "ai" ? (
+        <AiHoldingsPanel />
+      ) : mainTab === "swing" ? (
         <Card className="!p-4">
           <CardTitle className="!mb-1 !text-base">Short Swing Screener</CardTitle>
           <p className="mb-4 text-xs text-muted">

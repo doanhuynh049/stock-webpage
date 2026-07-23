@@ -16,6 +16,7 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 | `/portfolio` | `portfolio/page.tsx` | Server | Holdings ledger (sortable), allocation charts | `advisory-portfolio`, `holdings-enrichment`, `page-cache` |
 | `/watchlist` | `watchlist/page.tsx` | Server | **Quick-add panel** + watchlist grid; cards show **"Added at" price + % Δ** | `user-data`, `stocks` |
 | `/analysis` | `analysis/page.tsx` | Server | Portfolio / Sector / VN30 / VN100 / ETF / **Short Swing** screener / Scoring rules / **Principles** | `combined-analysis`, `sector-analysis`, `etf-analysis`, shared portfolio cache |
+| `/analyst` | `analyst/page.tsx` | Server | **Multi-agent Investment Analyst** — ticker → 6 agents → decision engine → rated report | `auth`; `AnalystReport` (client) → `/api/analyst` |
 | `/ai-analyst` | `ai-analyst/page.tsx` | Server | AI chat shell | `auth`; chat via `/api/ai` |
 | `/stocks/[symbol]` | `stocks/[symbol]/page.tsx` | Server | Stock detail: quote, charts, fundamentals | `stocks`, `stock-analysis`, `user-data`; news via **`CachedNewsFeed`** |
 | `/trading` | `trading/page.tsx` | Server | Trade ledger wrapper | `auth`; `TradingLedger` → `/api/trading` |
@@ -115,6 +116,7 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 | File | Type | Purpose |
 |------|------|---------|
 | `analysis-view.tsx` | Client | Tabs: Portfolio / Sector / ETF / VN30 / VN100 / Avg Down / **Exit Strategy** / **Short Swing** / Scoring rules / Principles; `TechnicalTable` has **current price (₫)** and **Volume Ratio** columns; passes VN30 symbols as `defaultSymbols` to `ShortSwingPanel`. **Lazy loading (Jul 2026)**: VN30/VN100/ETF load on tab open AND are **background-prefetched** once after first paint (`requestIdleCallback` → sequential `loadLazyUniverse`), so tab switches are instant. `loadingUniverses: Set<LazyUniverse>` drives per-tab spinners; a subtle "Preparing … in background" line shows while prefetch runs |
+| `ai-holdings-panel.tsx` | Client | **NEW (Jul 2026)** — `/analysis` **AI Analyst** tab. Auto-runs `GET /api/analyst/portfolio` on open (cached `vnstocks:ai-holdings` 30 min; Re-run button). Renders value-weighted health score, verdict chips, portfolio summary, actions/risks, and a per-holding table with expandable 6-agent breakdown |
 | `exit-strategy-panel.tsx` | Client | **NEW (Jul 2026)** — 6-factor sell/exit calculator per holding (left list sorted by gain% desc). Factors: **1** Overvaluation (P/E vs sector avg + growth-fair P/E), **2** Thesis (interactive intact/uncertain/broken + auto fundamental deterioration), **3** Profit target (editable +% vs gain%), **4** Trailing stop (editable peak = live 52w-high via `/api/stocks/{sym}?lite=true`, trail% slider), **5** Concentration/rebalance (weight vs 20/25% caps → exact shares to trim), **6** Better opportunity (combinedScore rank). Aggregates a `sellFraction` → verdict HOLD / CONSIDER TRIMMING / TAKE PARTIAL PROFITS / TRIM SUBSTANTIALLY / SELL / EXIT with suggested shares + proceeds. Collapsible "When to Sell" framework table. Same props as `AverageDownPanel` (holdings, fundamentalRows, combinedRows, sectorAnalysis) |
 | `sector-analysis-view.tsx` | Client | Per-sector leaders + trend leaders panel |
 | `analysis-detail-panel.tsx` | Client | Slide-over detail for scored row |
@@ -136,6 +138,12 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 | `strategy-page-client.tsx` | Client | Orchestrates editor + review |
 | `strategy-editor.tsx` | Client | Edit/save Core–Satellite config |
 | `strategy-review-view.tsx` | Client | Allocation compliance, STOP_LOSS / TRIM action items |
+
+### `analyst/`
+
+| File | Type | Purpose |
+|------|------|---------|
+| `analyst-report.tsx` | Client | **NEW (Jul 2026)** — Multi-agent report UI: ticker input, animated agent pipeline, verdict/stars/confidence header, thesis, buy zone/fair value/target/stop tiles, Why-Buy vs Risks columns, valuation card, 6 agent cards (score bar + metrics + bullets). Calls `POST /api/analyst`; persists last result to `vnstocks:analyst-report` |
 
 ### `ai-analyst/`
 
@@ -178,6 +186,8 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 | `vnstocks:portfolio-holdings` | 24h | `HoldingsLedger` — fast reload after edit |
 | `vnstocks:watchlist-add-{SYMBOL}` | permanent | `WatchlistGrid` — "Added at" price display |
 | `vnstocks:stock-eval-state` | permanent | `StockEvaluationPanel` — last ticker + full result; restored on mount |
+| `vnstocks:analyst-report` | permanent | `AnalystReport` (`/analyst`) — last multi-agent `InvestmentReport`; restored on mount |
+| `vnstocks:ai-holdings` | 30 min | `AiHoldingsPanel` (`/analysis` AI Analyst tab) — last `PortfolioAnalystResult` |
 
 ---
 
@@ -265,6 +275,8 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 
 | Module | Purpose |
 |--------|---------|
+| `analyst/*` | **Multi-agent Investment Analyst** — `orchestrator.ts` (`runAnalyst`), `specialized.ts` (6 agents), `context.ts` (`gatherAnalystContext`), `types.ts`. Deterministic agents + weighted decision engine + LLM thesis synthesis. **Distinct from `agent/` (chat tool-loop).** |
+| `agent/agent-loop.ts` | ReAct tool-calling loop for the `/ai-analyst` chat (`runAgent`) |
 | `ai-analyst.ts` | Rule-based fallback Q&A |
 | `providers/llm.ts` | **5-provider chain** (Cerebras → Groq → Gemini → Mistral → OpenRouter → fallback); `LLM_PROVIDERS` metadata array; `callLlm(messages, context, opts)` accepts `opts.apiKeys` for user-supplied key overrides; `getLlmStatus()` |
 | `page-cache.ts` | `unstable_cache` wrapper + TTL |
@@ -291,6 +303,8 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 | `/api/trading` | GET, POST | Trades list/add; `dateFrom`/`dateTo` filters | Session |
 | `/api/trading/[id]` | PUT, DELETE | Update/delete trade | Session |
 | `/api/strategy` | GET, PUT, DELETE | Strategy config | Session |
+| `/api/analyst` | POST | **Multi-agent investment report** (`{symbol}` → `InvestmentReport`); runs 6 agents + decision engine + LLM thesis; loads per-user provider keys | Session |
+| `/api/analyst/portfolio` | GET | **Auto portfolio review** — runs the analyst per holding (`skipLlm`) + one portfolio-level LLM synthesis → `PortfolioAnalystResult`. Powers `/analysis` AI Analyst tab | Session |
 | `/api/ai` | POST | AI analyst Q&A | Session |
 | `/api/ai/session` | GET, DELETE | Chat session | Session |
 | `/api/stock-eval` | GET | 8-category AI stock evaluation (`?symbol=FPT`); 5-provider LLM; rule-based fallback | Session |

@@ -2,6 +2,7 @@ import {
   ArrowLeftRight,
   BarChart3,
   Bot,
+  BrainCircuit,
   Filter,
   LayoutDashboard,
   Newspaper,
@@ -27,5 +28,6 @@ export const navItems: NavItem[] = [
   { href: "/trading", label: "Trading", icon: ArrowLeftRight, desc: "BUY/SELL ledger" },
   { href: "/analysis", label: "Analysis", icon: BarChart3, desc: "Scores & picks" },
   { href: "/watchlist", label: "Watchlist", icon: Star, desc: "Favorites" },
+  { href: "/analyst", label: "Analyst AI", icon: BrainCircuit, desc: "Multi-agent report" },
   { href: "/ai-analyst", label: "AI Analyst", icon: Bot, desc: "Ask anything" },
 ];
