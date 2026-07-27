@@ -10,6 +10,7 @@ import {
   technicalAgent,
   valuationAgent,
 } from "@/lib/analyst/specialized";
+import { TECHNICAL_TIMING_THRESHOLD } from "@/lib/analysis/technical-scoring";
 import type {
   AgentId,
   AgentReport,
@@ -75,14 +76,19 @@ function priceLevels(ctx: AnalystContext, fair: number | null, verdict: Verdict)
 
 type Synthesis = { thesis: string; reasons: string[]; risks: string[] };
 
+const bullishVerdict = (v: Verdict) => v === "STRONG BUY" || v === "BUY" || v === "ACCUMULATE";
+
 function ruleSynthesis(
   ctx: AnalystContext,
   agents: AgentReport[],
   verdict: Verdict,
+  timingConfirmed: boolean,
 ): Synthesis {
   const bullish = agents.filter((a) => a.stance === "Bullish").sort((a, b) => b.score - a.score);
   const bearish = agents.filter((a) => a.stance === "Bearish").sort((a, b) => a.score - b.score);
   const risk = agents.find((a) => a.id === "risk");
+  const technical = agents.find((a) => a.id === "technical");
+  const timingWarning = bullishVerdict(verdict) && !timingConfirmed;
 
   const reasons = bullish.slice(0, 4).map((a) => `${a.title}: ${a.headline}`);
   if (!reasons.length) reasons.push(...agents.sort((a, b) => b.score - a.score).slice(0, 2).map((a) => `${a.title}: ${a.headline}`));
@@ -91,14 +97,22 @@ function ruleSynthesis(
     ...(risk?.bullets.slice(0, 2) ?? []),
     ...bearish.slice(0, 2).map((a) => `${a.title}: ${a.headline}`),
   ].slice(0, 4);
+  if (timingWarning) {
+    risks.unshift(
+      `Technical setup is weak (score ${technical?.score ?? "?"}/100) despite the ${verdict} conviction — the chart hasn't confirmed a turn yet, so a value trap is possible.`,
+    );
+  }
   if (!risks.length) risks.push("No major red flags detected, but all equity investments carry market risk.");
 
   const thesis =
     `${ctx.stock.name} (${ctx.stock.symbol}) rates ${verdict} on a blended multi-agent read. ` +
     `Strongest support comes from ${bullish[0]?.title ?? "the overall balance of factors"}; ` +
-    `the main watch-out is ${bearish[0]?.title ?? risk?.title ?? "general market risk"}.`;
+    `the main watch-out is ${bearish[0]?.title ?? risk?.title ?? "general market risk"}.` +
+    (timingWarning
+      ? ` Fundamentals/valuation support the case, but technicals haven't confirmed — consider phasing in or waiting for the chart to turn before adding.`
+      : "");
 
-  return { thesis, reasons, risks };
+  return { thesis, reasons, risks: risks.slice(0, 4) };
 }
 
 async function llmSynthesis(
@@ -106,14 +120,17 @@ async function llmSynthesis(
   agents: AgentReport[],
   verdict: Verdict,
   overallScore: number,
+  timingConfirmed: boolean,
   apiKeys?: LlmApiKeys,
 ): Promise<{ synthesis: Synthesis; provider: string }> {
   const agentSummary = agents
     .map((a) => `- ${a.title} [${a.stance}, ${a.score}/100]: ${a.headline}. ${a.bullets.slice(0, 3).join(" ")}`)
     .join("\n");
+  const timingWarning = bullishVerdict(verdict) && !timingConfirmed;
 
   const system = `You are the lead portfolio manager synthesizing reports from six specialist analysts (Company, Valuation, Technical, News, Risk, Macro) into one investment view for a Vietnamese-market investor.
 The decision engine has already computed an overall score of ${overallScore}/100 and a verdict of "${verdict}". Do NOT contradict the verdict; explain it.
+${timingWarning ? `IMPORTANT: the verdict is bullish but the Technical agent is weak (timing NOT confirmed). Do not recommend buying/adding immediately — say the fundamentals/valuation case is good but the chart hasn't turned yet, and to wait for technical confirmation (or phase in) rather than adding in size now. Include this explicitly as the top risk.` : ""}
 Use ONLY the analyst findings provided. Be concise, specific, and honest about risk.
 Return ONLY valid JSON (no markdown fences):
 {"thesis":"2-3 sentence investment thesis","reasons":["3-5 concise bullish/support points"],"risks":["3-5 concise risks or watch-outs"]}`;
@@ -140,11 +157,12 @@ Return JSON only.`;
         .trim();
       const parsed = JSON.parse(raw) as Partial<Synthesis>;
       if (parsed.thesis) {
+        const fb = ruleSynthesis(ctx, agents, verdict, timingConfirmed);
         return {
           synthesis: {
             thesis: parsed.thesis,
-            reasons: parsed.reasons?.length ? parsed.reasons : ruleSynthesis(ctx, agents, verdict).reasons,
-            risks: parsed.risks?.length ? parsed.risks : ruleSynthesis(ctx, agents, verdict).risks,
+            reasons: parsed.reasons?.length ? parsed.reasons : fb.reasons,
+            risks: parsed.risks?.length ? parsed.risks : fb.risks,
           },
           provider: res.provider,
         };
@@ -154,7 +172,7 @@ Return JSON only.`;
     }
   }
 
-  return { synthesis: ruleSynthesis(ctx, agents, verdict), provider: "rule-based" };
+  return { synthesis: ruleSynthesis(ctx, agents, verdict, timingConfirmed), provider: "rule-based" };
 }
 
 // ─── main entry ──────────────────────────────────────────────────────────────
@@ -193,9 +211,13 @@ export async function runAnalyst(
 
   const levels = priceLevels(ctx, valuationDetail.intrinsicValue, verdict);
 
+  // Reconcile conviction (fundamentals/valuation-heavy) with near-term timing
+  // (technical-only) — same threshold the Combined tab uses to veto AVOID/SELL.
+  const timingConfirmed = technical.score >= TECHNICAL_TIMING_THRESHOLD;
+
   const { synthesis, provider } = opts?.skipLlm
-    ? { synthesis: ruleSynthesis(ctx, agents, verdict), provider: "rule-based" }
-    : await llmSynthesis(ctx, agents, verdict, overallScore, opts?.apiKeys);
+    ? { synthesis: ruleSynthesis(ctx, agents, verdict, timingConfirmed), provider: "rule-based" }
+    : await llmSynthesis(ctx, agents, verdict, overallScore, timingConfirmed, opts?.apiKeys);
 
   return {
     symbol: ctx.stock.symbol,
@@ -208,6 +230,7 @@ export async function runAnalyst(
     stars,
     verdict,
     confidence,
+    timingConfirmed,
     thesis: synthesis.thesis,
     reasons: synthesis.reasons,
     risks: synthesis.risks,

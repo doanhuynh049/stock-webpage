@@ -6,6 +6,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  Clock,
   Loader2,
   RefreshCw,
   Sparkles,
@@ -32,9 +33,13 @@ function verdictVariant(verdict: Verdict): "success" | "danger" | "warning" | "i
 
 function actionVariant(action: HoldingAnalysis["action"]): "success" | "danger" | "warning" | "info" {
   if (action === "ACCUMULATE") return "success";
-  if (action === "TRIM") return "warning";
+  if (action === "TRIM" || action === "WAIT") return "warning";
   if (action === "REVIEW") return "danger";
   return "info";
+}
+
+function actionLabel(action: HoldingAnalysis["action"]): string {
+  return action === "WAIT" ? "WAIT" : action;
 }
 
 function scoreColor(score: number): string {
@@ -107,13 +112,29 @@ function HoldingRow({ h }: { h: HoldingAnalysis }) {
         <div className="w-24 shrink-0" title="Analytical rating from the 6-agent score">
           <Badge variant={verdictVariant(h.verdict)}>{h.verdict}</Badge>
         </div>
-        <div className="hidden w-24 shrink-0 sm:block" title="Suggested action given this rating + your P/L">
-          <Badge variant={actionVariant(h.action)}>{h.action}</Badge>
+        <div
+          className="hidden w-24 shrink-0 sm:block"
+          title={
+            h.action === "WAIT"
+              ? "Fundamentals/valuation are attractive per the verdict, but the technical setup hasn't confirmed a turn yet — wait for confirmation before adding new capital."
+              : "Suggested action given this rating + your P/L"
+          }
+        >
+          <Badge variant={actionVariant(h.action)}>{actionLabel(h.action)}</Badge>
         </div>
       </button>
 
       {open && (
         <div className="space-y-3 border-t border-[var(--border)] px-3 py-3">
+          {!h.timingConfirmed && (
+            <p className="flex items-center gap-1.5 rounded-lg bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-600 ring-1 ring-amber-500/20 dark:text-amber-400">
+              <Clock className="h-3.5 w-3.5 shrink-0" />
+              <span>
+                Timing not confirmed — technical score {h.technicalScore}/100. The verdict above reflects long-term
+                conviction (fundamentals + valuation); consider waiting for the chart to turn before adding.
+              </span>
+            </p>
+          )}
           <div className="grid gap-2 md:grid-cols-2">
             <p className="flex gap-1.5 text-xs text-[var(--fg)]">
               <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-500" />
@@ -269,7 +290,9 @@ export function AiHoldingsPanel() {
             <CardTitle className="!mb-1 !text-base">Per-Holding Verdicts</CardTitle>
             <p className="mb-3 text-[11px] text-muted">
               <span className="font-semibold">Verdict</span> = analytical rating from the 6-agent score ·
-              <span className="font-semibold"> Action</span> = what to do given that rating + your current P/L.
+              <span className="font-semibold"> Action</span> = what to do given that rating + your current P/L ·
+              <span className="font-semibold"> WAIT</span> = verdict is bullish but the technical chart hasn&apos;t
+              confirmed the turn yet — reconciles conviction with entry timing instead of ignoring it.
               Click a row for the full agent breakdown.
             </p>
             <div className="mb-2 hidden items-center gap-3 px-3 text-[10px] uppercase tracking-wider text-subtle sm:flex">

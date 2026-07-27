@@ -72,6 +72,13 @@ export type InvestmentReport = {
   stars: number;
   verdict: Verdict;
   confidence: "HIGH" | "MEDIUM" | "LOW";
+  /**
+   * True when the Technical agent's own score clears TECHNICAL_TIMING_THRESHOLD.
+   * A bullish verdict with `timingConfirmed: false` means the fundamentals /
+   * valuation story is good but the chart hasn't turned yet — reconciles the
+   * conviction score (long-term view) with near-term entry timing.
+   */
+  timingConfirmed: boolean;
 
   thesis: string;
   reasons: string[];

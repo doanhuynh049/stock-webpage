@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   BrainCircuit,
   CheckCircle2,
+  Clock,
   Loader2,
   Search,
   Sparkles,
@@ -264,6 +265,8 @@ export function AnalystReport({ initialSymbol }: { initialSymbol?: string }) {
 function ReportBody({ report }: { report: InvestmentReport }) {
   const vt = verdictTone(report.verdict);
   const v = report.valuation;
+  const bullish = report.verdict === "STRONG BUY" || report.verdict === "BUY" || report.verdict === "ACCUMULATE";
+  const timingWarning = bullish && !report.timingConfirmed;
   return (
     <div className="space-y-6 animate-fade-up">
       {/* Verdict header */}
@@ -273,6 +276,9 @@ function ReportBody({ report }: { report: InvestmentReport }) {
             <div className="flex items-center gap-2">
               <h2 className="truncate text-xl font-bold">{report.symbol}</h2>
               <Badge variant={vt.variant} className="px-2.5 py-1 text-xs font-semibold">{report.verdict}</Badge>
+              <Badge variant={report.timingConfirmed ? "success" : "warning"}>
+                {report.timingConfirmed ? "Timing confirmed" : "Timing not confirmed"}
+              </Badge>
             </div>
             <p className="truncate text-sm text-muted">{report.name} · {report.sector}</p>
             <p className="mt-1 font-mono text-sm">
@@ -292,6 +298,17 @@ function ReportBody({ report }: { report: InvestmentReport }) {
         <p className="mt-4 rounded-xl bg-[var(--bg-secondary)] p-4 text-sm leading-relaxed text-[var(--fg)]">
           {report.thesis}
         </p>
+
+        {timingWarning && (
+          <p className="mt-3 flex items-start gap-2 rounded-xl bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-600 ring-1 ring-amber-500/20 dark:text-amber-400">
+            <Clock className="mt-0.5 h-4 w-4 shrink-0" />
+            <span>
+              This {report.verdict} is driven by fundamentals/valuation — the Technical agent hasn&apos;t confirmed a
+              turn yet. Consider phasing in gradually or waiting for the chart to improve (price back above the
+              50-day average, RSI recovering) rather than adding in size now.
+            </span>
+          </p>
+        )}
       </Card>
 
       {/* Trade levels */}

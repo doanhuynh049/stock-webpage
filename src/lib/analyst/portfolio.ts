@@ -9,7 +9,7 @@ import { runAnalyst } from "@/lib/analyst/orchestrator";
 import type { AgentReport, InvestmentReport, Verdict } from "@/lib/analyst/types";
 import { callLlm, type LlmApiKeys } from "@/lib/providers/llm";
 
-export type HoldingAction = "ACCUMULATE" | "HOLD" | "TRIM" | "REVIEW";
+export type HoldingAction = "ACCUMULATE" | "HOLD" | "TRIM" | "REVIEW" | "WAIT";
 
 export type HoldingAnalysis = {
   symbol: string;
@@ -22,6 +22,10 @@ export type HoldingAnalysis = {
   stars: number;
   verdict: Verdict;
   confidence: "HIGH" | "MEDIUM" | "LOW";
+  /** Technical agent's own score (0–100) — the near-term timing signal. */
+  technicalScore: number;
+  /** False when verdict is bullish but the technical setup hasn't confirmed the turn. */
+  timingConfirmed: boolean;
   action: HoldingAction;
   topReason: string;
   topRisk: string;
@@ -40,8 +44,14 @@ export type PortfolioAnalystResult = {
   provider: string;
 };
 
-function actionFromVerdict(verdict: Verdict, gainPct: number | null): HoldingAction {
-  if (verdict === "STRONG BUY" || verdict === "BUY" || verdict === "ACCUMULATE") return "ACCUMULATE";
+function actionFromVerdict(verdict: Verdict, gainPct: number | null, timingConfirmed: boolean): HoldingAction {
+  const bullish = verdict === "STRONG BUY" || verdict === "BUY" || verdict === "ACCUMULATE";
+  if (bullish) {
+    // Conviction (fundamentals/valuation) says buy, but the chart hasn't
+    // confirmed the turn — recommend waiting/phasing in rather than adding
+    // in size, instead of silently ignoring the weak technical read.
+    return timingConfirmed ? "ACCUMULATE" : "WAIT";
+  }
   if (verdict === "AVOID") return "REVIEW";
   if (verdict === "TRIM") return "TRIM";
   // HOLD — but flag deep losers for review.
@@ -57,7 +67,7 @@ async function portfolioSynthesis(
   const lines = holdings
     .map(
       (h) =>
-        `- ${h.symbol} (${h.sector}, ${h.weightPct != null ? h.weightPct.toFixed(0) : "?"}% weight, P/L ${h.gainPct != null ? h.gainPct.toFixed(0) + "%" : "n/a"}): ${h.verdict} ${h.overallScore}/100 → ${h.action}. Risk: ${h.topRisk}`,
+        `- ${h.symbol} (${h.sector}, ${h.weightPct != null ? h.weightPct.toFixed(0) : "?"}% weight, P/L ${h.gainPct != null ? h.gainPct.toFixed(0) + "%" : "n/a"}): ${h.verdict} ${h.overallScore}/100 → ${h.action}${h.action === "WAIT" ? " (timing NOT confirmed — technical score " + h.technicalScore + "/100)" : ""}. Risk: ${h.topRisk}`,
     )
     .join("\n");
 
@@ -65,10 +75,15 @@ async function portfolioSynthesis(
     const trims = holdings.filter((h) => h.action === "TRIM").map((h) => h.symbol);
     const reviews = holdings.filter((h) => h.action === "REVIEW").map((h) => h.symbol);
     const adds = holdings.filter((h) => h.action === "ACCUMULATE").map((h) => h.symbol);
+    const waits = holdings.filter((h) => h.action === "WAIT").map((h) => h.symbol);
     const actions: string[] = [];
     if (trims.length) actions.push(`Consider trimming overvalued/extended names: ${trims.join(", ")}.`);
     if (reviews.length) actions.push(`Review weak positions for a possible exit: ${reviews.join(", ")}.`);
-    if (adds.length) actions.push(`Highest-conviction adds on weakness: ${adds.slice(0, 5).join(", ")}.`);
+    if (adds.length) actions.push(`Highest-conviction adds with confirmed timing: ${adds.slice(0, 5).join(", ")}.`);
+    if (waits.length)
+      actions.push(
+        `Hold off adding to ${waits.join(", ")} — fundamentals/valuation look attractive but the chart hasn't confirmed a turn; wait for price to reclaim its 50-day average or RSI to improve before committing new capital.`,
+      );
     if (!actions.length) actions.push("Portfolio is broadly balanced — hold and monitor.");
 
     const risks = holdings
@@ -76,18 +91,24 @@ async function portfolioSynthesis(
       .sort((a, b) => a.overallScore - b.overallScore)
       .slice(0, 3)
       .map((h) => `${h.symbol}: ${h.topRisk}`);
+    if (waits.length) {
+      risks.unshift(
+        `${waits.length} position(s) score well fundamentally but are technically weak (${waits.join(", ")}) — possible value traps if the downtrend continues.`,
+      );
+    }
 
     const summary = `Portfolio health scores ${healthScore}/100 across ${holdings.length} positions. ` +
-      `${adds.length} accumulate · ${holdings.filter((h) => h.action === "HOLD").length} hold · ${trims.length} trim · ${reviews.length} review.`;
-    return { summary, actions, risks, provider: "rule-based" };
+      `${adds.length} accumulate now · ${waits.length} wait for timing confirmation · ${holdings.filter((h) => h.action === "HOLD").length} hold · ${trims.length} trim · ${reviews.length} review.`;
+    return { summary, actions, risks: risks.slice(0, 4), provider: "rule-based" };
   };
 
   if (!holdings.length) return { summary: "No holdings to analyze.", actions: [], risks: [], provider: "rule-based" };
 
   const system = `You are a portfolio manager reviewing a Vietnamese-equity portfolio. Each position already has a verdict and conviction score from a multi-agent analyst.
 Write a concise, actionable portfolio review. Do NOT contradict the per-position verdicts — prioritize and connect them.
+IMPORTANT: some bullish positions are marked "(timing NOT confirmed)" — their fundamentals/valuation are good but the technical chart hasn't turned yet. For those, do NOT recommend adding/accumulating now; instead say to wait for technical confirmation (price reclaiming the 50-day average, RSI improving) or phase in gradually. Only recommend adding now to positions WITHOUT that flag.
 Return ONLY valid JSON (no markdown fences):
-{"summary":"2-3 sentence portfolio health overview","actions":["3-5 concrete, prioritized actions (trim/add/review specific tickers)"],"risks":["3-4 portfolio-level risks: concentration, sector, valuation"]}`;
+{"summary":"2-3 sentence portfolio health overview","actions":["3-5 concrete, prioritized actions (trim/add-now/wait-and-confirm/review specific tickers)"],"risks":["3-4 portfolio-level risks: concentration, sector, valuation, value-trap timing"]}`;
 
   const user = `Portfolio health score: ${healthScore}/100. Positions:\n${lines}\n\nReturn JSON only.`;
 
@@ -142,6 +163,7 @@ export async function runPortfolioAnalyst(
     .map(({ h, report }) => {
       const weightPct =
         totalValueK > 0 && h.currentValueK != null ? (h.currentValueK / totalValueK) * 100 : null;
+      const technicalScore = report.agents.find((a) => a.id === "technical")?.score ?? 50;
       return {
         symbol: report.symbol,
         name: report.name,
@@ -153,7 +175,9 @@ export async function runPortfolioAnalyst(
         stars: report.stars,
         verdict: report.verdict,
         confidence: report.confidence,
-        action: actionFromVerdict(report.verdict, h.gainPct),
+        technicalScore,
+        timingConfirmed: report.timingConfirmed,
+        action: actionFromVerdict(report.verdict, h.gainPct, report.timingConfirmed),
         topReason: report.reasons[0] ?? report.thesis,
         topRisk: report.risks[0] ?? "General market risk.",
         agents: report.agents,

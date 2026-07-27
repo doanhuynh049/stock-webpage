@@ -1,3 +1,11 @@
+/**
+ * Below this technical score, price action is considered too weak to act on —
+ * used both as the Combined-tab veto (forces AVOID/SELL regardless of
+ * fundamentals) and as the AI Analyst's "timing confirmed" gate, so the two
+ * surfaces agree on what "weak technical setup" means.
+ */
+export const TECHNICAL_TIMING_THRESHOLD = 45;
+
 export type TechnicalIndicators = {
   rsi?: number | null;
   sma20?: number | null;
@@ -194,7 +202,7 @@ export function getRecommendationFromScore(
     if (combined < 35) return "SELL";
   }
 
-  if (combined < 50 || technical < 45) return "AVOID";
+  if (combined < 50 || technical < TECHNICAL_TIMING_THRESHOLD) return "AVOID";
   if (nearResistance && rsiOverbought) return "TRIM";
 
   return "HOLD";
