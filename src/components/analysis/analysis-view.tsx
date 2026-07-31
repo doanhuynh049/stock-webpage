@@ -779,7 +779,7 @@ function ShortSwingPanel({ defaultSymbols }: { defaultSymbols: string[] }) {
                     )}
                   </td>
                   <td className="px-2 py-2 text-right font-mono">{r.price > 0 ? r.price.toLocaleString("vi-VN") : "—"}</td>
-                  <td className={`px-2 py-2 text-center font-mono ${r.changePercent >= 0 ? "text-success" : "text-danger"}`}>
+                  <td className={`px-2 py-2 text-center font-data ${r.changePercent >= 0 ? "text-gain" : "text-loss"}`}>
                     {r.price > 0 ? `${r.changePercent >= 0 ? "+" : ""}${r.changePercent.toFixed(2)}%` : "—"}
                   </td>
                   <td className="px-2 py-2 text-center font-mono">{r.price > 0 ? r.rsi.toFixed(0) : "—"}</td>

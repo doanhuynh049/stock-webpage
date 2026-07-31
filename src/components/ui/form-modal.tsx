@@ -40,7 +40,7 @@ export function FormModal({
         aria-labelledby="form-modal-title"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="h-1 shrink-0 bg-gradient-to-r from-[var(--accent)] via-emerald-400 to-cyan-400" />
+        <div className="h-1 shrink-0 bg-[var(--accent)]" />
 
         <div className="flex items-start justify-between gap-3 border-b border-[var(--border)] px-4 py-3.5 sm:px-5">
           <div className="min-w-0">

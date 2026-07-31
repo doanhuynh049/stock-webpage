@@ -1,5 +1,4 @@
-import { changeColor, formatPercent } from "@/lib/utils";
-import { cn } from "@/lib/utils";
+import { formatPercent, cn } from "@/lib/utils";
 import { TrendingDown, TrendingUp } from "lucide-react";
 
 export function ChangeBadge({
@@ -17,9 +16,9 @@ export function ChangeBadge({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-mono text-sm font-semibold",
-        positive && "bg-[var(--accent-bg)] text-success",
-        negative && "bg-red-500/10 text-danger",
+        "inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 font-data text-sm font-semibold",
+        positive && "bg-[var(--gain-bg)] text-gain",
+        negative && "bg-[var(--loss-bg)] text-loss",
         !positive && !negative && "bg-[var(--bg-secondary)] text-subtle",
         className,
       )}

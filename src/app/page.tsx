@@ -69,7 +69,7 @@ export default async function DashboardPage() {
               <p className="text-xs font-semibold uppercase tracking-widest text-subtle">
                 VN-Index
               </p>
-              <p className="mt-2 font-mono text-5xl font-bold tracking-tight text-[var(--fg)] sm:text-6xl">
+              <p className="mt-2 font-data text-5xl font-bold tracking-tight text-[var(--fg)] sm:text-6xl">
                 {vnindex.value.toLocaleString()}
               </p>
               <div className="mt-3 flex items-center gap-3">
@@ -86,7 +86,7 @@ export default async function DashboardPage() {
                   <p className="text-[10px] font-semibold uppercase tracking-wider text-subtle">
                     {idx.symbol}
                   </p>
-                  <p className="font-mono text-lg font-bold text-[var(--fg)]">
+                  <p className="font-data text-lg font-bold text-[var(--fg)]">
                     {idx.value.toLocaleString()}
                   </p>
                   <ChangeBadge value={idx.changePercent} className="mt-1 text-xs" />
@@ -103,14 +103,14 @@ export default async function DashboardPage() {
           value={formatVolume(market.stats.totalVolume)}
           subValue="shares matched"
           icon={BarChart3}
-          accent="emerald"
+          accent="accent"
         />
         <StatCard
           label="Matched Value"
           value={`${market.stats.totalValue.toLocaleString()} tỷ`}
           subValue="VND billion"
           icon={Activity}
-          accent="cyan"
+          accent="neutral"
         />
         <StatCard
           label="Foreign Net Buy"

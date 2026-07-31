@@ -1,4 +1,5 @@
 ---
+name: auto-update-monitoring
 description: >-
   Rules for working with, debugging, and extending the three auto-update
   pipelines: market quotes, VN30/VN100 index composition, and unknown stock

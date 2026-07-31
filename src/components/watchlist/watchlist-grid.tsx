@@ -108,8 +108,8 @@ export function WatchlistGrid({ items }: { items: WatchlistItem[] }) {
                 <span className="font-mono">{addPrice.toLocaleString("vi-VN")} ₫</span>
                 {priceDiff != null && (
                   <span
-                    className={`font-semibold ${
-                      priceDiff >= 0 ? "text-success" : "text-danger"
+                    className={`font-data font-semibold ${
+                      priceDiff >= 0 ? "text-gain" : "text-loss"
                     }`}
                   >
                     {priceDiff >= 0 ? "+" : ""}

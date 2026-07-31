@@ -28,7 +28,7 @@ export function FinancialChart({
             borderRadius: "12px",
           }}
         />
-        <Bar dataKey="revenue" fill="#34d399" name="Revenue (B)" radius={[6, 6, 0, 0]} />
+        <Bar dataKey="revenue" fill="#b8792a" name="Revenue (B)" radius={[6, 6, 0, 0]} />
         <Bar dataKey="profit" fill="#22d3ee" name="Net Profit (B)" radius={[6, 6, 0, 0]} />
       </BarChart>
     </ResponsiveContainer>

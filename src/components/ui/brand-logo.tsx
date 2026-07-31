@@ -16,7 +16,7 @@ export function BrandLogo({
   return (
     <div
       className={cn(
-        "relative flex shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 shadow-md ring-1 ring-white/20",
+        "relative flex shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[var(--accent)] shadow-sm ring-1 ring-[var(--border-strong)]",
         sizes[size],
         className,
       )}
@@ -30,19 +30,19 @@ export function BrandLogo({
       >
         <path
           d="M6 22 L11 16 L15 19 L21 10 L26 14"
-          stroke="white"
+          stroke="var(--accent-fg)"
           strokeWidth="2.2"
           strokeLinecap="round"
           strokeLinejoin="round"
         />
         <path
           d="M6 24 H26"
-          stroke="white"
+          stroke="var(--accent-fg)"
           strokeWidth="1.5"
           strokeLinecap="round"
           opacity="0.55"
         />
-        <circle cx="26" cy="14" r="2" fill="#a7f3d0" />
+        <circle cx="26" cy="14" r="2" fill="var(--accent-fg)" opacity="0.75" />
       </svg>
     </div>
   );

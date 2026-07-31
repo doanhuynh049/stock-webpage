@@ -33,7 +33,7 @@ export function Sidebar({
   return (
     <aside
       className={cn(
-        "flex h-full flex-col border-r border-[var(--border)] bg-[var(--sidebar)] backdrop-blur-xl",
+        "flex h-full flex-col border-r border-[var(--border)] bg-[var(--sidebar)]",
         compact ? "w-[4.5rem]" : "w-[248px]",
         mobile &&
           "fixed inset-y-0 left-0 z-50 w-[min(100vw-3rem,280px)] shadow-2xl transition-transform duration-200 ease-out safe-top safe-bottom",
@@ -58,7 +58,7 @@ export function Sidebar({
               <BrandLogo size="md" />
               <div className="min-w-0">
                 <div className="font-semibold tracking-tight text-[var(--fg)]">VN Stocks</div>
-                <div className="text-[10px] font-medium uppercase tracking-widest text-[var(--fg-subtle)]">
+                <div className="font-data text-[10px] font-medium uppercase tracking-widest text-[var(--fg-subtle)]">
                   Vietnam Market
                 </div>
               </div>

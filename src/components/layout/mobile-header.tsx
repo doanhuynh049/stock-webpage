@@ -11,7 +11,7 @@ export function MobileHeader({ onOpenMenu }: { onOpenMenu: () => void }) {
       <button
         type="button"
         onClick={onOpenMenu}
-        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-[var(--bg-secondary)] text-[var(--fg)] ring-1 ring-[var(--border)]"
+        className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-[var(--ticker-border)] bg-black/30 text-[var(--ticker-fg)]"
         aria-label="Open navigation menu"
       >
         <Menu className="h-5 w-5" />

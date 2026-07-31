@@ -4,7 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 import { BarChart2, Loader2 } from "lucide-react";
 import { Card, CardTitle } from "@/components/ui/card";
 import { PriceChart } from "@/components/stock/price-chart";
-import { cn } from "@/lib/utils";
+import { cn, changeColor } from "@/lib/utils";
 import type { PricePoint } from "@/types/stock";
 
 const PERIODS = [
@@ -113,12 +113,7 @@ export function PriceChartPanel({
           <span className="text-[var(--border)]">·</span>
           <span className="flex items-center gap-1.5 text-muted">
             Chg
-            <strong
-              className={cn(
-                "font-mono",
-                stats.chg >= 0 ? "text-emerald-600 dark:text-emerald-400" : "text-red-600 dark:text-red-400",
-              )}
-            >
+            <strong className={cn("font-data", changeColor(stats.chg))}>
               {stats.chg >= 0 ? "+" : ""}{stats.chg.toFixed(2)}%
             </strong>
           </span>

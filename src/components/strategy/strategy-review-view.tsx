@@ -134,14 +134,14 @@ export function StrategyReviewView({ review }: { review: StrategyReview }) {
           value={formatPortfolioAmount(review.totalCost, 0)}
           subValue="Cost basis"
           icon={Target}
-          accent="emerald"
+          accent="accent"
         />
         <StatCard
           label="Market value"
           value={formatPortfolioAmount(review.totalValue, 0)}
           subValue="Live quotes"
           icon={Target}
-          accent="cyan"
+          accent="neutral"
         />
         <StatCard
           label="P/L"

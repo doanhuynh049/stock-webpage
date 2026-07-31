@@ -14,7 +14,7 @@ export function Button({
 }: ButtonProps) {
   const variants = {
     primary:
-      "bg-[var(--accent)] text-white shadow-md hover:opacity-90 active:scale-[0.98]",
+      "bg-accent text-accent-fg shadow-md hover:opacity-90 active:scale-[0.98]",
     secondary:
       "bg-[var(--bg-secondary)] text-[var(--fg)] border border-[var(--border)] hover:border-[var(--border-strong)]",
     outline:

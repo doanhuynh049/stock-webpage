@@ -47,9 +47,10 @@ export function formatPortfolioPercent(value: number, decimals = 1): string {
   return `${sign}${value.toFixed(decimals)}%`;
 }
 
+/** Price / P&L direction — VN board convention (red up, green down). */
 export function changeColor(value: number): string {
-  if (value > 0) return "text-success";
-  if (value < 0) return "text-danger";
+  if (value > 0) return "text-gain";
+  if (value < 0) return "text-loss";
   return "text-subtle";
 }
 

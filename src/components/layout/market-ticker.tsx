@@ -14,6 +14,18 @@ function parseMarketResponse(json: unknown): MarketSnapshot | null {
   return market?.indices?.length ? market : null;
 }
 
+function TickerChange({ value }: { value: number }) {
+  const cls = changeColor(value);
+  return (
+    <span
+      className={`font-data text-[11px] font-semibold sm:text-xs ${cls === "text-gain" ? "text-[var(--gain)]" : cls === "text-loss" ? "text-[var(--loss)]" : "text-[var(--ticker-dim)]"}`}
+    >
+      {value >= 0 ? "+" : ""}
+      {value.toFixed(2)}%
+    </span>
+  );
+}
+
 export function MarketTicker() {
   const select = useCallback(
     (json: unknown) => parseMarketResponse(json),
@@ -27,16 +39,13 @@ export function MarketTicker() {
     select,
   );
 
-  const shellClass =
-    "relative overflow-hidden border-b border-[var(--border)] bg-[var(--ticker-bg)] backdrop-blur-md";
-
   if (!market) {
     return (
-      <div className={shellClass}>
-        <div className="flex items-center gap-3 px-4 py-1.5 sm:gap-6 sm:py-2">
-          <span className="live-dot h-1.5 w-1.5 shrink-0 rounded-full bg-[var(--accent)]/40" />
-          <span className="text-xs text-[var(--fg-subtle)]">
-            {loading ? "Loading market data…" : "Market data unavailable"}
+      <div className="ticker-led">
+        <div className="relative z-[1] flex items-center gap-3 px-4 py-2 sm:gap-6 sm:py-2.5">
+          <span className="live-dot h-2 w-2 shrink-0 rounded-full bg-[var(--ticker-fg)]" />
+          <span className="ticker-led-dim text-xs">
+            {loading ? "SYNCING BOARD…" : "MARKET DATA UNAVAILABLE"}
           </span>
         </div>
       </div>
@@ -46,12 +55,12 @@ export function MarketTicker() {
   const items = [
     ...market.indices.map((i) => ({
       label: i.symbol,
-      value: i.value.toLocaleString(),
+      value: i.value.toLocaleString("vi-VN"),
       change: i.changePercent,
       showChange: true,
     })),
     {
-      label: "Vol",
+      label: "VOL",
       value: `${(market.stats.totalVolume / 1e6).toFixed(0)}M`,
       change: 0,
       showChange: false,
@@ -61,26 +70,29 @@ export function MarketTicker() {
   const doubled = [...items, ...items];
 
   return (
-    <div className={shellClass}>
-      <div className="flex items-center gap-3 py-1.5 sm:gap-6 sm:py-2">
-        <div className="flex shrink-0 items-center gap-1.5 px-2 sm:gap-2 sm:px-4">
-          <span className="live-dot h-1.5 w-1.5 rounded-full bg-[var(--accent)]" />
-          <span className="hidden text-[10px] font-semibold uppercase tracking-widest text-[var(--accent)] sm:inline">
-            {market.session} · live
+    <div className="ticker-led shrink-0">
+      <div className="relative z-[1] flex items-stretch">
+        <div className="flex shrink-0 items-center gap-2 border-r border-[var(--ticker-border)] px-3 py-2 sm:gap-2.5 sm:px-4 sm:py-2.5">
+          <span className="live-dot h-2 w-2 shrink-0 rounded-full bg-[var(--ticker-fg)] shadow-[0_0_6px_var(--ticker-fg)]" />
+          <span className="ticker-led-label hidden text-[10px] font-bold uppercase sm:inline">
+            {market.session}
+          </span>
+          <span className="ticker-led-label text-[10px] font-bold uppercase sm:hidden">
+            LIVE
           </span>
         </div>
-        <div className="min-w-0 flex-1 overflow-hidden">
-          <div className="ticker-animate flex w-max gap-4 sm:gap-8">
+        <div className="min-w-0 flex-1 overflow-hidden py-2 sm:py-2.5">
+          <div className="ticker-animate flex w-max items-center gap-6 sm:gap-10">
             {doubled.map((item, i) => (
-              <div key={i} className="flex items-center gap-1.5 text-[11px] sm:gap-2 sm:text-xs">
-                <span className="font-medium text-[var(--fg-muted)]">{item.label}</span>
-                <span className="font-mono text-[var(--fg)]">{item.value}</span>
-                {item.showChange && (
-                  <span className={`font-mono font-medium ${changeColor(item.change)}`}>
-                    {item.change >= 0 ? "+" : ""}
-                    {item.change.toFixed(2)}%
-                  </span>
-                )}
+              <div
+                key={i}
+                className="flex items-center gap-2 text-[11px] sm:gap-2.5 sm:text-xs"
+              >
+                <span className="ticker-led-label text-[10px] font-bold uppercase tracking-wider">
+                  {item.label}
+                </span>
+                <span className="ticker-led-value font-semibold">{item.value}</span>
+                {item.showChange && <TickerChange value={item.change} />}
               </div>
             ))}
           </div>

@@ -532,20 +532,20 @@ export function TradingLedger({ userId }: { userId?: string }) {
     <div className="space-y-4">
       {summary && (
         <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
-          <StatCard label="Trades" value={String(summary.total)} accent="cyan" />
-          <StatCard label="Buys" value={String(summary.buys)} accent="emerald" />
+          <StatCard label="Trades" value={String(summary.total)} accent="neutral" />
+          <StatCard label="Buys" value={String(summary.buys)} accent="accent" />
           <StatCard label="Sells" value={String(summary.sells)} accent="violet" />
           <StatCard
             label="Net P/L"
             value={formatPortfolioAmount(summary.totalProfit, 0)}
-            accent={summary.totalProfit >= 0 ? "emerald" : "amber"}
-            valueClass={summary.totalProfit > 0 ? "text-emerald-500" : summary.totalProfit < 0 ? "text-red-500" : undefined}
+            accent={summary.totalProfit >= 0 ? "accent" : "amber"}
+            valueClass={summary.totalProfit > 0 ? "text-success" : summary.totalProfit < 0 ? "text-danger" : undefined}
           />
           <StatCard
             label="Win rate"
             value={summary.winRate != null ? formatPortfolioPercent(summary.winRate, 0) : "—"}
-            accent="emerald"
-            valueClass={summary.winRate != null && summary.winRate > 0 ? "text-emerald-500" : undefined}
+            accent="accent"
+            valueClass={summary.winRate != null && summary.winRate > 0 ? "text-success" : undefined}
           />
           <StatCard
             label="Range"
@@ -554,7 +554,7 @@ export function TradingLedger({ userId }: { userId?: string }) {
                 ? `${formatDateDMY(summary.firstDate)} → ${formatDateDMY(todayISO())}`
                 : "—"
             }
-            accent="cyan"
+            accent="neutral"
           />
         </div>
       )}

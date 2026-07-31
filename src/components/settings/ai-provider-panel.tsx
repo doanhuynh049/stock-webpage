@@ -3,20 +3,28 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertCircle, ArrowDown, ArrowUp, CheckCircle2,
-  Eye, EyeOff, ExternalLink, KeyRound, Loader2, RefreshCw, Zap,
+  Eye, EyeOff, ExternalLink, KeyRound, Loader2, PlayCircle, RefreshCw, Sparkles, XCircle, Zap,
 } from "lucide-react";
 import { LLM_PROVIDERS } from "@/lib/providers/llm";
 import type { AiSettings, ProviderConfig } from "@/app/api/settings/ai/route";
 import type { ModelInfo } from "@/app/api/settings/ai/models/route";
+import type { TestProviderResponse } from "@/app/api/settings/ai/test/route";
+import type { AutoSelectResponse } from "@/app/api/settings/ai/auto-select/route";
 
 type ProviderId = ProviderConfig["id"];
 
 const PROVIDER_COLORS: Record<string, string> = {
-  cerebras:   "text-orange-500  bg-orange-500/10  ring-orange-500/20",
-  groq:       "text-violet-500  bg-violet-500/10  ring-violet-500/20",
-  gemini:     "text-blue-500    bg-blue-500/10    ring-blue-500/20",
-  mistral:    "text-rose-500    bg-rose-500/10    ring-rose-500/20",
-  openrouter: "text-emerald-500 bg-emerald-500/10 ring-emerald-500/20",
+  cerebras:    "text-orange-500  bg-orange-500/10  ring-orange-500/20",
+  groq:        "text-violet-500  bg-violet-500/10  ring-violet-500/20",
+  gemini:      "text-blue-500    bg-blue-500/10    ring-blue-500/20",
+  mistral:     "text-rose-500    bg-rose-500/10    ring-rose-500/20",
+  openrouter:  "text-emerald-500 bg-emerald-500/10 ring-emerald-500/20",
+  sambanova:   "text-amber-500   bg-amber-500/10   ring-amber-500/20",
+  cohere:      "text-fuchsia-500 bg-fuchsia-500/10 ring-fuchsia-500/20",
+  huggingface: "text-yellow-500  bg-yellow-500/10  ring-yellow-500/20",
+  cloudflare:  "text-orange-600  bg-orange-600/10  ring-orange-600/20",
+  ollama:      "text-slate-500   bg-slate-500/10   ring-slate-500/20",
+  llm7:        "text-cyan-500    bg-cyan-500/10    ring-cyan-500/20",
 };
 
 function KeyInput({
@@ -59,6 +67,10 @@ export function AiProviderPanel() {
   const [saved,    setSaved]      = useState(false);
   const [models,   setModels]     = useState<Record<string, ModelInfo[]>>({});
   const [fetching, setFetching]   = useState<Record<string, boolean>>({});
+  const [testing,  setTesting]    = useState<Record<string, boolean>>({});
+  const [testResults, setTestResults] = useState<Record<string, TestProviderResponse>>({});
+  const [autoSelecting, setAutoSelecting] = useState(false);
+  const [autoSelectError, setAutoSelectError] = useState<string | null>(null);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -82,6 +94,88 @@ export function AiProviderPanel() {
     } catch {/* silent */}
     finally { setFetching((f) => ({ ...f, [id]: false })); }
   }, []);
+
+  // Tests the row's current (possibly unsaved) model + API key with a real,
+  // tiny chat completion — confirms the model actually responds before saving.
+  const runTest = useCallback(async (cfg: ProviderConfig) => {
+    setTesting((t) => ({ ...t, [cfg.id]: true }));
+    setTestResults((r) => ({ ...r, [cfg.id]: undefined as unknown as TestProviderResponse }));
+    try {
+      const res = await fetch("/api/settings/ai/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: cfg.id, model: cfg.model, apiKey: cfg.apiKey }),
+      });
+      const data = (await res.json()) as TestProviderResponse;
+      setTestResults((r) => ({ ...r, [cfg.id]: data }));
+    } catch {
+      setTestResults((r) => ({
+        ...r,
+        [cfg.id]: { ok: false, message: "Request failed — check your network connection.", latencyMs: 0 },
+      }));
+    } finally {
+      setTesting((t) => ({ ...t, [cfg.id]: false }));
+    }
+  }, []);
+
+  // For every enabled provider, ranks its known models and tests candidates
+  // until one actually responds — then fills in that model (unsaved, so the
+  // user can review before hitting "Save changes").
+  const autoSelectBestModels = useCallback(async () => {
+    if (!settings) return;
+    const enabledRows = settings.providers.filter((p) => p.enabled);
+    if (!enabledRows.length) {
+      setAutoSelectError("No enabled providers to auto-detect.");
+      return;
+    }
+
+    setAutoSelecting(true);
+    setAutoSelectError(null);
+    setTesting((t) => {
+      const next = { ...t };
+      for (const p of enabledRows) next[p.id] = true;
+      return next;
+    });
+
+    try {
+      const res = await fetch("/api/settings/ai/auto-select", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          providers: enabledRows.map((p) => ({ id: p.id, apiKey: p.apiKey, enabled: p.enabled })),
+        }),
+      });
+      if (!res.ok) throw new Error(`Request failed (${res.status})`);
+      const { results } = (await res.json()) as AutoSelectResponse;
+
+      setSettings((s) => {
+        if (!s) return s;
+        return {
+          ...s,
+          providers: s.providers.map((p) => {
+            const r = results[p.id];
+            return r?.ok && r.model && r.model !== p.model ? { ...p, model: r.model } : p;
+          }),
+        };
+      });
+      setTestResults((prev) => {
+        const next = { ...prev };
+        for (const [id, r] of Object.entries(results)) {
+          next[id] = { ok: r.ok, message: r.message, latencyMs: r.latencyMs };
+        }
+        return next;
+      });
+    } catch (e) {
+      setAutoSelectError(e instanceof Error ? e.message : "Auto-detect failed — check your network connection.");
+    } finally {
+      setAutoSelecting(false);
+      setTesting((t) => {
+        const next = { ...t };
+        for (const p of enabledRows) next[p.id] = false;
+        return next;
+      });
+    }
+  }, [settings]);
 
   const save = async (overrideSettings?: AiSettings) => {
     const toSave = overrideSettings ?? settings;
@@ -109,6 +203,10 @@ export function AiProviderPanel() {
       };
       return next;
     });
+    // Stale result once the tested config (model/key) changes
+    if ("model" in patch || "apiKey" in patch) {
+      setTestResults((r) => ({ ...r, [id]: undefined as unknown as TestProviderResponse }));
+    }
   };
 
   const move = (id: ProviderId, dir: -1 | 1) => {
@@ -144,18 +242,36 @@ export function AiProviderPanel() {
             Use arrows to reorder. Enable any provider even without an env key — enter your key below.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={() => void save()}
-          disabled={saving}
-          className="flex shrink-0 items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-fg shadow transition hover:opacity-90 disabled:opacity-50"
-        >
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" />
-           : saved ? <CheckCircle2 className="h-4 w-4" />
-           : null}
-          {saved ? "Saved!" : "Save changes"}
-        </button>
+        <div className="flex shrink-0 items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void autoSelectBestModels()}
+            disabled={autoSelecting || saving}
+            title="Ranks each enabled provider's known models and tests candidates until one responds, then fills in the best working model."
+            className="flex shrink-0 items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-[var(--fg)] ring-1 ring-[var(--border-strong)] transition hover:bg-[var(--bg-secondary)] disabled:opacity-50"
+          >
+            {autoSelecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+            {autoSelecting ? "Finding best models…" : "Auto-detect best models"}
+          </button>
+          <button
+            type="button"
+            onClick={() => void save()}
+            disabled={saving}
+            className="flex shrink-0 items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-fg shadow transition hover:opacity-90 disabled:opacity-50"
+          >
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" />
+             : saved ? <CheckCircle2 className="h-4 w-4" />
+             : null}
+            {saved ? "Saved!" : "Save changes"}
+          </button>
+        </div>
       </div>
+      {autoSelectError && (
+        <div className="flex items-start gap-2 rounded-lg bg-red-500/5 px-3 py-2 text-[11px] text-red-600 ring-1 ring-red-500/20 dark:text-red-400">
+          <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+          <p>{autoSelectError}</p>
+        </div>
+      )}
 
       {/* Provider rows */}
       <div className="space-y-3">
@@ -165,6 +281,8 @@ export function AiProviderPanel() {
           const colorCls = PROVIDER_COLORS[cfg.id] ?? "text-muted bg-[var(--bg-secondary)] ring-[var(--border)]";
           const modelList = models[cfg.id] ?? [];
           const isFetching = fetching[cfg.id];
+          const isTesting = testing[cfg.id];
+          const testResult = testResults[cfg.id];
           const hasEnvKey = cfg.enabled && !cfg.apiKey; // rough heuristic: was active before user edit
 
           return (
@@ -284,7 +402,38 @@ export function AiProviderPanel() {
                       {isFetching ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
                       {isFetching ? "Loading…" : "Latest models"}
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => void runTest(cfg)}
+                      disabled={isTesting}
+                      className="flex shrink-0 items-center gap-1.5 rounded-lg bg-accent/10 px-2.5 py-1.5 text-[10px] font-semibold text-accent ring-1 ring-accent/20 transition-all hover:bg-accent/20 disabled:opacity-50"
+                    >
+                      {isTesting ? <Loader2 className="h-3 w-3 animate-spin" /> : <PlayCircle className="h-3 w-3" />}
+                      {isTesting ? "Testing…" : "Run test"}
+                    </button>
                   </div>
+
+                  {/* Test result */}
+                  {testResult && (
+                    <div
+                      className={`flex items-start gap-2 rounded-lg px-3 py-2 text-[11px] ring-1 ${
+                        testResult.ok
+                          ? "bg-emerald-500/5 text-emerald-600 ring-emerald-500/20 dark:text-emerald-400"
+                          : "bg-red-500/5 text-red-600 ring-red-500/20 dark:text-red-400"
+                      }`}
+                    >
+                      {testResult.ok
+                        ? <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                        : <XCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                      }
+                      <div className="min-w-0">
+                        <p className="font-semibold">
+                          {testResult.ok ? `Model responded in ${testResult.latencyMs}ms` : "Test failed"}
+                        </p>
+                        <p className="break-words text-[10px] opacity-80">{testResult.message}</p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

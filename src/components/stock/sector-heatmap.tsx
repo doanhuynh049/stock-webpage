@@ -39,8 +39,8 @@ export function SectorHeatmap({ sectors }: { sectors: SectorPerformance[] }) {
             <div className="text-xs font-medium text-muted">{sector.sector}</div>
             <div
               className={cn(
-                "mt-1 font-mono text-lg font-bold",
-                isPositive ? "text-success" : "text-danger",
+                "mt-1 font-data text-lg font-bold",
+                isPositive ? "text-gain" : "text-loss",
               )}
             >
               {isPositive ? "+" : ""}

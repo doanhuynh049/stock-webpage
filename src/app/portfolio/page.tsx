@@ -79,7 +79,7 @@ export default async function PortfolioPage() {
           value={formatPortfolioAmount(summary.totalCostBasis, 0)}
           subValue="Total cost basis"
           icon={Wallet}
-          accent="emerald"
+          accent="accent"
         />
         <StatCard
           label="Positions"
@@ -93,7 +93,7 @@ export default async function PortfolioPage() {
           value={String(sectorCount)}
           subValue="Sector diversification"
           icon={Layers}
-          accent="cyan"
+          accent="neutral"
         />
       </div>
 

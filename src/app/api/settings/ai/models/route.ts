@@ -21,7 +21,7 @@ export async function GET(request: Request) {
   }
 }
 
-async function fetchModels(provider: string): Promise<ModelInfo[]> {
+export async function fetchModels(provider: string): Promise<ModelInfo[]> {
   switch (provider) {
     case "cerebras": {
       const key = process.env.CEREBRAS_API_KEY;
@@ -89,12 +89,39 @@ async function fetchModels(provider: string): Promise<ModelInfo[]> {
         }));
     }
 
+    case "sambanova": {
+      const key = process.env.SAMBANOVA_API_KEY;
+      if (!key) return getFallbackModels("sambanova");
+      const res = await fetch("https://api.sambanova.ai/v1/models", {
+        headers: { Authorization: `Bearer ${key}` },
+        next: { revalidate: 3600 },
+      });
+      if (!res.ok) return getFallbackModels("sambanova");
+      const data = await res.json();
+      return (data.data ?? []).map((m: { id: string }) => ({ id: m.id, name: m.id }));
+    }
+
+    case "cohere":
+    case "huggingface":
+    case "cloudflare":
+    case "ollama":
+      // No public/stable /models list for these (or it needs a local host /
+      // account id we don't have server-side) — static hints only.
+      return getFallbackModels(provider);
+
+    case "llm7": {
+      const res = await fetch("https://api.llm7.io/v1/models", { next: { revalidate: 3600 } });
+      if (!res.ok) return getFallbackModels("llm7");
+      const data = await res.json();
+      return (data.data ?? []).map((m: { id: string }) => ({ id: m.id, name: m.id }));
+    }
+
     default:
       return [];
   }
 }
 
-function getFallbackModels(provider: string): ModelInfo[] {
+export function getFallbackModels(provider: string): ModelInfo[] {
   const fallbacks: Record<string, ModelInfo[]> = {
     cerebras: [
       { id: "gpt-oss-120b",  name: "GPT-OSS 120B (reasoning)" },
@@ -122,6 +149,35 @@ function getFallbackModels(provider: string): ModelInfo[] {
       { id: "meta-llama/llama-3.3-70b-instruct:free", name: "Llama 3.3 70B (free)", free: true },
       { id: "mistralai/mistral-7b-instruct:free",     name: "Mistral 7B (free)",    free: true },
       { id: "google/gemma-2-9b-it:free",              name: "Gemma 2 9B (free)",    free: true },
+    ],
+    sambanova: [
+      { id: "Meta-Llama-3.3-70B-Instruct", name: "Llama 3.3 70B" },
+      { id: "Meta-Llama-3.1-8B-Instruct",  name: "Llama 3.1 8B" },
+      { id: "Qwen2.5-72B-Instruct",        name: "Qwen 2.5 72B" },
+    ],
+    cohere: [
+      { id: "command-r-plus-08-2024", name: "Command R+ (08-2024)" },
+      { id: "command-r-08-2024",      name: "Command R (08-2024)" },
+      { id: "command-a-03-2025",      name: "Command A (03-2025)" },
+    ],
+    huggingface: [
+      { id: "meta-llama/Llama-3.3-70B-Instruct", name: "Llama 3.3 70B Instruct" },
+      { id: "Qwen/Qwen2.5-72B-Instruct",         name: "Qwen 2.5 72B Instruct" },
+      { id: "mistralai/Mistral-7B-Instruct-v0.3", name: "Mistral 7B Instruct" },
+    ],
+    cloudflare: [
+      { id: "@cf/meta/llama-3.1-8b-instruct",  name: "Llama 3.1 8B Instruct" },
+      { id: "@cf/meta/llama-3.3-70b-instruct", name: "Llama 3.3 70B Instruct" },
+      { id: "@cf/mistral/mistral-7b-instruct-v0.2", name: "Mistral 7B Instruct" },
+    ],
+    ollama: [
+      { id: "llama3.2",  name: "Llama 3.2" },
+      { id: "qwen2.5",   name: "Qwen 2.5" },
+      { id: "mistral",   name: "Mistral" },
+    ],
+    llm7: [
+      { id: "gpt-4o-mini", name: "GPT-4o mini" },
+      { id: "gpt-4o",      name: "GPT-4o" },
     ],
   };
   return fallbacks[provider] ?? [];

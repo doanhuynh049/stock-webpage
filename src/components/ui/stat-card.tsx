@@ -16,22 +16,22 @@ export function StatCard({
   subValue?: string;
   change?: number;
   icon?: LucideIcon;
-  accent?: "emerald" | "cyan" | "violet" | "amber";
-  /** Optional override for the value text colour, e.g. "text-emerald-500" */
+  accent?: "accent" | "neutral" | "violet" | "amber";
+  /** Optional override for the value text colour */
   valueClass?: string;
 }) {
   const accents = {
-    emerald: "from-emerald-500/10 to-transparent",
-    cyan: "from-cyan-500/10 to-transparent",
-    violet: "from-violet-500/10 to-transparent",
-    amber: "from-amber-500/10 to-transparent",
+    accent: "border-t-2 border-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_6%,var(--card))]",
+    neutral: "",
+    violet: "border-t-2 border-violet-500/40 bg-[color-mix(in_srgb,violet_5%,var(--card))]",
+    amber: "border-t-2 border-amber-500/40 bg-[color-mix(in_srgb,amber_5%,var(--card))]",
   };
 
   return (
     <Card
       className={cn(
         "relative overflow-hidden",
-        accent && `bg-gradient-to-br ${accents[accent]}`,
+        accent && accents[accent],
       )}
     >
       <div className="flex items-start justify-between">
@@ -39,14 +39,14 @@ export function StatCard({
           <p className="text-[11px] font-semibold uppercase tracking-wider text-subtle">
             {label}
           </p>
-          <p className={cn("mt-2 font-mono text-2xl font-bold tracking-tight", valueClass ?? "text-[var(--fg)]")}>
+          <p className={cn("mt-2 font-data text-2xl font-bold tracking-tight", valueClass ?? "text-[var(--fg)]")}>
             {value}
           </p>
           {subValue && (
             <p className="mt-1 text-xs text-muted">{subValue}</p>
           )}
           {change !== undefined && (
-            <p className={cn("mt-1 font-mono text-sm font-medium", changeColor(change))}>
+            <p className={cn("mt-1 font-data text-sm font-medium", changeColor(change))}>
               {change >= 0 ? "+" : ""}
               {change.toFixed(2)}%
             </p>

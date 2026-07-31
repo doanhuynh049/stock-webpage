@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { TrendingUp } from "lucide-react";
 import { BrandLogo } from "@/components/ui/brand-logo";
 import { ThemeToggle } from "@/components/layout/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -46,21 +45,31 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-screen">
-      <div className="hero-gradient hidden flex-1 flex-col justify-between p-12 lg:flex">
-        <div className="flex items-center gap-3">
+      <div className="ticker-led hidden flex-1 flex-col justify-between p-12 lg:flex">
+        <div className="relative z-[1] flex items-center gap-3">
           <BrandLogo size="lg" />
-          <span className="text-xl font-bold text-[var(--fg)]">VN Stocks</span>
+          <div>
+            <span className="text-xl font-bold text-[#f5f0e6]">VN Stocks</span>
+            <p className="font-data text-[10px] uppercase tracking-widest text-[var(--ticker-dim)]">
+              HOSE · HNX · UPCOM
+            </p>
+          </div>
         </div>
 
-        <div>
-          <h2 className="text-4xl font-bold leading-tight tracking-tight text-[var(--fg)]">
-            <span className="gradient-text">Invest smarter</span>
+        <div className="relative z-[1]">
+          <p className="ticker-led-label text-[10px] font-bold uppercase tracking-[0.2em]">
+            Vietnam Equities Terminal
+          </p>
+          <h2 className="mt-3 text-4xl font-bold leading-tight tracking-tight text-[#f5f0e6]">
+            Board data.
             <br />
-            in Vietnam equities
+            Portfolio ledger.
+            <br />
+            AI analysis.
           </h2>
-          <p className="mt-4 max-w-md text-sm leading-relaxed text-muted">
-            Track VN-Index, screen opportunities, manage your portfolio, and get
-            AI-powered analysis — updated twice daily.
+          <p className="mt-4 max-w-md text-sm leading-relaxed text-[var(--ticker-dim)]">
+            Track VN-Index, screen opportunities, manage holdings, and run
+            multi-agent analyst reports — synced twice daily.
           </p>
 
           <div className="mt-8 grid grid-cols-3 gap-4">
@@ -69,27 +78,28 @@ export default function LoginPage() {
               { label: "Stocks", value: "18+" },
               { label: "Sectors", value: "8" },
             ].map((s) => (
-              <div key={s.label} className="surface-subtle p-4">
-                <p className="text-[10px] uppercase tracking-wider text-subtle">
+              <div
+                key={s.label}
+                className="rounded-lg border border-[var(--ticker-border)] bg-black/25 px-4 py-3"
+              >
+                <p className="ticker-led-label text-[9px] font-bold uppercase">
                   {s.label}
                 </p>
-                <p className="mt-1 font-mono text-lg font-bold text-[var(--fg)]">
-                  {s.value}
-                </p>
+                <p className="ticker-led-value mt-1 text-lg font-bold">{s.value}</p>
               </div>
             ))}
           </div>
         </div>
 
-        <p className="text-xs text-subtle">
-          HOSE · HNX · UPCOM market data
+        <p className="relative z-[1] font-data text-[10px] uppercase tracking-widest text-[var(--ticker-dim)]">
+          Session-gated · credentials only
         </p>
       </div>
 
-      <div className="flex flex-1 items-center justify-center p-6">
+      <div className="flex flex-1 items-center justify-center bg-[var(--bg)] p-6">
         <div className="w-full max-w-md">
           <div className="mb-8 flex items-center gap-3 lg:hidden">
-            <TrendingUp className="h-6 w-6 text-accent" />
+            <BrandLogo size="md" />
             <span className="text-lg font-bold text-[var(--fg)]">VN Stocks</span>
           </div>
 

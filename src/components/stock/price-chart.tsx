@@ -124,8 +124,8 @@ export function PriceChart({
   const isUp = last >= first;
   const changePercent = first > 0 ? ((last - first) / first) * 100 : 0;
 
-  const stroke = isUp ? "var(--success)" : "var(--danger)";
-  const strokeHex = isUp ? "#059669" : "#dc2626";
+  const stroke = isUp ? "var(--gain)" : "var(--loss)";
+  const strokeHex = isUp ? "#d93b3b" : "#2e9e6d";
   const gradientId = `price-grad-${isUp ? "up" : "dn"}-${days}`;
   const volGradId = `vol-grad-${days}`;
 
@@ -136,10 +136,10 @@ export function PriceChart({
       {/* Change pill */}
       <div className="mb-2 flex items-center gap-2">
         <span
-          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-bold ring-1 ${
+          className={`inline-flex items-center rounded-full px-2.5 py-0.5 font-data text-[11px] font-bold ring-1 ${
             isUp
-              ? "bg-emerald-500/10 text-emerald-600 ring-emerald-500/30 dark:text-emerald-400"
-              : "bg-red-500/10 text-red-600 ring-red-500/30 dark:text-red-400"
+              ? "bg-[var(--gain-bg)] text-gain ring-[color-mix(in_srgb,var(--gain)_30%,transparent)]"
+              : "bg-[var(--loss-bg)] text-loss ring-[color-mix(in_srgb,var(--loss)_30%,transparent)]"
           }`}
         >
           {changePercent >= 0 ? "+" : ""}{changePercent.toFixed(2)}% over period
