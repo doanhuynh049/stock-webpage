@@ -7,6 +7,7 @@ import {
   ChevronDown,
   ChevronRight,
   Clock,
+  GitCompare,
   Loader2,
   RefreshCw,
   Sparkles,
@@ -17,12 +18,45 @@ import { Card, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { readLocalCache, writeLocalCache } from "@/lib/client/local-storage-cache";
+import {
+  readLocalCache,
+  writeLocalCache,
+  LOCAL_CACHE_KEYS,
+  LOCAL_CACHE_TTL,
+} from "@/lib/client/local-storage-cache";
 import type { HoldingAnalysis, PortfolioAnalystResult } from "@/lib/analyst/portfolio";
 import type { AgentReport, Verdict } from "@/lib/analyst/types";
+import type { CombinedAnalysisRow } from "@/lib/analysis/combined-analysis";
 
-const CACHE_KEY = "ai-holdings";
-const TTL = 30 * 60 * 1000; // 30 min
+type Stance = "bullish" | "bearish" | "neutral";
+
+function verdictStance(v: Verdict): Stance {
+  if (v === "STRONG BUY" || v === "BUY" || v === "ACCUMULATE") return "bullish";
+  if (v === "AVOID" || v === "TRIM") return "bearish";
+  return "neutral";
+}
+
+function combinedStance(recommendation: string): Stance {
+  const u = recommendation.toUpperCase();
+  if (u === "ACCUMULATE") return "bullish";
+  if (u === "AVOID" || u === "SELL" || u === "TRIM") return "bearish";
+  return "neutral";
+}
+
+/**
+ * AI Analyst (6-agent, conviction-weighted: financial .26/valuation .24/
+ * technical .18/risk .14/news .10/macro .08) and Portfolio → Combined
+ * (0.60×Technical + 0.40×Fundamental) are two independent scoring systems
+ * over the same holding — by design, not a bug (different time horizons).
+ * This only flags when they land on OPPOSITE sides (bullish vs bearish),
+ * not every numeric disagreement, so it doesn't fire on routine noise.
+ */
+function divergesFromCombined(verdict: Verdict, combinedRow: CombinedAnalysisRow | undefined): boolean {
+  if (!combinedRow) return false;
+  const a = verdictStance(verdict);
+  const b = combinedStance(combinedRow.recommendation);
+  return (a === "bullish" && b === "bearish") || (a === "bearish" && b === "bullish");
+}
 
 function verdictVariant(verdict: Verdict): "success" | "danger" | "warning" | "info" | "default" {
   if (verdict === "STRONG BUY" || verdict === "BUY" || verdict === "ACCUMULATE") return "success";
@@ -83,8 +117,9 @@ function AgentChips({ agents }: { agents: AgentReport[] }) {
   );
 }
 
-function HoldingRow({ h }: { h: HoldingAnalysis }) {
+function HoldingRow({ h, combinedRow }: { h: HoldingAnalysis; combinedRow?: CombinedAnalysisRow }) {
   const [open, setOpen] = useState(false);
+  const diverges = divergesFromCombined(h.verdict, combinedRow);
   return (
     <div className="rounded-xl ring-1 ring-[var(--border)]">
       <button
@@ -122,6 +157,14 @@ function HoldingRow({ h }: { h: HoldingAnalysis }) {
         >
           <Badge variant={actionVariant(h.action)}>{actionLabel(h.action)}</Badge>
         </div>
+        {diverges && (
+          <span
+            className="shrink-0 text-amber-500"
+            title={`Diverges from Portfolio → Combined tab: ${combinedRow?.recommendation} (technical-weighted 60/40)`}
+          >
+            <GitCompare className="h-3.5 w-3.5" />
+          </span>
+        )}
       </button>
 
       {open && (
@@ -132,6 +175,16 @@ function HoldingRow({ h }: { h: HoldingAnalysis }) {
               <span>
                 Timing not confirmed — technical score {h.technicalScore}/100. The verdict above reflects long-term
                 conviction (fundamentals + valuation); consider waiting for the chart to turn before adding.
+              </span>
+            </p>
+          )}
+          {diverges && (
+            <p className="flex items-center gap-1.5 rounded-lg bg-amber-500/10 px-2.5 py-1.5 text-xs text-amber-600 ring-1 ring-amber-500/20 dark:text-amber-400">
+              <GitCompare className="h-3.5 w-3.5 shrink-0" />
+              <span>
+                Diverges from Portfolio → Combined tab, which says <strong>{combinedRow?.recommendation}</strong> (0.60×Technical
+                + 0.40×Fundamental — near-term timing weighted). This verdict weights financials/valuation more heavily for a
+                longer horizon. Treat these as two different lenses, not a contradiction — Combined leans tactical, AI Analyst leans conviction.
               </span>
             </p>
           )}
@@ -152,7 +205,7 @@ function HoldingRow({ h }: { h: HoldingAnalysis }) {
   );
 }
 
-export function AiHoldingsPanel() {
+export function AiHoldingsPanel({ combinedRows }: { combinedRows?: CombinedAnalysisRow[] }) {
   const [result, setResult] = useState<PortfolioAnalystResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -169,7 +222,7 @@ export function AiHoldingsPanel() {
       }
       const data = (await res.json()) as PortfolioAnalystResult;
       setResult(data);
-      writeLocalCache(CACHE_KEY, data);
+      writeLocalCache(LOCAL_CACHE_KEYS.aiHoldings, data);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Analysis failed");
     } finally {
@@ -182,13 +235,14 @@ export function AiHoldingsPanel() {
   useEffect(() => {
     if (ranRef.current) return;
     ranRef.current = true;
-    const cached = readLocalCache<PortfolioAnalystResult>(CACHE_KEY, TTL);
+    const cached = readLocalCache<PortfolioAnalystResult>(LOCAL_CACHE_KEYS.aiHoldings, LOCAL_CACHE_TTL.aiHoldings);
     if (cached) setResult(cached);
     else void run();
   }, []);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   const verdictOrder: Verdict[] = ["STRONG BUY", "BUY", "ACCUMULATE", "HOLD", "TRIM", "AVOID"];
+  const combinedBySymbol = new Map((combinedRows ?? []).map((r) => [r.symbol.toUpperCase(), r]));
 
   return (
     <div className="space-y-4">
@@ -306,7 +360,7 @@ export function AiHoldingsPanel() {
             </div>
             <div className="space-y-1.5">
               {result.holdings.map((h) => (
-                <HoldingRow key={h.symbol} h={h} />
+                <HoldingRow key={h.symbol} h={h} combinedRow={combinedBySymbol.get(h.symbol.toUpperCase())} />
               ))}
             </div>
           </Card>

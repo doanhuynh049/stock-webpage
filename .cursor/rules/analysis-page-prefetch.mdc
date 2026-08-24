@@ -1,0 +1,46 @@
+---
+description: /analysis page — every tab background-prefetches on first paint; pattern for adding a new one
+globs: src/components/analysis/**/*.tsx,src/lib/analysis/**/*.ts
+alwaysApply: false
+---
+
+# Analysis page prefetch pattern
+
+`AnalysisView` (`src/components/analysis/analysis-view.tsx`) background-prefetches **every** lazily-loaded tab/sub-tab once, shortly after first paint, so switching tabs is instant. As of Aug 2026 this covers VN30, VN100, ETF, **AI Analyst**, **AI Screening**, and **Swing** (all 3 host contexts: VN30 / VN100 / Portfolio) — not just the cheap snapshot-based ones.
+
+## The trade-off — read this before adding a new prefetched tab
+
+**AI Analyst and AI Screening make a real LLM call.** Prefetching them means *every* `/analysis` page visit now pays for that call, even if the user never opens the tab. This was a deliberate choice, not an oversight — the alternative (lazy-on-click only) leaves the first open of an LLM tab slow, and the team decided consistent instant tab-switching was worth the speculative cost. If LLM quota/cost becomes a problem, the fix is to remove that tab's `prefetch*()` call from `prefetchAll()` in the background effect — not to add caching (caching already happens; see below) and not to silently skip it for some users.
+
+## Pattern for a new lazily-loaded tab/sub-tab
+
+1. **Cache key + TTL live in the shared registry**, never a local `const` in the component file:
+   ```ts
+   // src/lib/client/local-storage-cache.ts
+   LOCAL_CACHE_TTL.myTab = 30 * 60 * 1000;
+   LOCAL_CACHE_KEYS.myTab = "my-tab"; // or a function if keyed by a variant, e.g. universe label
+   ```
+   `ai-holdings-panel.tsx` used to define its own `CACHE_KEY`/`TTL` consts — moved into the registry precisely so `AnalysisView`'s prefetch code and the panel's own on-open check reference the exact same values instead of two copies that can drift.
+
+2. **Fetch + scoring logic lives in a plain exported function**, not inline in the component's `useCallback`. Client components mount-gate their `useEffect`, so `AnalysisView` can't "borrow" a fetch that's private to another component — it needs an importable function to call from its own prefetch effect. See `runSwingScreen()` in `src/lib/analysis/swing-screener.ts`: the component (`ShortSwingPanel`) and the prefetcher (`AnalysisView`) both call it, neither duplicates it.
+
+3. **The panel checks its own cache on mount before fetching** — this is what makes prefetch actually pay off, not just move the fetch earlier:
+   ```ts
+   const cached = readLocalCache<T>(LOCAL_CACHE_KEYS.myTab, LOCAL_CACHE_TTL.myTab);
+   if (cached) { setResult(cached); return; }
+   // else fetch + writeLocalCache with the SAME key
+   ```
+
+4. **Register a `prefetch*()` call in `AnalysisView`'s background effect** (`prefetchAll()`), following the existing ones: check the cache first (skip if already fresh — e.g. from a previous visit within the TTL), fetch, `writeLocalCache` on success, swallow errors silently (`try { ... } catch { /* best-effort */ }`) — a failed prefetch must never surface an error; the panel's own on-open fetch is the real fallback.
+
+5. **If the new surface's data depends on another lazy universe** (like Swing-for-VN100 needing VN100's symbol list), chain off that universe's own promise — don't call `loadLazyUniverse` a second time to "get" the data, it's deduped via `loadedRef` and the second call returns `null`:
+   ```ts
+   void loadLazyUniverse("vn100").then((data) => {
+     const symbols = data?.bundle?.combined.map((r) => r.symbol) ?? [];
+     void prefetchSwing("VN100", symbols);
+   });
+   ```
+
+## Why this isn't `unstable_cache`/server-side
+
+All of this is **client-side localStorage**, not `page-cache.ts`. The data is either user-specific (AI Analyst's holdings, AI Screening's user-chosen weights) or keyed by a request shape (`{universe, weights}`) that doesn't fit a single server cache key well. See `.cursor/rules/page-state-cache.mdc` for when server-side caching is the right tool instead.

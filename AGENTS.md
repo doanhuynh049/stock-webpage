@@ -24,3 +24,4 @@ Read `.cursor/skills/stock-webpage/SKILL.md` before editing this repo.
 | `theme-aware-interactive.mdc` | Always use `text-accent-fg` (not `text-white`) with `bg-accent`; `--color-accent` must be in `@theme inline` |
 | `settings-page-pattern.mdc` | Settings pages: full-panel layout, no `max-w-*`, server+client split, DB key ≤16 chars |
 | `ai-screening-pattern.mdc` | AI-scored/ranked features: client/server config split (avoid leaking Prisma/fs into client bundle), `technical_snapshot.price` is in thousands of VND, AI explains a score but never computes one |
+| `analysis-page-prefetch.mdc` | /analysis background-prefetches every tab (VN30/VN100/ETF + AI Analyst/AI Screening/Swing, incl. LLM calls) on first paint; cache-key registry + shared fetch-function pattern for adding a new lazily-loaded tab |

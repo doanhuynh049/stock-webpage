@@ -54,6 +54,8 @@ export const LOCAL_CACHE_TTL = {
   watchlistAddPrice: Infinity,
   aiScreening: 30 * 60 * 1000,
   aiScreeningWeights: Infinity,
+  aiHoldings: 30 * 60 * 1000,
+  swingScreen: 30 * 60 * 1000,
 } as const;
 
 export const LOCAL_CACHE_KEYS = {
@@ -64,4 +66,6 @@ export const LOCAL_CACHE_KEYS = {
   watchlistAddPrice: (symbol: string) => `watchlist-add-${symbol.toUpperCase()}`,
   aiScreening: "ai-screening",
   aiScreeningWeights: "ai-screening-weights",
+  aiHoldings: "ai-holdings",
+  swingScreen: (universeLabel: string) => `swing-${universeLabel.toLowerCase()}`,
 } as const;

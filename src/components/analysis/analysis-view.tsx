@@ -35,6 +35,19 @@ import { ExitStrategyPanel } from "@/components/analysis/exit-strategy-panel";
 import { AiHoldingsPanel } from "@/components/analysis/ai-holdings-panel";
 import { AiScreeningPanel } from "@/components/analysis/ai-screening-panel";
 import type { EnrichedHolding } from "@/lib/portfolio/holdings-enrichment";
+import {
+  runSwingScreen,
+  type SwingResult,
+  type SwingScreenResult,
+  type MarketCtx,
+} from "@/lib/analysis/swing-screener";
+import { DEFAULT_SCREENING_WEIGHTS } from "@/lib/analysis/ai-screening-config";
+import {
+  readLocalCache,
+  writeLocalCache,
+  LOCAL_CACHE_KEYS,
+  LOCAL_CACHE_TTL,
+} from "@/lib/client/local-storage-cache";
 
 const EMPTY_BUNDLE: UniverseAnalysisBundle = {
   fundamental: [],
@@ -44,8 +57,8 @@ const EMPTY_BUNDLE: UniverseAnalysisBundle = {
 
 type LazyUniverse = "vn30" | "vn100" | "etf";
 
-type MainTab = "portfolio" | "sector" | "etf" | "vn30" | "vn100" | "rules" | "principles" | "avg-down" | "exit" | "swing" | "ai" | "ai-screen";
-type SubTab = "fundamental" | "technical" | "combined";
+type MainTab = "portfolio" | "sector" | "etf" | "vn30" | "vn100" | "rules" | "principles" | "avg-down" | "exit" | "ai" | "ai-screen";
+type SubTab = "fundamental" | "technical" | "combined" | "swing";
 
 const MAIN_TABS: { id: MainTab; label: string }[] = [
   { id: "portfolio", label: "Portfolio" },
@@ -57,7 +70,6 @@ const MAIN_TABS: { id: MainTab; label: string }[] = [
   { id: "vn100", label: "VN100" },
   { id: "avg-down", label: "Avg Down" },
   { id: "exit", label: "Exit Strategy" },
-  { id: "swing", label: "Short Swing" },
   { id: "rules", label: "Scoring rules" },
   { id: "principles", label: "Principles" },
 ];
@@ -66,6 +78,7 @@ const SUB_TABS: { id: SubTab; label: string }[] = [
   { id: "fundamental", label: "Fundamental" },
   { id: "technical", label: "Technical" },
   { id: "combined", label: "Combined" },
+  { id: "swing", label: "Swing" },
 ];
 
 function recVariant(rec: string | undefined) {
@@ -521,60 +534,6 @@ function RulesPanel() {
 /*  Short Swing interactive screener                             */
 /* ───────────────────────────────────────────────────────────── */
 
-type TechSignal = { indicator: string; value: number; signal: string };
-
-type MarketCtx = {
-  vnIndexChange: number;
-  topSectors: string[];
-  sentiment: string;
-};
-
-type SwingResult = {
-  symbol: string;
-  name: string;
-  sector: string;
-  price: number;
-  changePercent: number;
-  rsi: number;
-  high52w: number;
-  // criteria (8 scored)
-  aboveMA20: boolean;       // C1 — price above MA20
-  aboveMA50: boolean;       // C2 — price above MA50
-  rsiStrong: boolean;       // C3 — RSI > 60
-  volumeSpike: boolean;     // C4 — volume ≥ 2× 20d avg
-  near52wHigh: boolean;     // C5 — within 15% of 52-week high
-  outperformsMarket: boolean; // C6 — change% > VN-Index change%
-  leadingSector: boolean;   // C7 — sector in top 3 performers
-  positiveMomentum: boolean;// C8 — positive daily change
-  score: number;
-  signal: "ENTRY" | "WATCH" | "SKIP";
-  error?: string;
-};
-
-function buildSwingResult(
-  stock: { symbol: string; name: string; sector: string; price: number; changePercent: number; rsi: number; high52w: number; analystRating?: string },
-  technicals: TechSignal[],
-  ctx: MarketCtx | null,
-): SwingResult {
-  const sig = (ind: string) => technicals.find((t) => t.indicator === ind);
-  const aboveMA20 = sig("MA 20")?.signal === "Bullish";
-  const aboveMA50 = sig("MA 50")?.signal === "Bullish";
-  const rsiStrong = stock.rsi > 60;
-  const volumeSpike = sig("Volume Ratio")?.signal === "Bullish";
-  const near52wHigh = stock.high52w > 0 && stock.price / stock.high52w > 0.85;
-  const outperformsMarket = ctx != null && stock.changePercent > ctx.vnIndexChange;
-  const leadingSector = ctx != null && ctx.topSectors.some(
-    (s) => s.toLowerCase() === stock.sector.toLowerCase(),
-  );
-  const positiveMomentum = stock.changePercent > 0;
-
-  const criteria = [aboveMA20, aboveMA50, rsiStrong, volumeSpike, near52wHigh, outperformsMarket, leadingSector, positiveMomentum];
-  const score = criteria.filter(Boolean).length;
-  const signal: SwingResult["signal"] = score >= 6 ? "ENTRY" : score >= 3 ? "WATCH" : "SKIP";
-
-  return { symbol: stock.symbol, name: stock.name, sector: stock.sector, price: stock.price, changePercent: stock.changePercent, rsi: stock.rsi, high52w: stock.high52w, aboveMA20, aboveMA50, rsiStrong, volumeSpike, near52wHigh, outperformsMarket, leadingSector, positiveMomentum, score, signal };
-}
-
 function Check({ ok }: { ok: boolean }) {
   return (
     <span className={`text-sm font-bold ${ok ? "text-success" : "text-subtle"}`}>
@@ -592,7 +551,7 @@ function SwingBadge({ signal }: { signal: SwingResult["signal"] }) {
   return <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ring-1 ${cls}`}>{signal}</span>;
 }
 
-function ShortSwingPanel({ defaultSymbols }: { defaultSymbols: string[] }) {
+function ShortSwingPanel({ defaultSymbols, universeLabel = "VN30" }: { defaultSymbols: string[]; universeLabel?: string }) {
   const [input, setInput] = useState("");
   const [results, setResults] = useState<SwingResult[]>([]);
   const [marketCtx, setMarketCtx] = useState<MarketCtx | null>(null);
@@ -607,71 +566,34 @@ function ShortSwingPanel({ defaultSymbols }: { defaultSymbols: string[] }) {
 
     setLoading(true);
     setResults([]);
-
-    // Fetch market context + all stocks in parallel
-    const [marketRes, ...stockSettled] = await Promise.allSettled([
-      fetch("/api/market").then((r) => r.json()) as Promise<{ market: { indices: { symbol: string; changePercent: number }[]; sectors: { sector: string; changePercent: number }[]; sentiment: string } }>,
-      ...symbols.map(async (sym): Promise<SwingResult> => {
-        const res = await fetch(`/api/stocks/${sym}?lite=true`);
-        if (!res.ok) {
-          const errResult: SwingResult = {
-            symbol: sym, name: sym, sector: "—", price: 0, changePercent: 0, rsi: 0, high52w: 0,
-            aboveMA20: false, aboveMA50: false, rsiStrong: false, volumeSpike: false,
-            near52wHigh: false, outperformsMarket: false, leadingSector: false, positiveMomentum: false,
-            score: 0, signal: "SKIP",
-            error: res.status === 404 ? "Symbol not found" : "Fetch failed",
-          };
-          return errResult;
-        }
-        const data = await res.json() as {
-          stock: { symbol: string; name: string; sector: string; price: number; changePercent: number; rsi: number; high52w: number; analystRating?: string };
-          technicals: TechSignal[];
-        };
-        return buildSwingResult(data.stock, data.technicals ?? [], null);
-      }),
-    ]);
-
-    // Resolve market context
-    let ctx: MarketCtx | null = null;
-    if (marketRes.status === "fulfilled") {
-      const m = marketRes.value.market;
-      const vnIdx = m.indices?.find((i) => i.symbol === "VNINDEX" || i.symbol === "VN-Index");
-      const topSectors = [...(m.sectors ?? [])].sort((a, b) => b.changePercent - a.changePercent).slice(0, 3).map((s) => s.sector);
-      ctx = { vnIndexChange: vnIdx?.changePercent ?? 0, topSectors, sentiment: m.sentiment ?? "Neutral" };
-      setMarketCtx(ctx);
-    }
-
-    // Re-score with market context
-    const rows: SwingResult[] = stockSettled.map((r) => {
-      if (r.status === "rejected") {
-        const errResult: SwingResult = {
-          symbol: "ERR", name: "—", sector: "—", price: 0, changePercent: 0, rsi: 0, high52w: 0,
-          aboveMA20: false, aboveMA50: false, rsiStrong: false, volumeSpike: false,
-          near52wHigh: false, outperformsMarket: false, leadingSector: false, positiveMomentum: false,
-          score: 0, signal: "SKIP", error: "Unknown error",
-        };
-        return errResult;
-      }
-      if (r.value.error) return r.value;
-      // Re-build with market context now available
-      return { ...r.value, outperformsMarket: ctx != null && r.value.changePercent > ctx.vnIndexChange, leadingSector: ctx != null && ctx.topSectors.some((s) => s.toLowerCase() === r.value.sector.toLowerCase()) };
-    }).map((r) => {
-      if (r.error) return r;
-      const score = [r.aboveMA20, r.aboveMA50, r.rsiStrong, r.volumeSpike, r.near52wHigh, r.outperformsMarket, r.leadingSector, r.positiveMomentum].filter(Boolean).length;
-      return { ...r, score, signal: (score >= 6 ? "ENTRY" : score >= 3 ? "WATCH" : "SKIP") as SwingResult["signal"] };
-    });
-
-    rows.sort((a, b) => b.score - a.score);
+    const { results: rows, marketCtx: ctx } = await runSwingScreen(symbols);
+    setMarketCtx(ctx);
     setResults(rows);
     setLoading(false);
   }, [input]);
 
-  // Auto-run once with VN30 on mount (input stays empty — user types to re-run)
+  // On sub-tab open: show a fresh background-prefetched result instantly if
+  // one exists (see AnalysisView's prefetchSwing), else run + cache it now.
+  // Input stays empty either way — user types to re-run with custom tickers.
   useEffect(() => {
     if (hasRun.current || !defaultSymbols.length) return;
     hasRun.current = true;
-    void runScreener(defaultSymbols.join(", "));
-  }, [defaultSymbols, runScreener]);
+    const cacheKey = LOCAL_CACHE_KEYS.swingScreen(universeLabel);
+    const cached = readLocalCache<SwingScreenResult>(cacheKey, LOCAL_CACHE_TTL.swingScreen);
+    if (cached) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- restoring a synchronous cache hit on sub-tab open, not synchronizing to changing props
+      setResults(cached.results);
+      setMarketCtx(cached.marketCtx);
+      return;
+    }
+    setLoading(true);
+    void runSwingScreen(defaultSymbols).then((data) => {
+      setResults(data.results);
+      setMarketCtx(data.marketCtx);
+      setLoading(false);
+      writeLocalCache(cacheKey, data);
+    });
+  }, [defaultSymbols, universeLabel]);
 
   return (
     <div className="space-y-4 text-sm">
@@ -725,7 +647,7 @@ function ShortSwingPanel({ defaultSymbols }: { defaultSymbols: string[] }) {
             onClick={() => setInput(defaultSymbols.join(", "))}
             className="rounded-md bg-accent/10 px-2.5 py-1 text-[11px] font-semibold text-accent ring-1 ring-accent/20 transition hover:bg-accent/20 disabled:opacity-50"
           >
-            Load VN30
+            Load {universeLabel}
           </button>
           <span className="text-[10px] text-subtle">or click a symbol:</span>
           <div className="flex flex-wrap gap-1">
@@ -746,7 +668,7 @@ function ShortSwingPanel({ defaultSymbols }: { defaultSymbols: string[] }) {
               </button>
             ))}
             {defaultSymbols.length > 15 && (
-              <span className="text-[10px] text-subtle">+{defaultSymbols.length - 15} more in VN30</span>
+              <span className="text-[10px] text-subtle">+{defaultSymbols.length - 15} more in {universeLabel}</span>
             )}
           </div>
         </div>
@@ -1009,14 +931,14 @@ export function AnalysisView({
   const owned = new Set((ownedSymbols ?? []).map((s) => s.toUpperCase()));
 
   const loadLazyUniverse = useCallback(async (universe: LazyUniverse) => {
-    if (loadedRef.current[universe]) return;
+    if (loadedRef.current[universe]) return null;
     loadedRef.current[universe] = true;
     setLoadingUniverses((prev) => new Set(prev).add(universe));
     try {
       const res = await fetch(`/api/analysis/bundle?universe=${universe}`);
       if (!res.ok) {
         loadedRef.current[universe] = false;
-        return;
+        return null;
       }
       const data = (await res.json()) as {
         bundle?: UniverseAnalysisBundle;
@@ -1025,14 +947,62 @@ export function AnalysisView({
       if (universe === "vn30" && data.bundle) setVn30(data.bundle);
       if (universe === "vn100" && data.bundle) setVn100(data.bundle);
       if (universe === "etf" && data.etfBundle) setEtfBundle(data.etfBundle);
+      return data;
     } catch {
       loadedRef.current[universe] = false;
+      return null;
     } finally {
       setLoadingUniverses((prev) => {
         const next = new Set(prev);
         next.delete(universe);
         return next;
       });
+    }
+  }, []);
+
+  // Best-effort background prefetch for the LLM-backed tabs + Swing — each
+  // checks its own localStorage cache first so a fresh visit doesn't refetch.
+  // See .cursor/rules/analysis-page-prefetch.mdc for the pattern any new
+  // lazily-loaded analysis surface should follow.
+  const prefetchAiHoldings = useCallback(async () => {
+    if (readLocalCache(LOCAL_CACHE_KEYS.aiHoldings, LOCAL_CACHE_TTL.aiHoldings)) return;
+    try {
+      const res = await fetch("/api/analyst/portfolio");
+      if (!res.ok) return;
+      writeLocalCache(LOCAL_CACHE_KEYS.aiHoldings, await res.json());
+    } catch {
+      // best-effort — AiHoldingsPanel fetches on open if this fails
+    }
+  }, []);
+
+  const prefetchAiScreening = useCallback(async () => {
+    if (readLocalCache(LOCAL_CACHE_KEYS.aiScreening, LOCAL_CACHE_TTL.aiScreening)) return;
+    try {
+      const weights =
+        readLocalCache(LOCAL_CACHE_KEYS.aiScreeningWeights, LOCAL_CACHE_TTL.aiScreeningWeights) ??
+        DEFAULT_SCREENING_WEIGHTS;
+      const res = await fetch("/api/analysis/ai-screen", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ universe: "vn100", weights, limit: 20 }),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      writeLocalCache(LOCAL_CACHE_KEYS.aiScreening, data);
+      writeLocalCache(LOCAL_CACHE_KEYS.aiScreeningWeights, data.weights);
+    } catch {
+      // best-effort — AiScreeningPanel fetches on open if this fails
+    }
+  }, []);
+
+  const prefetchSwing = useCallback(async (universeLabel: string, symbols: string[]) => {
+    if (!symbols.length) return;
+    const cacheKey = LOCAL_CACHE_KEYS.swingScreen(universeLabel);
+    if (readLocalCache(cacheKey, LOCAL_CACHE_TTL.swingScreen)) return;
+    try {
+      writeLocalCache(cacheKey, await runSwingScreen(symbols));
+    } catch {
+      // best-effort — ShortSwingPanel fetches on open if this fails
     }
   }, []);
 
@@ -1046,9 +1016,14 @@ export function AnalysisView({
     if (mainTab === "etf") void loadLazyUniverse("etf");
   }, [mainTab, loadLazyUniverse]);
 
-  // Background-prefetch every lazy universe once, after first paint, so
-  // switching to VN30 / VN100 / ETF is instant. Runs sequentially and defers
-  // to browser idle time to avoid competing with the active tab's fetch.
+  // Background-prefetch every lazily-loaded analysis surface once, after
+  // first paint, so switching tabs is instant — VN30/VN100/ETF (batched
+  // snapshot query), AI Analyst + AI Screening (LLM calls), and Swing for
+  // all 3 host contexts (VN30 / VN100-once-loaded / Portfolio holdings).
+  // Deliberately fires the LLM-backed tabs speculatively too (Aug 2026) —
+  // every /analysis visit now pays for those calls even if the tab is never
+  // opened. See .cursor/rules/analysis-page-prefetch.mdc for the trade-off
+  // and the pattern to follow when adding a new tab.
   useEffect(() => {
     if (bgStartedRef.current) return;
     bgStartedRef.current = true;
@@ -1056,11 +1031,19 @@ export function AnalysisView({
 
     const prefetchAll = () => {
       if (cancelled) return;
-      // Fire all universes in parallel so the slowest (ETF) starts immediately
-      // instead of waiting behind VN30/VN100.
-      for (const universe of ["vn30", "vn100", "etf"] as LazyUniverse[]) {
-        void loadLazyUniverse(universe);
-      }
+      // Fire everything in parallel so the slowest (LLM calls, ETF) starts
+      // immediately instead of waiting behind VN30/VN100.
+      void loadLazyUniverse("vn30");
+      void loadLazyUniverse("etf");
+      void loadLazyUniverse("vn100").then((data) => {
+        if (cancelled) return;
+        const vn100Symbols = data?.bundle?.combined.map((r) => r.symbol) ?? [];
+        void prefetchSwing("VN100", vn100Symbols);
+      });
+      void prefetchAiHoldings();
+      void prefetchAiScreening();
+      void prefetchSwing("VN30", vn30Symbols);
+      void prefetchSwing("Portfolio", ownedSymbols ?? []);
     };
 
     const win = window as Window & {
@@ -1079,7 +1062,7 @@ export function AnalysisView({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [loadLazyUniverse]);
+  }, [loadLazyUniverse, prefetchAiHoldings, prefetchAiScreening, prefetchSwing, vn30Symbols, ownedSymbols]);
 
   const bundle =
     mainTab === "portfolio"
@@ -1099,7 +1082,18 @@ export function AnalysisView({
           ? INDEX_RULES.vn100
           : "";
 
-  const noSubTabs = mainTab === "rules" || mainTab === "principles" || mainTab === "sector" || mainTab === "etf" || mainTab === "avg-down" || mainTab === "exit" || mainTab === "swing" || mainTab === "ai" || mainTab === "ai-screen";
+  const noSubTabs = mainTab === "rules" || mainTab === "principles" || mainTab === "sector" || mainTab === "etf" || mainTab === "avg-down" || mainTab === "exit" || mainTab === "ai" || mainTab === "ai-screen";
+
+  // "Swing" sub-tab (Portfolio/VN30/VN100 only) reuses ShortSwingPanel with
+  // universe-appropriate default tickers instead of being its own main tab —
+  // it shares 4 of its 8 signals with the Technical sub-tab's underlying data.
+  const swingDefaultSymbols =
+    mainTab === "vn30"
+      ? vn30Symbols
+      : mainTab === "vn100"
+        ? vn100.combined.map((r) => r.symbol)
+        : ownedSymbols ?? [];
+  const swingUniverseLabel = mainTab === "vn30" ? "VN30" : mainTab === "vn100" ? "VN100" : "Portfolio";
 
   const selectedSymbol = selection?.row.symbol.toUpperCase() ?? null;
 
@@ -1162,17 +1156,9 @@ export function AnalysisView({
       )}
 
       {mainTab === "ai" ? (
-        <AiHoldingsPanel />
+        <AiHoldingsPanel combinedRows={portfolio.combined} />
       ) : mainTab === "ai-screen" ? (
         <AiScreeningPanel />
-      ) : mainTab === "swing" ? (
-        <Card className="!p-4">
-          <CardTitle className="!mb-1 !text-base">Short Swing Screener</CardTitle>
-          <p className="mb-4 text-xs text-muted">
-            Score any VN tickers against 8 swing-trading criteria (1–2 week hold). Enter tickers to begin.
-          </p>
-          <ShortSwingPanel defaultSymbols={vn30Symbols} />
-        </Card>
       ) : mainTab === "avg-down" ? (
         <Card className="!p-4">
           <CardTitle className="!mb-1 !text-base">Average Down Decision Framework</CardTitle>
@@ -1221,7 +1207,11 @@ export function AnalysisView({
               {!noSubTabs &&
                 ` — ${SUB_TABS.find((t) => t.id === subTab)?.label}`}
             </CardTitle>
-            {!noSubTabs && bundle && (
+            {!noSubTabs && subTab === "swing" ? (
+              <p className="mb-3 text-xs text-muted">
+                Score custom tickers (or the {swingUniverseLabel} defaults) against 8 swing-trading criteria (1–2 week hold).
+              </p>
+            ) : !noSubTabs && bundle && (
               <p className="mb-3 text-xs text-muted">
                 {description} · Click a row for analysis detail · Click symbol for stock page
               </p>
@@ -1265,6 +1255,10 @@ export function AnalysisView({
                   selectedSymbol={selectedSymbol}
                   onSelect={(row) => setSelection({ kind: "technical", row })}
                 />
+              ) : subTab === "swing" ? (
+                <div className="p-2">
+                  <ShortSwingPanel defaultSymbols={swingDefaultSymbols} universeLabel={swingUniverseLabel} />
+                </div>
               ) : (
                 <CombinedTable
                   rows={bundle?.combined ?? []}

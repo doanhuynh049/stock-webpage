@@ -13,7 +13,7 @@ description: >-
 | [components.md](components.md) | Full component & API catalog |
 | [data-flow.md](data-flow.md) | DB, trading→portfolio, cache layers, Vercel ops |
 
-**Cursor rules**: `action-first-navigation.mdc`, `page-state-cache.mdc`, `vercel-cache.mdc`, `theme-aware-interactive.mdc`, `auto-update-monitoring.mdc`, `settings-page-pattern.mdc`, `ai-screening-pattern.mdc`
+**Cursor rules**: `action-first-navigation.mdc`, `page-state-cache.mdc`, `vercel-cache.mdc`, `theme-aware-interactive.mdc`, `auto-update-monitoring.mdc`, `settings-page-pattern.mdc`, `ai-screening-pattern.mdc`, `analysis-page-prefetch.mdc`
 
 ---
 
@@ -108,7 +108,9 @@ Key points:
 
 ## Analysis & scoring
 
-**Tabs**: Portfolio | **AI Analyst** | **AI Screening** | Sector | ETF | VN30 | VN100 | Avg Down | **Exit Strategy** | **Short Swing** | Scoring rules | Principles
+**Tabs**: Portfolio | **AI Analyst** | **AI Screening** | Sector | ETF | VN30 | VN100 | Avg Down | **Exit Strategy** | Scoring rules | Principles
+
+**Sub-tabs** (Portfolio/VN30/VN100 only): Fundamental | Technical | Combined | **Swing**
 
 ### AI Analyst tab (Jul 2026) — auto-runs multi-agent analyst on holdings
 
@@ -118,6 +120,7 @@ Key points:
 - UI: value-weighted **health score /100**, verdict distribution chips, portfolio summary, Suggested Actions + Portfolio Risks columns, and a per-holding table (weight · P/L · conviction bar · verdict · action) with **expandable 6-agent breakdown** per row.
 - `runAnalyst` gained a `skipLlm?: boolean` opt so the per-stock orchestrator uses `ruleSynthesis` and makes zero LLM calls — keeps N-holdings cost to one LLM call total. (Note: `getStock` may still trigger the unknown-stock classifier LLM once per new ticker; that result is DB-cached.)
 - **Timing reconciliation (Jul 2026)**: the decision engine weights technical at only 18% (vs the Combined tab's 60%), so a stock can be STRONG BUY on conviction while its own Technical agent is weak. `TECHNICAL_TIMING_THRESHOLD` (45, `technical-scoring.ts`) is shared between the Combined tab's AVOID veto and `InvestmentReport.timingConfirmed` (set in `orchestrator.ts` from the Technical agent's score). Bullish verdict + `timingConfirmed:false` → portfolio `actionFromVerdict()` returns `"WAIT"` instead of `"ACCUMULATE"`; both synthesis functions are told explicitly and instructed not to recommend adding now. UI: `AiHoldingsPanel` shows a `WAIT` badge + amber note; `AnalystReport` shows a "Timing confirmed/not confirmed" badge + warning banner.
+- **Cross-tab divergence flag (Aug 2026)**: `timingConfirmed` reconciles AI Analyst against its *own* Technical agent, but AI Analyst's verdict and Portfolio → Combined's `recommendation` are still two fully independent scoring systems (26/24/18/14/10/8 multi-factor vs 60/40 technical/fundamental) that can land on opposite sides for the same holding. Deliberately **not** reconciled by aligning the weights — that would gut AI Analyst's distinct multi-factor design. Instead `AiHoldingsPanel` (now takes a `combinedRows` prop from `AnalysisView`, which already has `portfolio.combined` loaded) flags when the two land on opposite bullish/bearish sides (`divergesFromCombined()`, ai-holdings-panel.tsx) with a small icon in the row header + an explanatory note in the expanded panel — same "surface disagreement, don't silently blend" philosophy as `timingConfirmed`.
 
 ### AI Screening tab (Aug 2026) — universe → shortlist, rule-based score + AI explanation only
 
@@ -132,7 +135,7 @@ Implements "AI Screening Rule — Level 2": narrows the VN30/VN100 universe to a
 - **Route**: `POST /api/analysis/ai-screen` (session auth) — `{ universe, weights?, limit? }` → `screenUniverse` + `explainCandidates`, loads per-user provider keys from `ai_response_cache` like `/api/analyst`.
 - **UI**: `AiScreeningPanel` (`src/components/analysis/ai-screening-panel.tsx`) — weight editor (6 inputs, live sum), VN30/VN100 toggle, ranked list with expandable sub-score bars + reason + flags. Auto-runs once on mount; last result cached to `vnstocks:ai-screening` (30 min), weights persisted permanently to `vnstocks:ai-screening-weights`.
 
-- **Lazy + background loading**: VN30/VN100/ETF load on tab open and are also background-prefetched once after first paint (idle callback → sequential fetch of `/api/analysis/bundle`), so tab switches are instant. Portfolio + Sector still render server-side on first paint.
+- **Lazy + background loading (extended Aug 2026)**: every lazily-loaded tab/sub-tab loads on open AND is background-prefetched once after first paint (idle callback), so tab switches are instant — VN30/VN100/ETF (`/api/analysis/bundle`), **AI Analyst** (`/api/analyst/portfolio`), **AI Screening** (`/api/analysis/ai-screen`, default weights), and **Swing** (`runSwingScreen()`, all 3 host contexts: VN30/VN100/Portfolio). Portfolio + Sector still render server-side on first paint — nothing to prefetch. **Deliberate cost trade-off**: AI Analyst/AI Screening prefetch means an LLM call fires on every `/analysis` visit even if that tab is never opened — see `.cursor/rules/analysis-page-prefetch.mdc`.
 - **Exit Strategy tab** (Jul 2026): `ExitStrategyPanel` — number-driven 6-factor sell framework (overvaluation, thesis, profit target, trailing stop, concentration, opportunity cost) → HOLD/TRIM/SELL verdict with suggested shares + proceeds. Uses portfolio props + live 52w-high fetch for the trailing stop.
 - **Batch DB**: `loadAnalysisSnapshotStore(symbols)` — 2 queries per universe
 - **Combined**: `0.60 × Technical + 0.40 × Fundamental`
@@ -143,12 +146,12 @@ Implements "AI Screening Rule — Level 2": narrows the VN30/VN100 universe to a
 - **Principles tab**: side-by-side layout — left = **Stock Evaluator** (`StockEvaluationPanel` → `/api/stock-eval`), right = investment principles reference
 - **Technical table**: includes **current price (₫)** column and **Volume Ratio** (today vs 20-day avg) as a signal
 
-### Short Swing tab (Jul 2026)
+### Swing sub-tab (Aug 2026 — folded in from the former standalone "Short Swing" main tab)
 
-Interactive stock screener for short-term swing trading:
+Interactive stock screener for short-term swing trading, now a 4th sub-tab (alongside Fundamental/Technical/Combined) under **Portfolio / VN30 / VN100** instead of its own top-level tab — 4 of its 8 criteria (`aboveMA20`, `aboveMA50`, `rsiStrong`, `volumeSpike`) already overlapped with the Technical sub-tab's underlying signals, so it made more sense as a sibling analysis mode than a separate tab:
 
-- **Auto-runs VN30 on tab open** (`useEffect` + `hasRun` ref) — table is populated immediately; **input stays empty** so the user can type custom tickers
-- **VN30 chips + "Load VN30" button** — click any chip to append a symbol to input; "Load VN30" fills all VN30 symbols at once
+- **Auto-runs on sub-tab open** (`useEffect` + `hasRun` ref) with universe-appropriate defaults — VN30 symbols under the VN30 tab, top-30-by-combined-score under VN100, your holdings under Portfolio (`ownedSymbols`) — table is populated immediately; **input stays empty** so the user can type custom tickers
+- **Universe chips + "Load {VN30|VN100|Portfolio}" button** (`ShortSwingPanel`'s `universeLabel` prop) — click any chip to append a symbol to input; the load button fills all default symbols at once
 - **Input**: comma-separated symbols → "Analyze" button re-runs with whatever is in the box
 - **Data fetched**: `GET /api/market` (VN-Index context once) + `GET /api/stocks/{sym}?lite=true` per symbol (price, technicals; **skips news/AI**)
 - **8 scored criteria**: `aboveMA20`, `aboveMA50`, `rsiStrong` (RSI 40–70), `volumeSpike` (ratio ≥ 1.5×), `near52wHigh` (within 15%), `outperformsMarket` (stock % > VN-Index %), `leadingSector`, `positiveMomentum` (price > 0)
