@@ -1,11 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, Loader2, RefreshCw, RotateCcw, Sparkles } from "lucide-react";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input, Label } from "@/components/ui/input";
+import { SortableColumn } from "@/components/ui/sortable-column";
+import { useTableSort } from "@/hooks/use-table-sort";
+import { applySortDir, compareNumbers, compareStrings } from "@/lib/table-sort";
 import { cn } from "@/lib/utils";
 import {
   readLocalCache,
@@ -170,6 +173,30 @@ export function AiScreeningPanel() {
 
   const weightSum = WEIGHT_FIELDS.reduce((s, f) => s + (weights[f.key] || 0), 0);
 
+  type SortKey = "symbol" | "sector" | "score" | "unavailable";
+  const { sortKey, sortDir, toggleSort } = useTableSort<SortKey>(null, "desc");
+  const sortedRows = useMemo(() => {
+    if (!report || !sortKey) return report?.rows ?? [];
+    return [...report.rows].sort((a, b) => {
+      let cmp = 0;
+      switch (sortKey) {
+        case "symbol":
+          cmp = compareStrings(a.symbol, b.symbol);
+          break;
+        case "sector":
+          cmp = compareStrings(a.sector, b.sector);
+          break;
+        case "score":
+          cmp = compareNumbers(a.quantScore, b.quantScore);
+          break;
+        case "unavailable":
+          cmp = compareNumbers(a.hardFilter.dataUnavailable.length, b.hardFilter.dataUnavailable.length);
+          break;
+      }
+      return applySortDir(cmp, sortDir);
+    });
+  }, [report, sortKey, sortDir]);
+
   return (
     <div className="space-y-4">
       <Card className="!p-4">
@@ -272,11 +299,20 @@ export function AiScreeningPanel() {
               No candidates passed the hard filter (ROE ≥ 15%, Debt/Equity ≤ 2.0, min. liquidity).
             </p>
           ) : (
-            <div className="space-y-1.5">
-              {report.rows.map((row, i) => (
-                <ScreeningRow key={row.symbol} row={row} rank={i + 1} />
-              ))}
-            </div>
+            <>
+              <div className="mb-2 hidden items-center gap-3 px-3 text-[10px] uppercase tracking-wider text-subtle sm:flex">
+                <span className="w-5" />
+                <SortableColumn label="Symbol" column="symbol" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="w-16" />
+                <SortableColumn label="Sector" column="sector" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="w-32" />
+                <SortableColumn label="Quant Score" column="score" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="min-w-[140px] flex-1" />
+                <SortableColumn label="Unavailable" column="unavailable" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} />
+              </div>
+              <div className="space-y-1.5">
+                {sortedRows.map((row, i) => (
+                  <ScreeningRow key={row.symbol} row={row} rank={i + 1} />
+                ))}
+              </div>
+            </>
           )}
           <p className="mt-3 text-center text-[11px] text-subtle">
             Generated {new Date(report.generatedAt).toLocaleString()} · Educational use only — not financial advice.

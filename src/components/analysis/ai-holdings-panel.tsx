@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -17,6 +17,9 @@ import {
 import { Card, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { SortableColumn } from "@/components/ui/sortable-column";
+import { useTableSort } from "@/hooks/use-table-sort";
+import { applySortDir, compareNumbers, compareStrings } from "@/lib/table-sort";
 import { cn } from "@/lib/utils";
 import {
   readLocalCache,
@@ -24,9 +27,26 @@ import {
   LOCAL_CACHE_KEYS,
   LOCAL_CACHE_TTL,
 } from "@/lib/client/local-storage-cache";
-import type { HoldingAnalysis, PortfolioAnalystResult } from "@/lib/analyst/portfolio";
+import type { HoldingAction, HoldingAnalysis, PortfolioAnalystResult } from "@/lib/analyst/portfolio";
 import type { AgentReport, Verdict } from "@/lib/analyst/types";
 import type { CombinedAnalysisRow } from "@/lib/analysis/combined-analysis";
+
+const VERDICT_RANK: Record<Verdict, number> = {
+  "STRONG BUY": 5,
+  BUY: 4,
+  ACCUMULATE: 3,
+  HOLD: 2,
+  TRIM: 1,
+  AVOID: 0,
+};
+
+const ACTION_RANK: Record<HoldingAction, number> = {
+  ACCUMULATE: 3,
+  WAIT: 2,
+  REVIEW: 1,
+  HOLD: 0,
+  TRIM: -1,
+};
 
 type Stance = "bullish" | "bearish" | "neutral";
 
@@ -244,6 +264,36 @@ export function AiHoldingsPanel({ combinedRows }: { combinedRows?: CombinedAnaly
   const verdictOrder: Verdict[] = ["STRONG BUY", "BUY", "ACCUMULATE", "HOLD", "TRIM", "AVOID"];
   const combinedBySymbol = new Map((combinedRows ?? []).map((r) => [r.symbol.toUpperCase(), r]));
 
+  type SortKey = "symbol" | "weight" | "pl" | "conviction" | "verdict" | "action";
+  const { sortKey, sortDir, toggleSort } = useTableSort<SortKey>(null, "desc");
+  const sortedHoldings = useMemo(() => {
+    if (!result || !sortKey) return result?.holdings ?? [];
+    return [...result.holdings].sort((a, b) => {
+      let cmp = 0;
+      switch (sortKey) {
+        case "symbol":
+          cmp = compareStrings(a.symbol, b.symbol);
+          break;
+        case "weight":
+          cmp = compareNumbers(a.weightPct, b.weightPct);
+          break;
+        case "pl":
+          cmp = compareNumbers(a.gainPct, b.gainPct);
+          break;
+        case "conviction":
+          cmp = compareNumbers(a.overallScore, b.overallScore);
+          break;
+        case "verdict":
+          cmp = compareNumbers(VERDICT_RANK[a.verdict], VERDICT_RANK[b.verdict]);
+          break;
+        case "action":
+          cmp = compareNumbers(ACTION_RANK[a.action], ACTION_RANK[b.action]);
+          break;
+      }
+      return applySortDir(cmp, sortDir);
+    });
+  }, [result, sortKey, sortDir]);
+
   return (
     <div className="space-y-4">
       <Card className="!p-4">
@@ -351,15 +401,15 @@ export function AiHoldingsPanel({ combinedRows }: { combinedRows?: CombinedAnaly
             </p>
             <div className="mb-2 hidden items-center gap-3 px-3 text-[10px] uppercase tracking-wider text-subtle sm:flex">
               <span className="h-4 w-4" />
-              <span className="w-14">Ticker</span>
-              <span className="w-12 text-right">Weight</span>
-              <span className="w-16 text-right">P/L</span>
-              <span className="flex-1">Conviction</span>
-              <span className="w-24">Verdict</span>
-              <span className="w-24">Action</span>
+              <SortableColumn label="Ticker" column="symbol" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="w-14" />
+              <SortableColumn label="Weight" column="weight" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="w-12 justify-end" />
+              <SortableColumn label="P/L" column="pl" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="w-16 justify-end" />
+              <SortableColumn label="Conviction" column="conviction" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="flex-1" />
+              <SortableColumn label="Verdict" column="verdict" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="w-24" />
+              <SortableColumn label="Action" column="action" sortKey={sortKey} sortDir={sortDir} onSort={toggleSort} className="w-24" />
             </div>
             <div className="space-y-1.5">
-              {result.holdings.map((h) => (
+              {sortedHoldings.map((h) => (
                 <HoldingRow key={h.symbol} h={h} combinedRow={combinedBySymbol.get(h.symbol.toUpperCase())} />
               ))}
             </div>

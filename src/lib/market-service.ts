@@ -580,17 +580,26 @@ export async function getPriceHistory(
   const { getDbPriceHistory } = await import("@/lib/db/price-history");
   const { shouldSkipDbReads } = await import("@/lib/db/cache-first");
 
+  // A thin DB/cache result must not silently satisfy a caller that asked for
+  // much more history — e.g. a request for ~260 days used to accept a 64-day
+  // local dev cache mirror (data/neon-cache/price-daily.json) at face value,
+  // starving anything that needs a real trailing-year window (AI Prediction's
+  // backtest) even though Entrade/Yahoo could supply the rest. Scale the
+  // "good enough" bar with the request instead of a flat 5.
+  const minAcceptable = Math.min(days, Math.max(5, Math.floor(days * 0.6)));
+
   if (!shouldSkipDbReads()) {
     const dbHistory = await getDbPriceHistory(symbol, days);
-    if (dbHistory.length >= 5) return dbHistory;
+    if (dbHistory.length >= minAcceptable) return dbHistory;
   } else {
     const cached = await getDbPriceHistory(symbol, days);
-    if (cached.length >= 5) return cached;
+    if (cached.length >= minAcceptable) return cached;
   }
 
   let history = await fetchStockHistory(symbol, days);
-  if (history.length < 5) {
-    history = await fetchYahooHistory(symbol, days);
+  if (history.length < minAcceptable) {
+    const yahooHistory = await fetchYahooHistory(symbol, days);
+    if (yahooHistory.length > history.length) history = yahooHistory;
   }
   return history;
 }

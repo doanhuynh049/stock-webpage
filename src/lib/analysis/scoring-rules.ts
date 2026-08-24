@@ -139,6 +139,40 @@ export const AI_SCREENING_RULES = {
   ],
 } as const;
 
+export const AI_NEWS_SENTIMENT_RULES = {
+  title: "AI News Reading & Sentiment Analysis (per ticker)",
+  note: "AI's edge here is reading volume, not predicting price — sentiment is a lens on public tone, never a buy/sell signal. The disclaimer is attached to every report object, not just shown once in the UI.",
+  steps: [
+    "Ingestion: reuses the existing news pipeline (Yahoo + Google News RSS + CafeF + VnExpress) — no direct Reuters/Bloomberg/SEC EDGAR API (paid, or not applicable: VN-listed companies don't file with EDGAR). \"Tier-1 global\" trust is inferred from Google News' publisher attribution when it surfaces a Reuters/Bloomberg/AP/Nikkei-sourced article; \"VN official\" = CafeF/VnExpress.",
+    "News classification (LLM + rule-based fallback): each article → category (partnership/earnings/regulatory/management/macro/analyst_rating/other), sentiment, time_horizon, confidence, reasoning. headline/source/timestamp/link are always copied from the real fetched article — the model is never asked for them, so it structurally cannot fabricate a source.",
+    "Social sentiment (Stocktwits only — free, public, no key; Reddit's public endpoints are unreliable server-side, X's search API has no free tier): bullish/bearish % always paired with sample size; bot/spam filtered by duplicate-text, per-user post cap, and newborn-account heuristics; buzz change is an approximation vs. retrievable history, not a true 7-day baseline (disclosed in `methodology_note`), and is reported neutrally — no direction assumed from volume alone.",
+    "Aggregation: conflicts between news tone and social tone are surfaced as an explicit `conflicts[]` list, never averaged into one number. Tier-1/VN-official news outweighs social sentiment in the summary's trust-weighting, but no single blended directional score is ever computed.",
+  ],
+  dataRealities: [
+    "Stocktwits has no Vietnamese-exchange listings — VN ticker strings frequently collide with unrelated US-listed securities (confirmed live: \"FPT\" resolved to a US municipal bond fund, \"MWG\" to an unrelated \"Multi Ways Holdings Ltd\", \"VNM\" to a Vietnam ETF, none the actual VN company). A region-match guard rejects any non-VN-region resolution rather than misattribute — in practice this means social sentiment is \"unavailable\" for almost every real VN ticker, which is the honest result of Stocktwits not covering this market.",
+    "Buzz-change % is capped by what the public Stocktwits endpoint actually returns (recent messages only) — not a genuine trailing 7-day average.",
+    "Refreshes every ~2h (client cache) — news/sentiment moves over hours, unlike Level 2's quarterly-fundamentals cadence.",
+    "Portfolio Overview runs the full LLM pipeline per holding, capped at the top 10 by weight (explicit user decision — costlier than AI Analyst/AI Screening's 1-call-total design); holdings beyond the cap are listed, not silently dropped.",
+  ],
+} as const;
+
+export const AI_PREDICTION_RULES = {
+  title: "AI Prediction — Level 4 (Probability, Not Certainty)",
+  note: "No trained ML model (XGBoost/LightGBM/LSTM/etc.) runs here — this app has no Python training pipeline, feature store, or multi-year price history to train/serve one. Every number is a statistical estimate computed live from data already in this app, never a guaranteed price target.",
+  steps: [
+    "Statistical model: daily log-returns over the trailing ~1 year of price history give a drift (mean) and volatility (std dev), scaled to the chosen horizon under a random-walk assumption. Probability of a positive return = the normal CDF of (drift ÷ volatility) at that horizon.",
+    "Technical + Fundamental tilt (Level 2 reuse): the existing Combined score (0.60×Technical + 0.40×Fundamental, from combined-analysis.ts — never recomputed here) nudges the drift by up to ±8 percentage points annualized. A neutral score of 50 applies zero tilt.",
+    "Sentiment (Level 3) tilt is NOT wired in yet — doing so would mean triggering the LLM-backed News Sentiment pipeline on every prediction, which this module deliberately avoids to stay LLM-free and fast. A documented gap, not a silent one.",
+    "Backtest: walk-forward only, never shuffled/randomized — every historical window uses only returns from before its own prediction point. Hit-rate and calibration (of the windows predicted \"up\", how many actually went up) use overlapping windows for sample size; Sharpe ratio and max drawdown use a separate non-overlapping sequence so the equity curve is valid — overlapping trades can't be chained without double-counting the same days.",
+  ],
+  dataRealities: [
+    "\"model_used\" honestly says \"statistical\", never XGBoost/LightGBM/LSTM — claiming a model family that isn't actually running would be a false claim, not a rounding error.",
+    "No fixed retrain schedule — every request recomputes from current data instead of loading a periodically retrained model; `confidence_note` discloses this explicitly rather than inventing a fake retrain date.",
+    "History is capped at ~260 trading days (this app's price-history endpoints don't reliably return more for VN tickers) — backtest sample sizes are disclosed per request, and predictions with under 40 days of history are marked insufficient rather than estimated from too little data.",
+    "Portfolio Overview runs this for every holding, not capped at 10 like AI News — there's no LLM call to bound. `MAX_PREDICTION_HOLDINGS` (50) is a serverless-timeout safety valve only, not a cost cap.",
+  ],
+} as const;
+
 export const INDEX_RULES = {
   vn30: "All 30 symbols from data/vn30-stock-info.json (HOSE blue-chip index). Ranked by score.",
   vn100: "All symbols from data/vn100-stock-info.json. Top 30 shown by default (same as stock-service top-30 screen).",

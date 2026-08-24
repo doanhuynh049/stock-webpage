@@ -22,7 +22,7 @@ import type {
 import type { SectorAnalysisResult } from "@/lib/analysis/sector-analysis";
 import { SectorAnalysisView } from "@/components/analysis/sector-analysis-view";
 import { EtfAnalysisView } from "@/components/analysis/etf-analysis-view";
-import { FUNDAMENTAL_RULES, INDEX_RULES, TECHNICAL_RULES, COMBINED_RULES, AI_SCREENING_RULES } from "@/lib/analysis/scoring-rules";
+import { FUNDAMENTAL_RULES, INDEX_RULES, TECHNICAL_RULES, COMBINED_RULES, AI_SCREENING_RULES, AI_NEWS_SENTIMENT_RULES, AI_PREDICTION_RULES } from "@/lib/analysis/scoring-rules";
 import type { EtfAnalysisRow } from "@/lib/analysis/etf-universe";
 import {
   INVESTMENT_MOTTO,
@@ -34,6 +34,8 @@ import { AverageDownPanel } from "@/components/analysis/average-down-panel";
 import { ExitStrategyPanel } from "@/components/analysis/exit-strategy-panel";
 import { AiHoldingsPanel } from "@/components/analysis/ai-holdings-panel";
 import { AiScreeningPanel } from "@/components/analysis/ai-screening-panel";
+import { NewsSentimentPanel } from "@/components/analysis/news-sentiment-panel";
+import { PredictionPanel } from "@/components/analysis/prediction-panel";
 import type { EnrichedHolding } from "@/lib/portfolio/holdings-enrichment";
 import {
   runSwingScreen,
@@ -57,13 +59,15 @@ const EMPTY_BUNDLE: UniverseAnalysisBundle = {
 
 type LazyUniverse = "vn30" | "vn100" | "etf";
 
-type MainTab = "portfolio" | "sector" | "etf" | "vn30" | "vn100" | "rules" | "principles" | "avg-down" | "exit" | "ai" | "ai-screen";
+type MainTab = "portfolio" | "sector" | "etf" | "vn30" | "vn100" | "rules" | "principles" | "avg-down" | "exit" | "ai" | "ai-screen" | "ai-news" | "ai-predict";
 type SubTab = "fundamental" | "technical" | "combined" | "swing";
 
 const MAIN_TABS: { id: MainTab; label: string }[] = [
   { id: "portfolio", label: "Portfolio" },
   { id: "ai", label: "AI Analyst" },
   { id: "ai-screen", label: "AI Screening" },
+  { id: "ai-news", label: "AI News" },
+  { id: "ai-predict", label: "AI Prediction" },
   { id: "sector", label: "Sector" },
   { id: "etf", label: "ETF" },
   { id: "vn30", label: "VN30" },
@@ -522,6 +526,38 @@ function RulesPanel() {
         <p className="mb-1 mt-2 text-xs font-medium text-accent">Data proxies (never fabricated — closest honest derivation)</p>
         <ul className="ml-4 list-disc text-xs text-muted">
           {AI_SCREENING_RULES.dataProxies.map((p) => (
+            <li key={p}>{p}</li>
+          ))}
+        </ul>
+      </section>
+
+      <section className="border-t border-[var(--border)] pt-4">
+        <h3 className="mb-2 font-semibold">{AI_NEWS_SENTIMENT_RULES.title}</h3>
+        <p className="mb-2 text-xs text-muted">{AI_NEWS_SENTIMENT_RULES.note}</p>
+        <ol className="ml-4 list-decimal text-xs text-muted">
+          {AI_NEWS_SENTIMENT_RULES.steps.map((s) => (
+            <li key={s} className="mb-1">{s}</li>
+          ))}
+        </ol>
+        <p className="mb-1 mt-2 text-xs font-medium text-accent">Data realities (disclosed, not hidden)</p>
+        <ul className="ml-4 list-disc text-xs text-muted">
+          {AI_NEWS_SENTIMENT_RULES.dataRealities.map((p) => (
+            <li key={p}>{p}</li>
+          ))}
+        </ul>
+      </section>
+
+      <section className="border-t border-[var(--border)] pt-4">
+        <h3 className="mb-2 font-semibold">{AI_PREDICTION_RULES.title}</h3>
+        <p className="mb-2 text-xs text-muted">{AI_PREDICTION_RULES.note}</p>
+        <ol className="ml-4 list-decimal text-xs text-muted">
+          {AI_PREDICTION_RULES.steps.map((s) => (
+            <li key={s} className="mb-1">{s}</li>
+          ))}
+        </ol>
+        <p className="mb-1 mt-2 text-xs font-medium text-accent">Data realities (disclosed, not hidden)</p>
+        <ul className="ml-4 list-disc text-xs text-muted">
+          {AI_PREDICTION_RULES.dataRealities.map((p) => (
             <li key={p}>{p}</li>
           ))}
         </ul>
@@ -1006,6 +1042,35 @@ export function AnalysisView({
     }
   }, []);
 
+  // COST NOTE: unlike prefetchAiHoldings/prefetchAiScreening (1 LLM call
+  // each), this fires up to MAX_OVERVIEW_HOLDINGS (10) separate LLM
+  // classification calls — one per top-weighted holding. Explicit user
+  // decision (Aug 2026) to prefetch it anyway; see
+  // news-sentiment-portfolio.ts and .cursor/rules/analysis-page-prefetch.mdc.
+  const prefetchNewsSentimentPortfolio = useCallback(async () => {
+    if (readLocalCache(LOCAL_CACHE_KEYS.newsSentimentPortfolio, LOCAL_CACHE_TTL.newsSentimentPortfolio)) return;
+    try {
+      const res = await fetch("/api/analysis/news-sentiment/portfolio");
+      if (!res.ok) return;
+      writeLocalCache(LOCAL_CACHE_KEYS.newsSentimentPortfolio, await res.json());
+    } catch {
+      // best-effort — NewsSentimentPanel fetches on open if this fails
+    }
+  }, []);
+
+  // AI Prediction is pure math (no LLM call) — cheap enough to prefetch for
+  // every holding, not just a capped top-N like AI News's portfolio overview.
+  const prefetchPrediction = useCallback(async () => {
+    if (readLocalCache(LOCAL_CACHE_KEYS.predictionPortfolio, LOCAL_CACHE_TTL.predictionPortfolio)) return;
+    try {
+      const res = await fetch("/api/analysis/prediction/portfolio");
+      if (!res.ok) return;
+      writeLocalCache(LOCAL_CACHE_KEYS.predictionPortfolio, await res.json());
+    } catch {
+      // best-effort — PredictionPanel fetches on open if this fails
+    }
+  }, []);
+
   // Load the active lazy tab immediately when opened. Kicks off an async
   // fetch (loadLazyUniverse flips its own loading flag synchronously before
   // awaiting) rather than synchronizing to a prop, so this is intentional.
@@ -1018,8 +1083,10 @@ export function AnalysisView({
 
   // Background-prefetch every lazily-loaded analysis surface once, after
   // first paint, so switching tabs is instant — VN30/VN100/ETF (batched
-  // snapshot query), AI Analyst + AI Screening (LLM calls), and Swing for
-  // all 3 host contexts (VN30 / VN100-once-loaded / Portfolio holdings).
+  // snapshot query), AI Analyst + AI Screening (1 LLM call each), AI News'
+  // portfolio overview (up to 10 LLM calls — one per top-weighted holding,
+  // capped; see news-sentiment-portfolio.ts), and Swing for all 3 host
+  // contexts (VN30 / VN100-once-loaded / Portfolio holdings).
   // Deliberately fires the LLM-backed tabs speculatively too (Aug 2026) —
   // every /analysis visit now pays for those calls even if the tab is never
   // opened. See .cursor/rules/analysis-page-prefetch.mdc for the trade-off
@@ -1042,6 +1109,8 @@ export function AnalysisView({
       });
       void prefetchAiHoldings();
       void prefetchAiScreening();
+      void prefetchNewsSentimentPortfolio();
+      void prefetchPrediction();
       void prefetchSwing("VN30", vn30Symbols);
       void prefetchSwing("Portfolio", ownedSymbols ?? []);
     };
@@ -1062,7 +1131,7 @@ export function AnalysisView({
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [loadLazyUniverse, prefetchAiHoldings, prefetchAiScreening, prefetchSwing, vn30Symbols, ownedSymbols]);
+  }, [loadLazyUniverse, prefetchAiHoldings, prefetchAiScreening, prefetchNewsSentimentPortfolio, prefetchPrediction, prefetchSwing, vn30Symbols, ownedSymbols]);
 
   const bundle =
     mainTab === "portfolio"
@@ -1082,7 +1151,7 @@ export function AnalysisView({
           ? INDEX_RULES.vn100
           : "";
 
-  const noSubTabs = mainTab === "rules" || mainTab === "principles" || mainTab === "sector" || mainTab === "etf" || mainTab === "avg-down" || mainTab === "exit" || mainTab === "ai" || mainTab === "ai-screen";
+  const noSubTabs = mainTab === "rules" || mainTab === "principles" || mainTab === "sector" || mainTab === "etf" || mainTab === "avg-down" || mainTab === "exit" || mainTab === "ai" || mainTab === "ai-screen" || mainTab === "ai-news" || mainTab === "ai-predict";
 
   // "Swing" sub-tab (Portfolio/VN30/VN100 only) reuses ShortSwingPanel with
   // universe-appropriate default tickers instead of being its own main tab —
@@ -1159,6 +1228,10 @@ export function AnalysisView({
         <AiHoldingsPanel combinedRows={portfolio.combined} />
       ) : mainTab === "ai-screen" ? (
         <AiScreeningPanel />
+      ) : mainTab === "ai-news" ? (
+        <NewsSentimentPanel />
+      ) : mainTab === "ai-predict" ? (
+        <PredictionPanel />
       ) : mainTab === "avg-down" ? (
         <Card className="!p-4">
           <CardTitle className="!mb-1 !text-base">Average Down Decision Framework</CardTitle>

@@ -56,6 +56,15 @@ export const LOCAL_CACHE_TTL = {
   aiScreeningWeights: Infinity,
   aiHoldings: 30 * 60 * 1000,
   swingScreen: 30 * 60 * 1000,
+  // News/sentiment data trickles in over hours, not seconds — "refresh
+  // every few hours" per the AI News module's own spec, deliberately
+  // longer than the 30-min AI Analyst/Screening TTLs above.
+  newsSentiment: 2 * 60 * 60 * 1000,
+  newsSentimentPortfolio: 2 * 60 * 60 * 1000,
+  // Statistical, not LLM-backed — underlying price/technical/fundamental
+  // snapshots don't change intraday in this app, so an hourly TTL is plenty.
+  prediction: 60 * 60 * 1000,
+  predictionPortfolio: 60 * 60 * 1000,
 } as const;
 
 export const LOCAL_CACHE_KEYS = {
@@ -68,4 +77,8 @@ export const LOCAL_CACHE_KEYS = {
   aiScreeningWeights: "ai-screening-weights",
   aiHoldings: "ai-holdings",
   swingScreen: (universeLabel: string) => `swing-${universeLabel.toLowerCase()}`,
+  newsSentiment: (symbol: string) => `news-sentiment-${symbol.toUpperCase()}`,
+  newsSentimentPortfolio: "news-sentiment-portfolio",
+  prediction: (symbol: string) => `prediction-${symbol.toUpperCase()}`,
+  predictionPortfolio: "prediction-portfolio",
 } as const;
