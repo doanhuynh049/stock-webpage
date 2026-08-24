@@ -4,18 +4,6 @@ import {
   type FundamentalBreakdown,
 } from "@/lib/analysis/fundamental-scoring";
 
-function interpolate(
-  value: number,
-  lo: number,
-  hi: number,
-  ptLo: number,
-  ptHi: number,
-): number {
-  if (hi <= lo) return ptHi;
-  const ratio = Math.max(0, Math.min(1, (value - lo) / (hi - lo)));
-  return Math.round(ptLo + ratio * (ptHi - ptLo));
-}
-
 function bankingQuality(f: FundamentalInputs): number {
   let score = 0;
   const roe = f.roe != null ? f.roe / 100 : null;

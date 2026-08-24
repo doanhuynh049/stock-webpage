@@ -169,6 +169,12 @@ model PortfolioHolding {
 
 model TradingTransaction {
   id              String   @id @db.VarChar(64)
+  // Nullable + no FK on purpose: added Jul 2026 to replace fragile id-prefix
+  // parsing for user attribution (see data-flow.md). Existing rows are NULL
+  // until `scripts/backfill-trading-user-id.ts` runs; trading-store.ts reads
+  // fall back to the old prefix-matching logic for any row where this is
+  // still NULL, so this column is purely additive and never a regression.
+  userId          String?  @map("user_id") @db.VarChar(64)
   transactionDate DateTime @map("transaction_date") @db.Date
   itemName        String?  @map("item_name") @db.VarChar(64)
   quantity        Int?
@@ -183,6 +189,7 @@ model TradingTransaction {
 
   @@index([transactionDate(sort: Desc)], map: "ix_trading_date")
   @@index([itemName], map: "ix_trading_item")
+  @@index([userId], map: "ix_trading_user")
   @@map("trading_transaction")
 }
 

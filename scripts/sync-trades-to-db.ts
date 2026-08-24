@@ -3,7 +3,7 @@
  * Push local JSON trading ledgers → Neon trading_transaction (per-user id prefix).
  * Usage: npx tsx scripts/sync-trades-to-db.ts
  */
-import { readdirSync, readFileSync, existsSync } from "node:fs";
+import { readdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import {
   clearTradingDbSyncCooldown,

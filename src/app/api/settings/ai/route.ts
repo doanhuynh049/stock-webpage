@@ -3,6 +3,8 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import type { LlmProvider } from "@/lib/providers/llm";
 import { getLlmStatus } from "@/lib/providers/llm";
+import { aiSettingsSchema } from "@/lib/validation/schemas";
+import { parseJsonBody } from "@/lib/validation/validate";
 
 export type ProviderConfig = {
   id: LlmProvider;
@@ -68,7 +70,9 @@ export async function PUT(request: Request) {
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const userId = session.user.id;
-  const body = (await request.json()) as AiSettings;
+  const parsed = await parseJsonBody(request, aiSettingsSchema);
+  if (parsed.response) return parsed.response;
+  const body = parsed.data;
 
   const payload: AiSettings = {
     providers: body.providers,

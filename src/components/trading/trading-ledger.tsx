@@ -105,7 +105,7 @@ export function TradingLedger({ userId }: { userId?: string }) {
   const [editId, setEditId] = useState<string | null>(null);
   const [form, setForm] = useState<TradeForm>(emptyForm);
   const [addAnother, setAddAnother] = useState(false);
-  const [dateInput, setDateInput] = useState("");
+  const [, setDateInput] = useState("");
   const [unitPriceInput, setUnitPriceInput] = useState("");
   const [symbolLookup, setSymbolLookup] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -170,8 +170,12 @@ export function TradingLedger({ userId }: { userId?: string }) {
   );
 
   useEffect(() => {
+    // localStorage cache is client-only (SSR always sees the `loading: true`
+    // default) — must stay an effect so the first hydration render still
+    // matches the server, then this swaps in the cached rows immediately.
     const cached = readTradingCache(filters, userId);
     if (cached) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional post-hydration cache hydrate, see comment above
       setTrades(cached.trades);
       setPrices(cached.prices);
       setLoading(false);
@@ -179,7 +183,7 @@ export function TradingLedger({ userId }: { userId?: string }) {
     } else {
       void load(false);
     }
-  }, [load, filters]);
+  }, [load, filters, userId]);
 
   useEffect(() => {
     const add = searchParams.get("add");
@@ -205,6 +209,9 @@ export function TradingLedger({ userId }: { userId?: string }) {
     if (sym.length < 2 || editId) return;
 
     let cancelled = false;
+    // Kicking off a debounced async lookup, not synchronizing rendered state
+    // to a prop — the flag flips back off in the `.finally()` below.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional "start async op" flag, see comment above
     setSymbolLookup(true);
     const timer = window.setTimeout(() => {
       void fetch(`/api/stocks/${sym}`)

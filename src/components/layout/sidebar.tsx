@@ -28,8 +28,6 @@ export function Sidebar({
   onNavigate,
   className,
 }: SidebarProps) {
-  const showLabels = !compact;
-
   return (
     <aside
       className={cn(

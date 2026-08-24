@@ -24,7 +24,7 @@ description: >-
 - **DB**: Prisma + Neon Postgres (`DB_DRIVER=http` on Vercel)
 - **Market**: Entrade + Yahoo → `market-service.ts`
 - **News**: Yahoo + Google RSS + CafeF + VnExpress → `news-service.ts`; UI via `CachedNewsFeed` + localStorage, AI digest via `AiNewsSummary`
-- **AI**: 5-provider chain → Cerebras → Groq → Gemini → Mistral → OpenRouter → rule fallback (see `src/lib/providers/llm.ts`)
+- **AI**: 11-provider chain → Cerebras → Groq → Gemini → Mistral → OpenRouter → SambaNova → Cohere → Hugging Face → Cloudflare → Ollama → LLM7 → rule fallback (see `src/lib/providers/llm.ts`)
 
 ---
 
@@ -84,8 +84,16 @@ Priority order (first enabled provider with a valid key wins):
 | 2 | **Groq** | 12k TPM | `llama-3.3-70b-versatile` | `GROQ_API_KEY` |
 | 3 | **Google Gemini** | 1.5M TPM · 1500 req/day | `gemini-2.0-flash` | `GEMINI_API_KEY` |
 | 4 | **Mistral AI** | Free trial | `mistral-small-latest` | `MISTRAL_API_KEY` |
-| 5 | **OpenRouter** | Free `:free` models | `meta-llama/...` | `OPENROUTER_API_KEY` |
+| 5 | **OpenRouter** | Free `:free` models | `meta-llama/llama-3.3-70b-instruct:free` | `OPENROUTER_API_KEY` |
+| 6 | **SambaNova** | Free tier | `Meta-Llama-3.3-70B-Instruct` | `SAMBANOVA_API_KEY` |
+| 7 | **Cohere** | Free trial ~1k calls/mo | `command-r-plus-08-2024` | `COHERE_API_KEY` |
+| 8 | **Hugging Face** | Free inference credits | `meta-llama/Llama-3.3-70B-Instruct` | `HUGGINGFACE_API_KEY` |
+| 9 | **Cloudflare Workers AI** | Free 10k neurons/day | `@cf/meta/llama-3.1-8b-instruct` | `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` |
+| 10 | **Ollama (local)** | Free, unlimited | `llama3.2` | `OLLAMA_BASE_URL` (no key; skipped unless set) |
+| 11 | **LLM7 (anonymous)** | Free, no key required | `gpt-4o-mini` | `LLM7_API_KEY` (optional — raises rate limit) |
 | — | Rule-based fallback | always | — | — |
+
+Full field-by-field detail (tier, speed, models/chat URLs) lives in `data-flow.md` → "AI provider chain" and in `LLM_PROVIDERS` in `llm.ts` itself (single source of truth).
 
 Key points:
 - All OpenAI-compatible providers share `callOpenAICompat()` — adding a new one is a one-liner
@@ -140,7 +148,7 @@ Interactive stock screener for short-term swing trading:
 ## Stock Evaluator (Jul 2026)
 
 - Enter any VN ticker → 8-category AI analysis (Business / Financial / Valuation / Risks / Growth / Management / Timing / Fit)
-- Uses 5-provider AI chain: quantitative from live data, qualitative from LLM training knowledge
+- Uses 11-provider AI chain: quantitative from live data, qualitative from LLM training knowledge
 - For **unknown stocks** (not in VN30/VN100 JSON): parallel-fetches **TCBS company overview** (`/api/stock-eval` route) to inject real Vietnamese name + ICB sector into the prompt — prevents LLM hallucination about company identity
 - Falls back to `buildRuleBasedEval(stock)` if LLM unavailable
 - Returns `StockEvalResult` from `src/app/api/stock-eval/route.ts`
@@ -394,11 +402,17 @@ CACHE_USER_ID=   # match bundled data/user-trades/{id}.json if needed
 CRON_SECRET=     # sent as "Authorization: Bearer $CRON_SECRET" by Vercel crons
 
 # AI providers (in priority order)
-CEREBRAS_API_KEY, CEREBRAS_MODEL=llama3.3-70b
+CEREBRAS_API_KEY, CEREBRAS_MODEL=gpt-oss-120b
 GROQ_API_KEY, GROQ_MODEL=llama-3.3-70b-versatile
 GEMINI_API_KEY, GEMINI_MODEL=gemini-2.0-flash
 MISTRAL_API_KEY, MISTRAL_MODEL=mistral-small-latest
 OPENROUTER_API_KEY, OPENROUTER_MODEL=meta-llama/llama-3.3-70b-instruct:free
+SAMBANOVA_API_KEY, SAMBANOVA_MODEL=Meta-Llama-3.3-70B-Instruct
+COHERE_API_KEY, COHERE_MODEL=command-r-plus-08-2024
+HUGGINGFACE_API_KEY, HUGGINGFACE_MODEL=meta-llama/Llama-3.3-70B-Instruct
+CLOUDFLARE_API_TOKEN, CLOUDFLARE_ACCOUNT_ID, CLOUDFLARE_MODEL=@cf/meta/llama-3.1-8b-instruct
+OLLAMA_BASE_URL, OLLAMA_MODEL=llama3.2   # local only, no key
+LLM7_API_KEY (optional), LLM7_MODEL=gpt-4o-mini
 ```
 
 ---

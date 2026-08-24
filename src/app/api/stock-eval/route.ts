@@ -40,7 +40,7 @@ async function buildStockContext(
 
   // Use prefetched VNDirect data or fetch now if fundamentals are missing
   const hasCachedFundamentals = stock.pe > 0 || stock.pb > 0;
-  let vnd = prefetchedVnd !== undefined
+  const vnd = prefetchedVnd !== undefined
     ? prefetchedVnd
     : hasCachedFundamentals ? null : await fetchVNDirectFundamentals(stock.symbol);
 

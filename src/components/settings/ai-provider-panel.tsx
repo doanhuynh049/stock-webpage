@@ -248,7 +248,7 @@ export function AiProviderPanel() {
             onClick={() => void autoSelectBestModels()}
             disabled={autoSelecting || saving}
             title="Ranks each enabled provider's known models and tests candidates until one responds, then fills in the best working model."
-            className="flex shrink-0 items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-[var(--fg)] ring-1 ring-[var(--border-strong)] transition hover:bg-[var(--bg-secondary)] disabled:opacity-50"
+            className="flex shrink-0 items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-[var(--fg)] ring-1 ring-[var(--border-strong)] transition hover:bg-[var(--bg-secondary)] disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
           >
             {autoSelecting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
             {autoSelecting ? "Finding best models…" : "Auto-detect best models"}
@@ -257,7 +257,7 @@ export function AiProviderPanel() {
             type="button"
             onClick={() => void save()}
             disabled={saving}
-            className="flex shrink-0 items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-fg shadow transition hover:opacity-90 disabled:opacity-50"
+            className="flex shrink-0 items-center gap-2 rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-fg shadow transition hover:opacity-90 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
           >
             {saving ? <Loader2 className="h-4 w-4 animate-spin" />
              : saved ? <CheckCircle2 className="h-4 w-4" />
@@ -310,7 +310,7 @@ export function AiProviderPanel() {
                     </span>
                     <span className="text-[10px] text-muted">{meta.speed}</span>
                     <a href={meta.url} target="_blank" rel="noopener noreferrer"
-                      className="ml-auto flex items-center gap-0.5 text-[10px] text-muted hover:text-accent">
+                      className="ml-auto flex items-center gap-0.5 rounded text-[10px] text-muted hover:text-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60">
                       Get key <ExternalLink className="h-2.5 w-2.5" />
                     </a>
                   </div>
@@ -321,7 +321,7 @@ export function AiProviderPanel() {
                 <button
                   type="button"
                   onClick={() => updateProvider(cfg.id, { enabled: !cfg.enabled })}
-                  className={`shrink-0 rounded-lg px-3 py-1 text-xs font-semibold ring-1 transition-all ${
+                  className={`shrink-0 rounded-lg px-3 py-1 text-xs font-semibold ring-1 transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 ${
                     cfg.enabled
                       ? "bg-accent/10 text-accent ring-accent/20 hover:bg-accent/20"
                       : "bg-[var(--bg-secondary)] text-muted ring-[var(--border)] hover:text-[var(--fg)]"
@@ -333,11 +333,11 @@ export function AiProviderPanel() {
                 {/* Move up/down */}
                 <div className="flex flex-col gap-0.5">
                   <button type="button" onClick={() => move(cfg.id, -1)} disabled={i === 0}
-                    className="rounded p-1 text-muted hover:text-[var(--fg)] disabled:opacity-20">
+                    className="rounded p-1 text-muted hover:text-[var(--fg)] disabled:opacity-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60">
                     <ArrowUp className="h-3.5 w-3.5" />
                   </button>
                   <button type="button" onClick={() => move(cfg.id, 1)} disabled={i === sorted.length - 1}
-                    className="rounded p-1 text-muted hover:text-[var(--fg)] disabled:opacity-20">
+                    className="rounded p-1 text-muted hover:text-[var(--fg)] disabled:opacity-20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60">
                     <ArrowDown className="h-3.5 w-3.5" />
                   </button>
                 </div>
@@ -397,7 +397,7 @@ export function AiProviderPanel() {
                       type="button"
                       onClick={() => void fetchModels(cfg.id)}
                       disabled={isFetching}
-                      className="flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[10px] font-semibold text-muted ring-1 ring-[var(--border)] transition-all hover:text-accent disabled:opacity-50"
+                      className="flex shrink-0 items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[10px] font-semibold text-muted ring-1 ring-[var(--border)] transition-all hover:text-accent disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
                     >
                       {isFetching ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
                       {isFetching ? "Loading…" : "Latest models"}
@@ -406,7 +406,7 @@ export function AiProviderPanel() {
                       type="button"
                       onClick={() => void runTest(cfg)}
                       disabled={isTesting}
-                      className="flex shrink-0 items-center gap-1.5 rounded-lg bg-accent/10 px-2.5 py-1.5 text-[10px] font-semibold text-accent ring-1 ring-accent/20 transition-all hover:bg-accent/20 disabled:opacity-50"
+                      className="flex shrink-0 items-center gap-1.5 rounded-lg bg-accent/10 px-2.5 py-1.5 text-[10px] font-semibold text-accent ring-1 ring-accent/20 transition-all hover:bg-accent/20 disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60"
                     >
                       {isTesting ? <Loader2 className="h-3 w-3 animate-spin" /> : <PlayCircle className="h-3 w-3" />}
                       {isTesting ? "Testing…" : "Run test"}
@@ -449,7 +449,7 @@ export function AiProviderPanel() {
         <div className="grid grid-cols-2 gap-2 lg:grid-cols-3 xl:grid-cols-5">
           {LLM_PROVIDERS.map((p) => (
             <a key={p.id} href={p.url} target="_blank" rel="noopener noreferrer"
-              className="flex items-center gap-2 rounded-lg p-2.5 ring-1 ring-[var(--border)] hover:bg-[var(--card)] hover:ring-[var(--border-strong)]">
+              className="flex items-center gap-2 rounded-lg p-2.5 ring-1 ring-[var(--border)] transition-all hover:bg-[var(--card)] hover:ring-[var(--border-strong)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60">
               <Zap className={`h-3.5 w-3.5 shrink-0 ${PROVIDER_COLORS[p.id]?.split(" ")[0]}`} />
               <div className="min-w-0">
                 <p className="text-xs font-semibold text-[var(--fg)]">{p.name}</p>

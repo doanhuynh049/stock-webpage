@@ -2,12 +2,13 @@ import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { loadDefaultStrategyConfig } from "@/lib/strategy/strategy-config";
-import type { UserStrategyOverrides } from "@/lib/strategy/strategy-config";
 import {
   getUserStrategyConfig,
   resetUserStrategyConfig,
   saveUserStrategyConfig,
 } from "@/lib/strategy/user-strategy";
+import { userStrategyOverridesSchema } from "@/lib/validation/schemas";
+import { parseJsonBody } from "@/lib/validation/validate";
 
 export async function GET() {
   const session = await auth();
@@ -26,14 +27,10 @@ export async function PUT(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let body: UserStrategyOverrides;
-  try {
-    body = (await request.json()) as UserStrategyOverrides;
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
-  }
+  const parsed = await parseJsonBody(request, userStrategyOverridesSchema);
+  if (parsed.response) return parsed.response;
 
-  const config = await saveUserStrategyConfig(session.user.id, body);
+  const config = await saveUserStrategyConfig(session.user.id, parsed.data);
   revalidatePath("/strategy-review");
   return NextResponse.json({ success: true, config });
 }

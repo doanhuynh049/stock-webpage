@@ -19,7 +19,7 @@ import { fetchVNDirectFundamentals } from "@/lib/providers/vndirect";
 import { canWriteLocalCache } from "@/lib/serverless";
 import { extractLastMentionedSymbol, extractTickersFromQuestion, isFollowUpQuestion } from "@/lib/symbol-utils";
 import { isEtfSymbol } from "@/lib/analysis/etf-utils";
-import { getEtfMeta, type EtfInfo } from "@/lib/analysis/etf-universe";
+import { getEtfMeta } from "@/lib/analysis/etf-universe";
 import { lookupIndexStock, lookupIndexStockFromDB } from "@/lib/stock-metadata";
 import { classifyUnknownStock } from "@/lib/stock-ai-classifier";
 import type {
@@ -277,7 +277,7 @@ function priceKToVnd(k: number): number {
 
 async function enrichStockDetails(stock: Stock): Promise<Stock> {
   const meta = lookupIndexStock(stock.symbol);
-  let s = { ...stock };
+  const s = { ...stock };
 
   if (meta) {
     s.name = meta.name;

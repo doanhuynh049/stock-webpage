@@ -354,7 +354,6 @@ function analyzeValuation3Part(
   // Summary
   const statuses = [historical, peer, growthAdj];
   const partsPass = statuses.filter((s) => s === "pass").length;
-  const partsFail = statuses.filter((s) => s === "fail").length;
 
   let overallStatus: AutoStatus;
   let label: string;

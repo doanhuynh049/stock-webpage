@@ -538,6 +538,10 @@ export function AiNewsSummary() {
     finally { setLoading(false); setRefreshing(false); }
   }
 
+  // Fetch-on-mount — `load()` flips its own loading flag before awaiting the
+  // request, which is the standard data-fetching effect pattern, not a
+  // render-state sync.
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional fetch-on-mount, see comment above
   useEffect(() => { void load(); }, []);
 
   const highCount = data?.allItems.filter((i) => i.impact === "HIGH").length ?? 0;

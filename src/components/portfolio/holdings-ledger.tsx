@@ -377,9 +377,15 @@ export function HoldingsLedger({
   const router = useRouter();
   const [holdings, setHoldings] = useState(initialHoldings);
 
-  useEffect(() => {
+  // Re-sync local (optimistically-editable) state when the server prop
+  // changes (e.g. after router.refresh()) — adjusted during render (React's
+  // recommended pattern) instead of an effect, so there's no extra render
+  // where stale holdings are still shown.
+  const [prevInitialHoldings, setPrevInitialHoldings] = useState(initialHoldings);
+  if (initialHoldings !== prevInitialHoldings) {
+    setPrevInitialHoldings(initialHoldings);
     setHoldings(initialHoldings);
-  }, [initialHoldings]);
+  }
 
   const [modal, setModal] = useState<"add" | "edit" | null>(null);
   const [draft, setDraft] = useState<Draft>(emptyDraft());

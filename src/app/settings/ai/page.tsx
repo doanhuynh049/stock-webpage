@@ -36,7 +36,7 @@ export default async function AiSettingsPage() {
         <div className="grid grid-cols-2 gap-2 lg:grid-cols-3 xl:grid-cols-5">
           {providerStatus.map(({ id, name, active, model, url, tier }) => (
             <a key={id} href={url} target="_blank" rel="noopener noreferrer"
-              className={`flex flex-col gap-1.5 rounded-xl p-3 ring-1 transition-all hover:ring-[var(--border-strong)] ${
+              className={`flex flex-col gap-1.5 rounded-xl p-3 ring-1 transition-all hover:ring-[var(--border-strong)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 ${
                 active ? "bg-emerald-500/5 ring-emerald-500/20" : "ring-[var(--border)]"
               }`}>
               <div className="flex items-center gap-1.5">

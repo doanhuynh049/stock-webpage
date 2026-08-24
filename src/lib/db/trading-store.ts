@@ -8,7 +8,6 @@ import { isPersistenceEnabled } from "@/lib/persistence";
 import type {
   TradeInput,
   TradeRecord,
-  TradeSummary,
   TradeType,
 } from "@/lib/db/trading-types";
 export { summarizeTrades } from "@/lib/db/trading-types";
@@ -18,7 +17,7 @@ import {
   syncPortfolioHoldings,
   type PortfolioHoldingInput,
 } from "@/lib/db/portfolio-sync";
-import { canUseLocalDataFiles, isVercel } from "@/lib/serverless";
+import { canUseLocalDataFiles } from "@/lib/serverless";
 import {
   loadStockServiceTrades,
   stockServiceLedgerKey,
@@ -32,7 +31,9 @@ let dbSyncBlockedUntil = 0;
 
 // Use first 8 chars of userId as prefix so IDs stay under VARCHAR(64).
 // Full format: "{8-char-prefix}__{36-char-uuid}" = 46 chars < 64.
-const USER_PREFIX_LEN = 8;
+// Exported so scripts/backfill-trading-user-id.ts can reuse the exact same
+// prefix-matching logic instead of duplicating the magic number.
+export const USER_PREFIX_LEN = 8;
 
 function tradeId(userId: string, id?: string): string {
   const raw = id ?? randomUUID();
@@ -47,9 +48,6 @@ function stripUserPrefix(userId: string, id: string): string {
   if (id.startsWith(longPfx)) return id.slice(longPfx.length);
   return id;
 }
-
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * Always use the prefixed format "{userId}__{tradeId}" so the prefixed
@@ -151,26 +149,6 @@ function toRecord(userId: string, row: {
   };
 }
 
-function toLegacyRecord(row: Parameters<typeof toRecord>[1]): TradeRecord {
-  const unit = row.unitPrice?.toNumber() ?? 0;
-  const qty = row.quantity ?? 0;
-  return {
-    id: row.id,
-    userId: "",
-    transactionDate: row.transactionDate.toISOString().slice(0, 10),
-    itemName: (row.itemName ?? "").toUpperCase(),
-    quantity: qty,
-    unitPrice: unit,
-    totalAmount: row.totalAmount?.toNumber() ?? unit * qty,
-    fee: row.fee?.toNumber() ?? 0,
-    tax: row.tax?.toNumber() ?? 0,
-    profit: row.profit?.toNumber() ?? null,
-    transactionType: (row.transactionType?.toUpperCase() === "SELL" ? "SELL" : "BUY") as TradeType,
-    exchange: row.exchange,
-    sector: row.sector,
-  };
-}
-
 async function readDbTrades(userId: string): Promise<TradeRecord[]> {
   if (!isPersistenceEnabled()) return [];
   const prefix = `${userId.slice(0, USER_PREFIX_LEN)}__`;
@@ -190,6 +168,15 @@ async function readDbTrades(userId: string): Promise<TradeRecord[]> {
           orderBy: { transactionDate: "desc" },
         }),
       "trading-list-prefixed",
+      0,
+    );
+    // Reliable path once scripts/backfill-trading-user-id.ts has run — rows
+    // that are correctly attributed but wouldn't match the id-prefix (e.g. if
+    // a user's id ever changes) or a legacy plain-UUID id. Deduped against
+    // `prefixed`/`legacy` below since a row may satisfy both queries.
+    const byUserId = await withDbRetry(
+      () => prisma.tradingTransaction.findMany({ where: { userId } }),
+      "trading-list-by-user-id",
       0,
     );
     type RawTxRow = {
@@ -229,9 +216,20 @@ async function readDbTrades(userId: string): Promise<TradeRecord[]> {
       0,
     );
 
+    // Dedup across all three sources — a row may satisfy more than one query
+    // (e.g. a backfilled row is both userId-matched and prefix-matched).
+    const seenIds = new Set<string>();
+    const dedupe = <T extends { id: string }>(rows: T[]): T[] =>
+      rows.filter((r) => {
+        if (seenIds.has(r.id)) return false;
+        seenIds.add(r.id);
+        return true;
+      });
+
     const merged: TradeRecord[] = [
-      ...prefixed.map((r) => toRecord(userId, r)),
-      ...legacy.map((r): TradeRecord => {
+      ...dedupe(byUserId).map((r) => toRecord(userId, r)),
+      ...dedupe(prefixed).map((r) => toRecord(userId, r)),
+      ...dedupe(legacy).map((r): TradeRecord => {
         const unit = r.unitPrice ?? 0;
         const qty = r.quantity ?? 0;
         return {
@@ -284,6 +282,7 @@ async function persistTradeNeon(
         where: { id },
         create: {
           id,
+          userId,
           transactionDate: new Date(trade.transactionDate),
           itemName: trade.itemName,
           quantity: trade.quantity,
@@ -297,6 +296,7 @@ async function persistTradeNeon(
           sector: trade.sector,
         },
         update: {
+          userId,
           transactionDate: new Date(trade.transactionDate),
           itemName: trade.itemName,
           quantity: trade.quantity,

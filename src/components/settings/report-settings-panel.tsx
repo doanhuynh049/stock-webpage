@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bell, CheckCircle2, Clock, Loader2, Mail, MessageSquare } from "lucide-react";
+import { CheckCircle2, Clock, Loader2, Mail, MessageSquare } from "lucide-react";
 
 type Frequency = "daily" | "weekly" | "monthly" | "off";
 
@@ -134,9 +134,12 @@ export function ReportSettingsPanel() {
   const [saving, setSaving] = useState(false);
   const [saved,  setSaved]  = useState(false);
 
+  // localStorage is client-only — must stay an effect so SSR/hydration see
+  // DEFAULT first, then this swaps in the saved config post-mount.
   useEffect(() => {
     try {
       const raw = localStorage.getItem("vnstocks:report-settings");
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional post-hydration restore, see comment above
       if (raw) setCfg({ ...DEFAULT, ...JSON.parse(raw) });
     } catch {/* ignore */}
   }, []);

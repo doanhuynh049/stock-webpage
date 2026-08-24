@@ -8,7 +8,7 @@
  *   npx tsx scripts/import-trading-json.ts [path] [userId] [ledgerKey]
  */
 import "dotenv/config";
-import { existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { prisma } from "../src/lib/prisma";
 import {

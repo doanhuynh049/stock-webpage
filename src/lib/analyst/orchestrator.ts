@@ -20,7 +20,7 @@ import type {
 import { callLlm, type LlmApiKeys } from "@/lib/providers/llm";
 
 // Decision-engine weights (sum = 1). Emphasis: Risk • Valuation • Growth.
-const WEIGHTS: Record<AgentId, number> = {
+export const WEIGHTS: Record<AgentId, number> = {
   financial: 0.26,
   valuation: 0.24,
   technical: 0.18,
@@ -29,9 +29,9 @@ const WEIGHTS: Record<AgentId, number> = {
   news: 0.10,
 };
 
-const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
+export const clamp = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, v));
 
-function verdictFromScore(score: number, marginOfSafety: number | null): Verdict {
+export function verdictFromScore(score: number, marginOfSafety: number | null): Verdict {
   if (score >= 78) return "STRONG BUY";
   if (score >= 66) return "BUY";
   if (score >= 56) return "ACCUMULATE";
@@ -41,7 +41,7 @@ function verdictFromScore(score: number, marginOfSafety: number | null): Verdict
   return score >= 38 ? "TRIM" : "AVOID";
 }
 
-function confidenceFrom(agents: AgentReport[], hasFundamentals: boolean): "HIGH" | "MEDIUM" | "LOW" {
+export function confidenceFrom(agents: AgentReport[], hasFundamentals: boolean): "HIGH" | "MEDIUM" | "LOW" {
   // Confidence = agreement among agents + data completeness.
   const scores = agents.map((a) => a.score);
   const mean = scores.reduce((a, b) => a + b, 0) / scores.length;

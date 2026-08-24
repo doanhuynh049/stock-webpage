@@ -278,7 +278,7 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 | `analyst/*` | **Multi-agent Investment Analyst** — `orchestrator.ts` (`runAnalyst`), `specialized.ts` (6 agents), `context.ts` (`gatherAnalystContext`), `types.ts`. Deterministic agents + weighted decision engine + LLM thesis synthesis. **Distinct from `agent/` (chat tool-loop).** |
 | `agent/agent-loop.ts` | ReAct tool-calling loop for the `/ai-analyst` chat (`runAgent`) |
 | `ai-analyst.ts` | Rule-based fallback Q&A |
-| `providers/llm.ts` | **5-provider chain** (Cerebras → Groq → Gemini → Mistral → OpenRouter → fallback); `LLM_PROVIDERS` metadata array; `callLlm(messages, context, opts)` accepts `opts.apiKeys` for user-supplied key overrides; `getLlmStatus()` |
+| `providers/llm.ts` | **11-provider chain** (Cerebras → Groq → Gemini → Mistral → OpenRouter → SambaNova → Cohere → Hugging Face → Cloudflare → Ollama → LLM7 → fallback); `LLM_PROVIDERS` metadata array; `callLlm(messages, context, opts)` accepts `opts.apiKeys` for user-supplied key overrides; `getLlmStatus()` |
 | `page-cache.ts` | `unstable_cache` wrapper + TTL |
 | `serverless.ts` | `isVercel`, `canUseLocalDataFiles`, **`canWriteLocalCache`** |
 | `utils.ts` | `cn`, formatting helpers |
@@ -296,7 +296,7 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 | `/api/stocks/[symbol]` | GET | Stock detail + technicals + news + AI summary; **`?lite=true`** skips news + AI (for batch screeners) | Public |
 | `/api/stocks/[symbol]/history` | GET | Price history | Public |
 | `/api/news` | GET | Live RSS news | Public |
-| `/api/news/summary` | GET | **AI news digest** (`?refresh=true` bypasses 30-min cache); 20 items max; compact context; 3500 output tokens; Cerebras→Groq→rule fallback; returns `NewsSummaryResponse` with `sectorTrends`, `stockMovers`, `items[]` | None |
+| `/api/news/summary` | GET | **AI news digest** (`?refresh=true` bypasses 30-min cache — **requires session auth**, Jul 2026, to stop LLM-quota abuse; unauthenticated requests always get cached data); 20 items max; compact context; 3500 output tokens; Cerebras→Groq→…→rule fallback; returns `NewsSummaryResponse` with `sectorTrends`, `stockMovers`, `items[]` | Session (only for `refresh=true`) |
 | `/api/picks` | GET | Investment picks | Public |
 | `/api/data/sync` | GET, POST | Market data sync | Session/cron |
 | `/api/portfolio` | GET, POST | Portfolio holdings | Session |
@@ -307,7 +307,7 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 | `/api/analyst/portfolio` | GET | **Auto portfolio review** — runs the analyst per holding (`skipLlm`) + one portfolio-level LLM synthesis → `PortfolioAnalystResult`. Powers `/analysis` AI Analyst tab | Session |
 | `/api/ai` | POST | AI analyst Q&A | Session |
 | `/api/ai/session` | GET, DELETE | Chat session | Session |
-| `/api/stock-eval` | GET | 8-category AI stock evaluation (`?symbol=FPT`); 5-provider LLM; rule-based fallback | Session |
+| `/api/stock-eval` | GET | 8-category AI stock evaluation (`?symbol=FPT`); 11-provider LLM chain; rule-based fallback | Session |
 | `/api/settings/ai` | GET, PUT | Load/save user AI config (provider priority, models, API keys) from `ai_response_cache` | Session |
 | `/api/settings/ai/models` | GET | Fetch live model list from provider (`?provider=groq`); falls back to curated defaults | Session |
 
@@ -350,6 +350,6 @@ layout (Sidebar → UserMenu, NavLink, MarketTicker)
 
 **News path (preferred)**: `CachedNewsFeed` → `/api/news` → `news-service` (RSS); browser caches in localStorage.
 
-**AI news path**: `AiNewsSummary` → `/api/news/summary` → `news-service` + `callLlm` (5-provider chain); in-memory 30-min cache.
+**AI news path**: `AiNewsSummary` → `/api/news/summary` → `news-service` + `callLlm` (11-provider chain); in-memory 30-min cache.
 
 **Swing screener path**: `ShortSwingPanel` → `GET /api/market` (once) + `GET /api/stocks/{sym}?lite=true` (per symbol, parallel) → score 8 criteria → ENTRY/WATCH/SKIP.

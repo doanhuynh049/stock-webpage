@@ -13,7 +13,9 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@/generated/prisma/client";
 import { clearMetaCache } from "@/lib/stock-metadata";
+import { apiError } from "@/lib/api-error";
 
 // ---------------------------------------------------------------------------
 // TCBS public API — returns index composition
@@ -76,34 +78,40 @@ async function upsertIndexMembers(
   vn30Symbols: Set<string>,
   vn100Symbols: Set<string>,
 ): Promise<{ inserted: number; updated: number }> {
-  const allSymbols = new Set([...vn30Symbols, ...vn100Symbols]);
-  let inserted = 0;
-  let updated = 0;
+  const allSymbols = [...new Set([...vn30Symbols, ...vn100Symbols])];
+  if (allSymbols.length === 0) return { inserted: 0, updated: 0 };
 
-  for (const symbol of allSymbols) {
-    const existing = await prisma.stockSymbol.findUnique({ where: { symbol } });
-    if (existing) {
-      await prisma.stockSymbol.update({
-        where: { symbol },
-        data: {
-          isVn30: vn30Symbols.has(symbol),
-          isVn100: vn100Symbols.has(symbol),
-          updatedAt: new Date(),
-        },
-      });
-      updated++;
-    } else {
-      await prisma.stockSymbol.create({
-        data: {
-          symbol,
-          name: symbol,
-          isVn30: vn30Symbols.has(symbol),
-          isVn100: vn100Symbols.has(symbol),
-        },
-      });
-      inserted++;
-    }
-  }
+  // One findMany (not one findUnique per symbol) just to report accurate
+  // inserted-vs-updated counts — the actual write below is a single
+  // batched INSERT ... ON CONFLICT statement.
+  const existingRows = await prisma.stockSymbol.findMany({
+    where: { symbol: { in: allSymbols } },
+    select: { symbol: true },
+  });
+  const existingSet = new Set(existingRows.map((r) => r.symbol));
+
+  // Single statement — safe under Neon HTTP (no interactive transaction),
+  // replaces what used to be up to 2×N sequential round trips
+  // (findUnique + create/update per symbol).
+  const values = Prisma.join(
+    allSymbols.map(
+      (symbol) =>
+        Prisma.sql`(${symbol}, ${symbol}, ${vn30Symbols.has(symbol)}, ${vn100Symbols.has(symbol)}, NOW())`,
+    ),
+  );
+  await prisma.$executeRaw(
+    Prisma.sql`
+      INSERT INTO stock_symbol (symbol, name, is_vn30, is_vn100, updated_at)
+      VALUES ${values}
+      ON CONFLICT (symbol) DO UPDATE SET
+        is_vn30 = EXCLUDED.is_vn30,
+        is_vn100 = EXCLUDED.is_vn100,
+        updated_at = EXCLUDED.updated_at
+    `,
+  );
+
+  const inserted = allSymbols.filter((s) => !existingSet.has(s)).length;
+  const updated = allSymbols.length - inserted;
 
   // Clear isVn30/isVn100 for symbols that are no longer in the index
   await prisma.stockSymbol.updateMany({
@@ -215,9 +223,8 @@ export async function GET() {
       triggerManually: "POST /api/admin/update-index with Authorization: Bearer $CRON_SECRET",
     });
   } catch (e) {
-    return NextResponse.json(
-      { error: "DB query failed", detail: (e as Error).message },
-      { status: 500 },
-    );
+    return apiError("update-index-api", "GET failed", e, {
+      publicMessage: "DB query failed",
+    });
   }
 }

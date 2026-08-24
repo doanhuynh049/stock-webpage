@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardTitle } from "@/components/ui/card";
@@ -179,16 +179,20 @@ export function SectorAnalysisView({
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
 
-  // Refs for each sector's LeaderTable so we can scroll to them
-  const sectorRefs = useRef<Record<string, React.RefObject<HTMLDivElement | null>>>({});
-  for (const s of data.sectors) {
-    if (!sectorRefs.current[s.id]) {
-      sectorRefs.current[s.id] = { current: null };
+  // Refs for each sector's LeaderTable so we can scroll to them. Built with
+  // useMemo (not mutated during render) so React never reads/writes ref
+  // values while rendering — only on the memo recompute triggered by a
+  // `data.sectors` change.
+  const sectorRefs = useMemo(() => {
+    const map: Record<string, React.RefObject<HTMLDivElement | null>> = {};
+    for (const s of data.sectors) {
+      map[s.id] = { current: null };
     }
-  }
+    return map;
+  }, [data.sectors]);
 
   function scrollToSector(id: string) {
-    sectorRefs.current[id]?.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    sectorRefs[id]?.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
   async function saveSectorTarget(sectorId: string, rawValue: string) {
@@ -403,7 +407,7 @@ export function SectorAnalysisView({
         <LeaderTable
           key={sec.id}
           sector={sectorById[sec.id] ?? sec}
-          tableRef={sectorRefs.current[sec.id]!}
+          tableRef={sectorRefs[sec.id]!}
         />
       ))}
     </div>

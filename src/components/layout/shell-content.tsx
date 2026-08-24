@@ -17,9 +17,14 @@ export function ShellContent({
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const isAuthPage = pathname === "/login";
 
-  useEffect(() => {
+  // Close the mobile drawer on route change. Adjusted during render (React's
+  // recommended pattern for "reset state when a prop changes") instead of an
+  // effect, so there's no extra post-navigation render with the drawer still open.
+  const [prevPathname, setPrevPathname] = useState(pathname);
+  if (pathname !== prevPathname) {
+    setPrevPathname(pathname);
     setMobileNavOpen(false);
-  }, [pathname]);
+  }
 
   useEffect(() => {
     if (!mobileNavOpen) return;

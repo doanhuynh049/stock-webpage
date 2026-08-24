@@ -7,8 +7,10 @@ import {
   listTrades,
   summarizeTrades,
 } from "@/lib/db/trading-store";
-import type { TradeInput } from "@/lib/db/trading-types";
 import { log } from "@/lib/logger";
+import { tradeInputSchema } from "@/lib/validation/schemas";
+import { parseJsonBody } from "@/lib/validation/validate";
+import { apiError } from "@/lib/api-error";
 
 // Never cache — trades are per-user and change on every mutation.
 export const dynamic = "force-dynamic";
@@ -54,18 +56,19 @@ export async function GET(request: Request) {
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {
-    log.error("trading-api", "GET failed", { error: (error as Error).message });
-    return NextResponse.json(
-      {
-        success: false,
-        error: (error as Error).message,
+    // Returns HTTP 200 even on failure (deliberate — see trading-ledger.tsx),
+    // so the client always gets a well-formed body instead of an uncaught
+    // exception; only the message shown to the user is sanitized.
+    return apiError("trading-api", "GET failed", error, {
+      status: 200,
+      publicMessage: "Failed to load trades. Please try again.",
+      body: {
         trades: [],
         summary: summarizeTrades([]),
         currentPrices: {},
         totalForUser: 0,
       },
-      { status: 200 },
-    );
+    });
   }
 }
 
@@ -75,16 +78,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let body: TradeInput;
-  try {
-    body = (await request.json()) as TradeInput;
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
-  }
-
-  if (!body.itemName?.trim() || body.quantity <= 0 || body.unitPrice <= 0) {
-    return NextResponse.json({ error: "Invalid trade fields" }, { status: 400 });
-  }
+  const parsed = await parseJsonBody(request, tradeInputSchema);
+  if (parsed.response) return parsed.response;
+  const body = parsed.data;
 
   log.info("trading-api", "POST addTrade request received", {
     userId: session.user.id,
@@ -109,10 +105,9 @@ export async function POST(request: Request) {
     revalidateTag(`analysis-${session.user.id}`, { expire: 0 });
     return NextResponse.json({ success: true, trade, portfolioSynced: true });
   } catch (error) {
-    log.error("trading-api", "POST failed", { error: (error as Error).message, symbol: body.itemName });
-    return NextResponse.json(
-      { success: false, error: (error as Error).message },
-      { status: 500 },
-    );
+    return apiError("trading-api", "POST failed", error, {
+      publicMessage: "Failed to save trade. Please try again.",
+      meta: { symbol: body.itemName },
+    });
   }
 }

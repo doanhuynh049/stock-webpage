@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { LLM_PROVIDERS, testProvider, type LlmProvider } from "@/lib/providers/llm";
 import { fetchModels, getFallbackModels, type ModelInfo } from "../models/route";
+import { autoSelectRequestSchema } from "@/lib/validation/schemas";
+import { parseJsonBody } from "@/lib/validation/validate";
 
 // Auto-select can try several candidates per provider; keep the ceiling low
 // enough that ~11 providers running in parallel still finish in one request.
@@ -100,8 +102,9 @@ export async function POST(request: Request) {
   const session = await auth();
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const body = (await request.json().catch(() => ({ providers: [] }))) as AutoSelectRequest;
-  const rows = Array.isArray(body.providers) ? body.providers : [];
+  const parsed = await parseJsonBody(request, autoSelectRequestSchema);
+  if (parsed.response) return parsed.response;
+  const rows = parsed.data.providers;
 
   const targets = rows.filter(
     (r) => r.enabled !== false && LLM_PROVIDERS.some((p) => p.id === r.id),

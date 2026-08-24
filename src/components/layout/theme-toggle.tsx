@@ -9,6 +9,9 @@ export function ThemeToggle({ className }: { className?: string }) {
   const { theme, setTheme, resolvedTheme } = useTheme();
   const [mounted, setMounted] = useState(false);
 
+  // Classic SSR-guard: flips true only after client mount so the icon (which
+  // depends on client-only resolved theme) never mismatches the server render.
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional mount guard, see comment above
   useEffect(() => setMounted(true), []);
 
   if (!mounted) {

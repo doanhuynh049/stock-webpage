@@ -21,15 +21,6 @@ function scoreVariant(score: number) {
   return "danger" as const;
 }
 
-function recVariant(rec: string) {
-  const u = rec.toUpperCase();
-  if (u.includes("ACCUMULATE") || u.includes("BUY")) return "success" as const;
-  if (u.includes("SELL") || u.includes("AVOID")) return "danger" as const;
-  if (u.includes("TRIM")) return "warning" as const;
-  if (u.includes("WATCH")) return "info" as const;
-  return "default" as const;
-}
-
 function formatAum(aumBnVnd: number | null): string {
   if (aumBnVnd == null) return "—";
   if (aumBnVnd >= 1000) return `${(aumBnVnd / 1000).toFixed(1)}T`;

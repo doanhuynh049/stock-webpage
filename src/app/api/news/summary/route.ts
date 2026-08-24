@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { auth } from "@/lib/auth";
 import { getNewsLive } from "@/lib/news-service";
 import { callLlm } from "@/lib/providers/llm";
 import type { NewsItem } from "@/types/stock";
@@ -282,7 +283,16 @@ const CACHE_TTL_MS = 30 * 60 * 1000;
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
-  const forceRefresh = searchParams.get("refresh") === "true";
+  let forceRefresh = searchParams.get("refresh") === "true";
+
+  // `refresh=true` bypasses the shared 30-min cache and always triggers a
+  // real LLM call — gate it behind auth so an anonymous caller can't hammer
+  // this endpoint to burn through the shared LLM provider quota. Reads of
+  // the (possibly stale) cache stay public.
+  if (forceRefresh) {
+    const session = await auth();
+    if (!session?.user?.id) forceRefresh = false;
+  }
 
   if (!forceRefresh && summaryCache && Date.now() < summaryCache.expiresAt) {
     return NextResponse.json(summaryCache.data);

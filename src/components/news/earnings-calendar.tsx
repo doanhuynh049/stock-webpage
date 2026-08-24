@@ -255,8 +255,8 @@ export function EarningsCalendar() {
       .finally(() => setLoading(false));
   }, []);
 
-  const now = new Date();
-  const seasons = useMemo(() => buildSeasons(now), []);
+  const now = useMemo(() => new Date(), []);
+  const seasons = useMemo(() => buildSeasons(now), [now]);
   const currentSeason = seasons.find((s) => s.status === "peak" || s.status === "active");
 
   // Filter earnings + guidance from news

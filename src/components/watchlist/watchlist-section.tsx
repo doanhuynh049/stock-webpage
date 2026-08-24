@@ -130,6 +130,11 @@ export function WatchlistSection({
     return () => {
       cancelled = true;
     };
+    // Deliberately keyed on `symbolsKey` (not `items`) — this effect's own
+    // `setItems` calls update stock data on existing rows without changing
+    // the symbol set, so depending on `items` directly would re-trigger a
+    // full re-fetch loop after every single price update.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [symbolsKey]);
 
   return (

@@ -4,6 +4,7 @@ import { analyzeUniverseBundle } from "@/lib/analysis/combined-analysis";
 import { analyzeEtfUniverse } from "@/lib/analysis/etf-analysis";
 import { getVN100Universe, getVN30Universe } from "@/lib/analysis/index-universe";
 import { CACHE_TTL, pageCache } from "@/lib/page-cache";
+import { apiError } from "@/lib/api-error";
 
 export async function GET(req: NextRequest) {
   const session = await auth();
@@ -46,9 +47,6 @@ export async function GET(req: NextRequest) {
       { status: 400 },
     );
   } catch (error) {
-    return NextResponse.json(
-      { error: (error as Error).message },
-      { status: 500 },
-    );
+    return apiError("analysis-bundle-api", "GET failed", error, { meta: { universe } });
   }
 }

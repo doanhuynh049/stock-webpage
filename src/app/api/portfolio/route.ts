@@ -4,8 +4,10 @@ import { auth } from "@/lib/auth";
 import {
   listPortfolioHoldings,
   syncPortfolioHoldings,
-  type PortfolioHoldingInput,
 } from "@/lib/db/portfolio-sync";
+import { portfolioHoldingsBodySchema } from "@/lib/validation/schemas";
+import { parseJsonBody } from "@/lib/validation/validate";
+import { apiError } from "@/lib/api-error";
 
 export async function GET() {
   const session = await auth();
@@ -33,10 +35,7 @@ export async function GET() {
       totalHoldings: rows.length,
     });
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: (error as Error).message },
-      { status: 500 },
-    );
+    return apiError("portfolio-api", "GET failed", error, { meta: { userId: session.user.id } });
   }
 }
 
@@ -46,12 +45,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let body: PortfolioHoldingInput[];
-  try {
-    body = (await request.json()) as PortfolioHoldingInput[];
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
-  }
+  const parsed = await parseJsonBody(request, portfolioHoldingsBodySchema);
+  if (parsed.response) return parsed.response;
+  const body = parsed.data;
 
   try {
     const totalHoldings = await syncPortfolioHoldings(session.user.id, body);
@@ -59,9 +55,6 @@ export async function POST(request: Request) {
     revalidateTag(`analysis-${session.user.id}`, { expire: 0 });
     return NextResponse.json({ success: true, totalHoldings });
   } catch (error) {
-    return NextResponse.json(
-      { success: false, error: (error as Error).message },
-      { status: 500 },
-    );
+    return apiError("portfolio-api", "POST failed", error, { meta: { userId: session.user.id } });
   }
 }

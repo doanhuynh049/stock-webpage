@@ -55,8 +55,12 @@ export function useCachedFetch<T>(
   );
 
   useEffect(() => {
+    // localStorage is client-only — SSR always renders the `loading: true`
+    // INITIAL state, so this cache hydrate must stay in an effect (runs
+    // post-hydration) rather than a lazy useState init, to avoid a mismatch.
     const cached = readLocalCache<T>(cacheKey, ttlMs);
     if (cached) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional post-hydration cache hydrate, see comment above
       setState({ data: cached, loading: false, error: false });
       load(true);
     } else {

@@ -1018,8 +1018,11 @@ export function AnalysisView({
     }
   }, []);
 
-  // Load the active lazy tab immediately when opened.
+  // Load the active lazy tab immediately when opened. Kicks off an async
+  // fetch (loadLazyUniverse flips its own loading flag synchronously before
+  // awaiting) rather than synchronizing to a prop, so this is intentional.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional "start async op" trigger, see comment above
     if (mainTab === "vn30") void loadLazyUniverse("vn30");
     if (mainTab === "vn100") void loadLazyUniverse("vn100");
     if (mainTab === "etf") void loadLazyUniverse("etf");

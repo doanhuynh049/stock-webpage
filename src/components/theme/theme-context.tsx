@@ -39,9 +39,13 @@ export function AppThemeProvider({ children }: { children: React.ReactNode }) {
   const [resolvedTheme, setResolvedTheme] = useState<"light" | "dark">("light");
 
   useEffect(() => {
+    // Reads localStorage — must stay an effect (SSR has no localStorage, so
+    // this can only run post-hydration, not during a lazy useState init or
+    // useMemo, both of which would run during the hydration render itself).
     const stored = localStorage.getItem(STORAGE_KEY) as ThemeSetting | null;
     const next = stored === "light" || stored === "dark" || stored === "system" ? stored : "system";
     const resolved = resolveTheme(next);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional post-hydration hydrate-from-localStorage, see comment above
     setThemeState(next);
     setResolvedTheme(resolved);
     applyResolved(resolved);

@@ -19,13 +19,21 @@ type WatchlistItem = {
 
 export function WatchlistGrid({ items }: { items: WatchlistItem[] }) {
   const [hidden, setHidden] = useState<string[]>([]);
-  // Defer localStorage reads to client-side to avoid hydration mismatch
-  const [addPrices, setAddPrices] = useState<Record<string, number | null>>({});
 
-  useEffect(() => {
+  // Drop any optimistically-hidden symbol once it's actually gone from `items`
+  // (adjusted during render — React's recommended pattern for "prune state
+  // when a prop changes" — instead of a post-commit effect).
+  const [prevItems, setPrevItems] = useState(items);
+  if (items !== prevItems) {
+    setPrevItems(items);
     setHidden((prev) => prev.filter((sym) => items.some((i) => i.symbol === sym)));
-  }, [items]);
+  }
 
+  // Defer localStorage reads to client-side to avoid hydration mismatch —
+  // SSR has no localStorage, so this must stay an effect (post-commit, after
+  // the first hydration-matching render) rather than a useMemo/lazy-init,
+  // which would run during the hydration render itself and diverge from SSR.
+  const [addPrices, setAddPrices] = useState<Record<string, number | null>>({});
   useEffect(() => {
     const map: Record<string, number | null> = {};
     for (const item of items) {
@@ -35,6 +43,7 @@ export function WatchlistGrid({ items }: { items: WatchlistItem[] }) {
       );
       map[item.symbol] = entry?.price ?? null;
     }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional post-hydration client-only read, see comment above
     setAddPrices(map);
   }, [items]);
 

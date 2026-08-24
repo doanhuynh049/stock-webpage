@@ -481,22 +481,31 @@ ETFs / illiquid tickers may still show `—` if both providers fail.
 
 ## AI provider chain (`src/lib/providers/llm.ts`)
 
-`callLlm(messages, context, opts?)` tries providers in order, skipping any without a key:
+`callLlm(messages, context, opts?)` tries providers in order, skipping any without a key (or, for Ollama/Cloudflare, without the extra config they need). `LLM_PROVIDERS` in `llm.ts` is the single source of truth for UI + routing — update it (not this table) when adding/removing a provider, then mirror the change here.
 
-```
-1. Cerebras   — api.cerebras.ai        (model: llama3.3-70b,   1M TPM free)
-2. Groq       — api.groq.com           (model: llama-3.3-70b-versatile, 12k TPM free)
-3. Gemini     — generativelanguage...  (model: gemini-2.0-flash, 1.5M TPM free)
-4. Mistral    — api.mistral.ai         (model: mistral-small-latest, free trial)
-5. OpenRouter — openrouter.ai          (model: meta-llama/...free, aggregated free models)
-6. fallback   — rule-based (always)
-```
+| # | Provider | Env key(s) | Default model | Tier | Notes |
+|---|----------|-----------|----------------|------|-------|
+| 1 | Cerebras | `CEREBRAS_API_KEY` | `gpt-oss-120b` | Free 1M TPM | ~2100 tok/s; reasoning models pinned `reasoning_effort=low` |
+| 2 | Groq | `GROQ_API_KEY` | `llama-3.3-70b-versatile` | Free 12k TPM | |
+| 3 | Gemini | `GEMINI_API_KEY` | `gemini-2.0-flash` | Free 1500 req/day | Non-OpenAI-compatible endpoint (`callGemini()`) |
+| 4 | Mistral | `MISTRAL_API_KEY` | `mistral-small-latest` | Free trial | |
+| 5 | OpenRouter | `OPENROUTER_API_KEY` | `meta-llama/llama-3.3-70b-instruct:free` | Free models available | Aggregated free-model catalog |
+| 6 | SambaNova | `SAMBANOVA_API_KEY` | `Meta-Llama-3.3-70B-Instruct` | Free tier | |
+| 7 | Cohere | `COHERE_API_KEY` | `command-r-plus-08-2024` | Free trial ~1k calls/mo | Uses OpenAI-compat shim, no `/models` endpoint |
+| 8 | Hugging Face | `HUGGINGFACE_API_KEY` | `meta-llama/Llama-3.3-70B-Instruct` | Free inference credits | Via `router.huggingface.co` |
+| 9 | Cloudflare Workers AI | `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` | `@cf/meta/llama-3.1-8b-instruct` | Free 10k neurons/day | Needs both env vars; native `/ai/run/{model}` schema (`callCloudflare()`) |
+| 10 | Ollama (local) | `OLLAMA_BASE_URL` (no API key) | `llama3.2` | Free — local, unlimited | Only tried if `OLLAMA_BASE_URL` is set and reachable; won't work on Vercel |
+| 11 | LLM7 (anonymous) | `LLM7_API_KEY` (optional) | `gpt-4o-mini` | Free, no key required | Always tried last before fallback — works with no key, key just raises rate limit |
+| — | `fallback` | — | — | — | Rule-based (`buildRuleBasedEval` et al.); always available |
 
-Keys: env vars `CEREBRAS_API_KEY`, `GROQ_API_KEY`, `GEMINI_API_KEY`, `MISTRAL_API_KEY`, `OPENROUTER_API_KEY`.
+Each provider also supports a `*_MODEL` env override (e.g. `CEREBRAS_MODEL`, `GROQ_MODEL`, …) — see `envModel` in `LLM_PROVIDERS`.
 
 User key overrides: passed via `opts.apiKeys: Partial<Record<LlmProvider, string>>` — checked first before env var. Stored in Neon `ai_response_cache` (symbol `_ai_cfg_`, analysisType `ai_config`, modelName `userId`).
 
-**Adding a new OpenAI-compatible provider** — one call in `callLlm`:
+**Adding a new OpenAI-compatible provider** — three edits in `llm.ts`:
+1. Add the id to the `LlmProvider` union type.
+2. Add an entry to `LLM_PROVIDERS` (id, name, url, envKey, envModel, default model, tier, speed, modelsUrl, chatUrl).
+3. Add the call in `callLlm`:
 ```ts
 const myKey = k(process.env.MY_API_KEY, "myprovider");
 if (myKey) {

@@ -174,12 +174,15 @@ export function StockEvaluationPanel() {
   const [error, setError] = useState<string | null>(null);
   const [openCats, setOpenCats] = useState<Set<string>>(new Set(["business"]));
 
-  // Restore last evaluated stock from localStorage on mount
+  // Restore last evaluated stock from localStorage on mount. Must stay an
+  // effect — localStorage is client-only, so SSR/hydration always see the
+  // empty defaults; this intentionally updates only after mount.
   useEffect(() => {
     try {
       const raw = localStorage.getItem(LS_KEY);
       if (raw) {
         const saved = JSON.parse(raw) as PersistedEvalState;
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional post-hydration restore, see comment above
         if (saved.input) setInput(saved.input);
         if (saved.result) {
           setResult(saved.result);
@@ -223,7 +226,8 @@ export function StockEvaluationPanel() {
   function toggleCat(id: string) {
     setOpenCats((prev) => {
       const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
       return next;
     });
   }
