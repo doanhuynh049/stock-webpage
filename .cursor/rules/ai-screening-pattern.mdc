@@ -1,0 +1,46 @@
+---
+description: AI-scored/ranked features — client/server split, VND price units, AI explains-never-scores
+globs: src/lib/analysis/**/*.ts,src/app/api/analysis/**/*.ts,src/components/analysis/**/*.tsx
+alwaysApply: false
+---
+
+# AI screening / ranking pattern
+
+Reference implementation: AI Screening Rule — Level 2 (`ai-screening.ts`, `ai-screening-llm.ts`, `ai-screening-config.ts`, `ai-screening-panel.tsx`).
+
+## 1. Split config from server logic
+
+A client component that needs weight/threshold *types and defaults* must **not** import them from the same module that does DB/fs work — Prisma/`node:fs` imports leak into the client bundle and Turbopack fails the build (`the chunking context does not support external modules (request: node:fs)`).
+
+```
+ai-screening-config.ts   ← pure types + default constants, zero imports. Client-safe.
+ai-screening.ts          ← imports config + loadAnalysisSnapshotStore (Prisma/fs). Server-only.
+ai-screening-panel.tsx   ← imports ONLY from *-config.ts, never from the server module.
+```
+
+Rule of thumb: if a client component needs a constant or type that lives in a module importing `@/lib/db/*`, `@/lib/prisma`, or `node:fs`, extract that constant/type into its own leaf file first. `import type { X } from "./server-module"` is erased at compile time and is safe; `import { DEFAULT_X } from "./server-module"` (a value) is not — it pulls the whole module graph into the client bundle. Verify with `npm run build`, not just `tsc --noEmit` — the client/server boundary is a bundler-time check, not a type check.
+
+## 2. `technical_snapshot.price` is in **thousands of VND**
+
+`FundamentalSnapshot`/`TechnicalSnapshot` rows and their `data/neon-cache/*.json` mirrors store price-like fields (`price`, `support_level`, `resistance_level`) in **thousands of VND** (e.g. `22.75` = 22,750₫ for ACB). Live quotes from `getStock()` (Entrade/Yahoo) are already **full VND**.
+
+Any new module reading `AnalysisSnapshotStore.resolve(sym).techPrice` directly and using it in math (liquidity, position sizing, price comparisons) must convert first:
+
+```ts
+import { priceKToVnd } from "@/lib/market-service";
+const price = resolved.techPrice ? priceKToVnd(resolved.techPrice) : 0;
+```
+
+`priceKToVnd(k)` = `k > 0 && k < 500 ? k * 1000 : k` (no VN stock trades under ~500₫/share, so this also safely no-ops on values that are already full VND, e.g. from a `getStock()` fallback — **never wrap a `getStock()` price in `priceKToVnd` a second time**).
+
+**Bug this caused:** AI Screening's hard filter rejected 73/73 candidates on its first ship — liquidity (`price × volumeMa`) was computed with the raw thousands-value, making every stock's liquidity read ~1000x too low.
+
+## 3. AI explains a score, it never computes one
+
+For any feature where an LLM narrates a rule-based/quant result (screening reasons, eval theses, agent headlines):
+
+- The score/rank shown to the user must be **computed in code before the LLM call** and passed to the model as read-only context — never requested as part of the LLM's JSON output. If the schema doesn't have a field for the LLM to fill with a score, it structurally cannot override one.
+- Every free-text explanation must cite an actual number it was given. Validate cheaply (e.g. `/\d/.test(reason)`) and fall back to a deterministic, template-built reason from the real metrics on failure — don't retry the LLM, don't ship an unvalidated string.
+- Missing data → the model must say so per-field, not extrapolate. Pass "unavailable" placeholders in the context string, don't omit the field silently (an omitted field reads to the model as "not relevant," not "unknown").
+
+See `explainCandidates()` in `ai-screening-llm.ts` for the reference shape: `ai_score`/`sub_scores` are copied through from the Step-2 quant result; only `reason`/`flags` are LLM-generated, and `reason` is discarded for a rule-based fallback when it fails the citation check.

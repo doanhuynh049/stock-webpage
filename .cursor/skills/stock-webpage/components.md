@@ -115,8 +115,9 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 
 | File | Type | Purpose |
 |------|------|---------|
-| `analysis-view.tsx` | Client | Tabs: Portfolio / Sector / ETF / VN30 / VN100 / Avg Down / **Exit Strategy** / **Short Swing** / Scoring rules / Principles; `TechnicalTable` has **current price (₫)** and **Volume Ratio** columns; passes VN30 symbols as `defaultSymbols` to `ShortSwingPanel`. **Lazy loading (Jul 2026)**: VN30/VN100/ETF load on tab open AND are **background-prefetched** once after first paint (`requestIdleCallback` → sequential `loadLazyUniverse`), so tab switches are instant. `loadingUniverses: Set<LazyUniverse>` drives per-tab spinners; a subtle "Preparing … in background" line shows while prefetch runs |
+| `analysis-view.tsx` | Client | Tabs: Portfolio / AI Analyst / **AI Screening** / Sector / ETF / VN30 / VN100 / Avg Down / **Exit Strategy** / **Short Swing** / Scoring rules / Principles; `TechnicalTable` has **current price (₫)** and **Volume Ratio** columns; passes VN30 symbols as `defaultSymbols` to `ShortSwingPanel`. **Lazy loading (Jul 2026)**: VN30/VN100/ETF load on tab open AND are **background-prefetched** once after first paint (`requestIdleCallback` → sequential `loadLazyUniverse`), so tab switches are instant. `loadingUniverses: Set<LazyUniverse>` drives per-tab spinners; a subtle "Preparing … in background" line shows while prefetch runs |
 | `ai-holdings-panel.tsx` | Client | **NEW (Jul 2026)** — `/analysis` **AI Analyst** tab. Auto-runs `GET /api/analyst/portfolio` on open (cached `vnstocks:ai-holdings` 30 min; Re-run button). Renders value-weighted health score, verdict chips, portfolio summary, actions/risks, and a per-holding table with expandable 6-agent breakdown. **Timing reconciliation (Jul 2026)**: rows with a bullish verdict but `timingConfirmed:false` show action `WAIT` (not `ACCUMULATE`) + an amber "timing not confirmed" note in the expanded panel |
+| `ai-screening-panel.tsx` | Client | **NEW (Aug 2026)** — `/analysis` **AI Screening** tab. Weight editor (6 inputs) + VN30/VN100 toggle → `POST /api/analysis/ai-screen` → ranked shortlist with expandable sub-score bars, AI-generated reason (≤15 words, must cite a metric) + flags. Auto-runs once on mount; result cached `vnstocks:ai-screening` (30 min), weights persisted `vnstocks:ai-screening-weights` (permanent) |
 | `exit-strategy-panel.tsx` | Client | **NEW (Jul 2026)** — 6-factor sell/exit calculator per holding (left list sorted by gain% desc). Factors: **1** Overvaluation (P/E vs sector avg + growth-fair P/E), **2** Thesis (interactive intact/uncertain/broken + auto fundamental deterioration), **3** Profit target (editable +% vs gain%), **4** Trailing stop (editable peak = live 52w-high via `/api/stocks/{sym}?lite=true`, trail% slider), **5** Concentration/rebalance (weight vs 20/25% caps → exact shares to trim), **6** Better opportunity (combinedScore rank). Aggregates a `sellFraction` → verdict HOLD / CONSIDER TRIMMING / TAKE PARTIAL PROFITS / TRIM SUBSTANTIALLY / SELL / EXIT with suggested shares + proceeds. Collapsible "When to Sell" framework table. Same props as `AverageDownPanel` (holdings, fundamentalRows, combinedRows, sectorAnalysis) |
 | `sector-analysis-view.tsx` | Client | Per-sector leaders + trend leaders panel |
 | `analysis-detail-panel.tsx` | Client | Slide-over detail for scored row |
@@ -188,6 +189,8 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 | `vnstocks:stock-eval-state` | permanent | `StockEvaluationPanel` — last ticker + full result; restored on mount |
 | `vnstocks:analyst-report` | permanent | `AnalystReport` (`/analyst`) — last multi-agent `InvestmentReport`; restored on mount |
 | `vnstocks:ai-holdings` | 30 min | `AiHoldingsPanel` (`/analysis` AI Analyst tab) — last `PortfolioAnalystResult` |
+| `vnstocks:ai-screening` | 30 min | `AiScreeningPanel` (`/analysis` AI Screening tab) — last `ScreeningReport` |
+| `vnstocks:ai-screening-weights` | permanent | `AiScreeningPanel` — last-used screening weights |
 
 ---
 
@@ -250,7 +253,10 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 | `analysis/sector-universe.ts` | Load `data/sector-stocks.json` |
 | `analysis/sector-analysis.ts` | Sector scores, trend leaders, P/E from snapshot store |
 | `analysis/index-universe.ts` | VN30 / VN100 lists |
-| `analysis/scoring-rules.ts` | Scoring rules tab copy |
+| `analysis/scoring-rules.ts` | Scoring rules tab copy (includes `AI_SCREENING_RULES`) |
+| `analysis/ai-screening-config.ts` | Screening weight/threshold types + defaults — client-safe, zero imports |
+| `analysis/ai-screening.ts` | Step 1 hard filter + Step 2 weighted score (`screenUniverse`) — rule-based, no AI |
+| `analysis/ai-screening-llm.ts` | Step 3 AI explanation only (`explainCandidates`) — never computes/overrides the score |
 | `analysis/strategy-review.ts` | Portfolio vs targets |
 | `analysis/etf-analysis.ts` | ETF universe analysis |
 
@@ -305,6 +311,7 @@ High-level reference for AI agents. Server = React Server Component; Client = `"
 | `/api/strategy` | GET, PUT, DELETE | Strategy config | Session |
 | `/api/analyst` | POST | **Multi-agent investment report** (`{symbol}` → `InvestmentReport`); runs 6 agents + decision engine + LLM thesis; loads per-user provider keys | Session |
 | `/api/analyst/portfolio` | GET | **Auto portfolio review** — runs the analyst per holding (`skipLlm`) + one portfolio-level LLM synthesis → `PortfolioAnalystResult`. Powers `/analysis` AI Analyst tab | Session |
+| `/api/analysis/ai-screen` | POST | **AI Screening Rule — Level 2**: `{universe, weights?, limit?}` → hard filter + weighted score (`screenUniverse`) + AI explanation (`explainCandidates`) → ranked shortlist. Powers `/analysis` AI Screening tab | Session |
 | `/api/ai` | POST | AI analyst Q&A | Session |
 | `/api/ai/session` | GET, DELETE | Chat session | Session |
 | `/api/stock-eval` | GET | 8-category AI stock evaluation (`?symbol=FPT`); 11-provider LLM chain; rule-based fallback | Session |

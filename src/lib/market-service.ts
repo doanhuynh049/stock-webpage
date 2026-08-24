@@ -271,7 +271,8 @@ export async function getAllStocks(): Promise<Stock[]> {
   return seedStockList.map((s) => mergeStockWithQuote(s, quotes[s.symbol]));
 }
 
-function priceKToVnd(k: number): number {
+/** technical_snapshot.price (and support/resistance) are stored in thousands of VND — convert to full VND for display/math. Live quotes (Entrade/Yahoo) are already full VND, hence the < 500 guard (no VN stock trades under ~500 VND/share). */
+export function priceKToVnd(k: number): number {
   return k > 0 && k < 500 ? Math.round(k * 1000) : k;
 }
 
@@ -455,8 +456,23 @@ export async function getQuotesForSymbols(
   return out;
 }
 
+// Coalesce concurrent getStock() calls for the same symbol within one
+// request (e.g. the /analysis page's technical + combined + sector universes
+// each resolve the same "Unknown" symbol in parallel) so classification/quote
+// fetches run once instead of 2-3x. Cleared as soon as the call settles —
+// this dedupes truly-concurrent work, it does not introduce cross-request staleness.
+const getStockInFlight = new Map<string, Promise<Stock | undefined>>();
+
 export async function getStock(symbol: string): Promise<Stock | undefined> {
   const sym = symbol.toUpperCase();
+  const existing = getStockInFlight.get(sym);
+  if (existing) return existing;
+  const promise = getStockUncached(sym).finally(() => getStockInFlight.delete(sym));
+  getStockInFlight.set(sym, promise);
+  return promise;
+}
+
+async function getStockUncached(sym: string): Promise<Stock | undefined> {
   const seed = seedStockList.find((s) => s.symbol === sym);
   const quotes = await getQuotes();
   const cached = quotes[sym];

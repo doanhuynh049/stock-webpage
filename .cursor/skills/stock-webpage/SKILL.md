@@ -13,7 +13,7 @@ description: >-
 | [components.md](components.md) | Full component & API catalog |
 | [data-flow.md](data-flow.md) | DB, trading→portfolio, cache layers, Vercel ops |
 
-**Cursor rules**: `action-first-navigation.mdc`, `page-state-cache.mdc`, `vercel-cache.mdc`, `theme-aware-interactive.mdc`, `auto-update-monitoring.mdc`
+**Cursor rules**: `action-first-navigation.mdc`, `page-state-cache.mdc`, `vercel-cache.mdc`, `theme-aware-interactive.mdc`, `auto-update-monitoring.mdc`, `settings-page-pattern.mdc`, `ai-screening-pattern.mdc`
 
 ---
 
@@ -108,7 +108,7 @@ Key points:
 
 ## Analysis & scoring
 
-**Tabs**: Portfolio | **AI Analyst** | Sector | ETF | VN30 | VN100 | Avg Down | **Exit Strategy** | **Short Swing** | Scoring rules | Principles
+**Tabs**: Portfolio | **AI Analyst** | **AI Screening** | Sector | ETF | VN30 | VN100 | Avg Down | **Exit Strategy** | **Short Swing** | Scoring rules | Principles
 
 ### AI Analyst tab (Jul 2026) — auto-runs multi-agent analyst on holdings
 
@@ -118,6 +118,19 @@ Key points:
 - UI: value-weighted **health score /100**, verdict distribution chips, portfolio summary, Suggested Actions + Portfolio Risks columns, and a per-holding table (weight · P/L · conviction bar · verdict · action) with **expandable 6-agent breakdown** per row.
 - `runAnalyst` gained a `skipLlm?: boolean` opt so the per-stock orchestrator uses `ruleSynthesis` and makes zero LLM calls — keeps N-holdings cost to one LLM call total. (Note: `getStock` may still trigger the unknown-stock classifier LLM once per new ticker; that result is DB-cached.)
 - **Timing reconciliation (Jul 2026)**: the decision engine weights technical at only 18% (vs the Combined tab's 60%), so a stock can be STRONG BUY on conviction while its own Technical agent is weak. `TECHNICAL_TIMING_THRESHOLD` (45, `technical-scoring.ts`) is shared between the Combined tab's AVOID veto and `InvestmentReport.timingConfirmed` (set in `orchestrator.ts` from the Technical agent's score). Bullish verdict + `timingConfirmed:false` → portfolio `actionFromVerdict()` returns `"WAIT"` instead of `"ACCUMULATE"`; both synthesis functions are told explicitly and instructed not to recommend adding now. UI: `AiHoldingsPanel` shows a `WAIT` badge + amber note; `AnalystReport` shows a "Timing confirmed/not confirmed" badge + warning banner.
+
+### AI Screening tab (Aug 2026) — universe → shortlist, rule-based score + AI explanation only
+
+Implements "AI Screening Rule — Level 2": narrows the VN30/VN100 universe to a ranked top-~20 shortlist using quant rules only; AI is used strictly to explain the score, never to compute or override it. See `.cursor/rules/ai-screening-pattern.mdc` for the reusable patterns this established.
+
+- **3-step pipeline**, each step a separate module:
+  1. **Hard filter** (`src/lib/analysis/ai-screening.ts` → `screenUniverse`) — rejects ROE < 15%, Debt/Equity > 2.0, or liquidity (`price × 20d avg volume`) below threshold. FCF's 2-year-negative check can never run (no FCF history stored) — always `dataUnavailable`, never a rejection.
+  2. **Weighted score** (same file) — each surviving metric min-max normalized 0–100, combined via user-configurable weights (default `0.25 roe + 0.20 revenueCagr + 0.20 epsGrowth3y + 0.15 debtToEquity(inv) + 0.10 fcf(neutral 50) + 0.10 peg(inv)`, re-normalized to sum to 1). Top ~20 by score kept.
+  3. **AI explanation** (`src/lib/analysis/ai-screening-llm.ts` → `explainCandidates`) — LLM receives only the Step-2 numbers per ticker, returns a ≤15-word `reason` (must cite a given metric) + optional `flags`. `ai_score`/`sub_scores` in the response are always the Step-2 values copied through — the LLM is never asked for a score, so it cannot change rank. A `reason` that doesn't cite a number is discarded for a deterministic rule-based one.
+- **Data proxies** (documented in `AI_SCREENING_RULES` in `scoring-rules.ts`, shown in the Scoring Rules tab): "Revenue CAGR" and "EPS growth 3y" are YoY proxies (no multi-year series stored); "liquidity" = `currentPrice × volumeMa`; universe is capped at VN100's ~73 tracked symbols (no ~500-stock feed exists).
+- **Gotcha already hit**: `technical_snapshot.price` is stored in **thousands of VND** — must go through `priceKToVnd()` (exported from `market-service.ts`) before any price math. Shipping without this made every candidate fail the liquidity filter (0/73 passed).
+- **Route**: `POST /api/analysis/ai-screen` (session auth) — `{ universe, weights?, limit? }` → `screenUniverse` + `explainCandidates`, loads per-user provider keys from `ai_response_cache` like `/api/analyst`.
+- **UI**: `AiScreeningPanel` (`src/components/analysis/ai-screening-panel.tsx`) — weight editor (6 inputs, live sum), VN30/VN100 toggle, ranked list with expandable sub-score bars + reason + flags. Auto-runs once on mount; last result cached to `vnstocks:ai-screening` (30 min), weights persisted permanently to `vnstocks:ai-screening-weights`.
 
 - **Lazy + background loading**: VN30/VN100/ETF load on tab open and are also background-prefetched once after first paint (idle callback → sequential fetch of `/api/analysis/bundle`), so tab switches are instant. Portfolio + Sector still render server-side on first paint.
 - **Exit Strategy tab** (Jul 2026): `ExitStrategyPanel` — number-driven 6-factor sell framework (overvaluation, thesis, profit target, trailing stop, concentration, opportunity cost) → HOLD/TRIM/SELL verdict with suggested shares + proceeds. Uses portfolio props + live 52w-high fetch for the trailing stop.

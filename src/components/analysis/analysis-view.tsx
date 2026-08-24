@@ -22,7 +22,7 @@ import type {
 import type { SectorAnalysisResult } from "@/lib/analysis/sector-analysis";
 import { SectorAnalysisView } from "@/components/analysis/sector-analysis-view";
 import { EtfAnalysisView } from "@/components/analysis/etf-analysis-view";
-import { FUNDAMENTAL_RULES, INDEX_RULES, TECHNICAL_RULES, COMBINED_RULES } from "@/lib/analysis/scoring-rules";
+import { FUNDAMENTAL_RULES, INDEX_RULES, TECHNICAL_RULES, COMBINED_RULES, AI_SCREENING_RULES } from "@/lib/analysis/scoring-rules";
 import type { EtfAnalysisRow } from "@/lib/analysis/etf-universe";
 import {
   INVESTMENT_MOTTO,
@@ -33,6 +33,7 @@ import { StockEvaluationPanel } from "@/components/analysis/stock-evaluation-pan
 import { AverageDownPanel } from "@/components/analysis/average-down-panel";
 import { ExitStrategyPanel } from "@/components/analysis/exit-strategy-panel";
 import { AiHoldingsPanel } from "@/components/analysis/ai-holdings-panel";
+import { AiScreeningPanel } from "@/components/analysis/ai-screening-panel";
 import type { EnrichedHolding } from "@/lib/portfolio/holdings-enrichment";
 
 const EMPTY_BUNDLE: UniverseAnalysisBundle = {
@@ -43,12 +44,13 @@ const EMPTY_BUNDLE: UniverseAnalysisBundle = {
 
 type LazyUniverse = "vn30" | "vn100" | "etf";
 
-type MainTab = "portfolio" | "sector" | "etf" | "vn30" | "vn100" | "rules" | "principles" | "avg-down" | "exit" | "swing" | "ai";
+type MainTab = "portfolio" | "sector" | "etf" | "vn30" | "vn100" | "rules" | "principles" | "avg-down" | "exit" | "swing" | "ai" | "ai-screen";
 type SubTab = "fundamental" | "technical" | "combined";
 
 const MAIN_TABS: { id: MainTab; label: string }[] = [
   { id: "portfolio", label: "Portfolio" },
   { id: "ai", label: "AI Analyst" },
+  { id: "ai-screen", label: "AI Screening" },
   { id: "sector", label: "Sector" },
   { id: "etf", label: "ETF" },
   { id: "vn30", label: "VN30" },
@@ -493,6 +495,22 @@ function RulesPanel() {
           <li>{INDEX_RULES.sector}</li>
           <li>{INDEX_RULES.vn30}</li>
           <li>{INDEX_RULES.vn100}</li>
+        </ul>
+      </section>
+
+      <section className="border-t border-[var(--border)] pt-4">
+        <h3 className="mb-2 font-semibold">{AI_SCREENING_RULES.title}</h3>
+        <p className="mb-2 text-xs text-muted">{AI_SCREENING_RULES.note}</p>
+        <ol className="ml-4 list-decimal text-xs text-muted">
+          {AI_SCREENING_RULES.steps.map((s) => (
+            <li key={s} className="mb-1">{s}</li>
+          ))}
+        </ol>
+        <p className="mb-1 mt-2 text-xs font-medium text-accent">Data proxies (never fabricated — closest honest derivation)</p>
+        <ul className="ml-4 list-disc text-xs text-muted">
+          {AI_SCREENING_RULES.dataProxies.map((p) => (
+            <li key={p}>{p}</li>
+          ))}
         </ul>
       </section>
     </div>
@@ -1081,7 +1099,7 @@ export function AnalysisView({
           ? INDEX_RULES.vn100
           : "";
 
-  const noSubTabs = mainTab === "rules" || mainTab === "principles" || mainTab === "sector" || mainTab === "etf" || mainTab === "avg-down" || mainTab === "exit" || mainTab === "swing" || mainTab === "ai";
+  const noSubTabs = mainTab === "rules" || mainTab === "principles" || mainTab === "sector" || mainTab === "etf" || mainTab === "avg-down" || mainTab === "exit" || mainTab === "swing" || mainTab === "ai" || mainTab === "ai-screen";
 
   const selectedSymbol = selection?.row.symbol.toUpperCase() ?? null;
 
@@ -1145,6 +1163,8 @@ export function AnalysisView({
 
       {mainTab === "ai" ? (
         <AiHoldingsPanel />
+      ) : mainTab === "ai-screen" ? (
+        <AiScreeningPanel />
       ) : mainTab === "swing" ? (
         <Card className="!p-4">
           <CardTitle className="!mb-1 !text-base">Short Swing Screener</CardTitle>

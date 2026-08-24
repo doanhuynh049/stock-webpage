@@ -23,3 +23,4 @@ Read `.cursor/skills/stock-webpage/SKILL.md` before editing this repo.
 | `vercel-cache.mdc` | No `.cache` on Vercel; localStorage client cache |
 | `theme-aware-interactive.mdc` | Always use `text-accent-fg` (not `text-white`) with `bg-accent`; `--color-accent` must be in `@theme inline` |
 | `settings-page-pattern.mdc` | Settings pages: full-panel layout, no `max-w-*`, server+client split, DB key ≤16 chars |
+| `ai-screening-pattern.mdc` | AI-scored/ranked features: client/server config split (avoid leaking Prisma/fs into client bundle), `technical_snapshot.price` is in thousands of VND, AI explains a score but never computes one |

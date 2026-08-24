@@ -34,7 +34,7 @@ export const LLM_PROVIDERS = [
     url:       "https://console.groq.com",
     envKey:    "GROQ_API_KEY",
     envModel:  "GROQ_MODEL",
-    default:   "llama-3.3-70b-versatile",
+    default:   "openai/gpt-oss-120b",
     tier:      "Free 12k TPM",
     speed:     "~600 tok/s",
     modelsUrl: "https://api.groq.com/openai/v1/models",
@@ -188,7 +188,7 @@ export async function callLlm(
   const cerebrasKey = k(process.env.CEREBRAS_API_KEY, "cerebras");
   if (cerebrasKey) {
     const cerebrasModel = process.env.CEREBRAS_MODEL ?? "gpt-oss-120b";
-    const cerebrasBody = isCerebrasReasoningModel("cerebras", cerebrasModel)
+    const cerebrasBody = isReasoningModel(cerebrasModel)
       ? { reasoning_effort: "low" as const }
       : undefined;
     try {
@@ -200,12 +200,18 @@ export async function callLlm(
     }
   }
 
-  // 2. Groq — 600 tok/s, 12k TPM free
+  // 2. Groq — 600 tok/s, 12k TPM free.
+  // NOTE (Aug 2026): Groq retired its Llama chat models — /v1/models now only
+  // lists openai/gpt-oss-* + qwen/qwen3.6-27b (verified via GET /openai/v1/models).
+  // Same reasoning-model family as Cerebras, so it needs the same
+  // reasoning_effort=low treatment (see isReasoningModel below).
   const groqKey = k(process.env.GROQ_API_KEY, "groq");
   if (groqKey) {
+    const groqModel = process.env.GROQ_MODEL ?? "openai/gpt-oss-120b";
+    const groqBody = isReasoningModel(groqModel) ? { reasoning_effort: "low" as const } : undefined;
     try {
       const r = await callOpenAICompat("https://api.groq.com/openai/v1/chat/completions",
-        groqKey, process.env.GROQ_MODEL ?? "llama-3.3-70b-versatile", fullMessages, maxTokens);
+        groqKey, groqModel, fullMessages, maxTokens, undefined, groqBody);
       if (r) { console.log("[LLM] Using Groq"); return { ...r, provider: "groq" }; }
     } catch (e) { console.error("[LLM] Groq error (falling through):", e); }
   }
@@ -413,8 +419,9 @@ async function callCloudflare(
  * empty response.
  */
 const REASONING_MODEL_TEST_TOKEN_FLOOR = 2000;
-function isCerebrasReasoningModel(providerId: LlmProvider, model: string): boolean {
-  return providerId === "cerebras" && /oss|glm/i.test(model);
+/** gpt-oss / glm-family models spend tokens on hidden reasoning by default — pin reasoning_effort=low so the token budget goes to the answer instead. */
+function isReasoningModel(model: string): boolean {
+  return /oss|glm/i.test(model);
 }
 
 class HttpError extends Error {
@@ -520,7 +527,7 @@ export async function testProvider(
       const extraHeaders = id === "openrouter"
         ? { "HTTP-Referer": "https://vn-stocks.app", "X-Title": "VN Stocks" }
         : undefined;
-      const isReasoning = isCerebrasReasoningModel(id, model);
+      const isReasoning = isReasoningModel(model);
       const testMaxTokens = isReasoning ? REASONING_MODEL_TEST_TOKEN_FLOOR : 20;
       const extraBody = isReasoning ? { reasoning_effort: "low" as const } : undefined;
       const r = await callOpenAICompat(meta.chatUrl, apiKey, model, pingMessage, testMaxTokens, extraHeaders, extraBody);
@@ -573,7 +580,7 @@ export function getLlmStatus() {
     cerebras, groq, gemini, mistral, openrouter,
     sambanova, cohere, huggingface, cloudflare, ollama, llm7,
     cerebrasModel:    process.env.CEREBRAS_MODEL    ?? "gpt-oss-120b",
-    groqModel:        process.env.GROQ_MODEL        ?? "llama-3.3-70b-versatile",
+    groqModel:        process.env.GROQ_MODEL        ?? "openai/gpt-oss-120b",
     geminiModel:      process.env.GEMINI_MODEL      ?? "gemini-2.0-flash",
     mistralModel:     process.env.MISTRAL_MODEL     ?? "mistral-small-latest",
     openrouterModel:  process.env.OPENROUTER_MODEL  ?? "meta-llama/llama-3.3-70b-instruct:free",

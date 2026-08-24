@@ -52,6 +52,8 @@ export const LOCAL_CACHE_TTL = {
   news: 60 * 60 * 1000,
   portfolio: 24 * 60 * 60 * 1000,
   watchlistAddPrice: Infinity,
+  aiScreening: 30 * 60 * 1000,
+  aiScreeningWeights: Infinity,
 } as const;
 
 export const LOCAL_CACHE_KEYS = {
@@ -60,4 +62,6 @@ export const LOCAL_CACHE_KEYS = {
   newsSymbol: (symbol: string) => `news-${symbol.toUpperCase()}`,
   portfolioHoldings: "portfolio-holdings",
   watchlistAddPrice: (symbol: string) => `watchlist-add-${symbol.toUpperCase()}`,
+  aiScreening: "ai-screening",
+  aiScreeningWeights: "ai-screening-weights",
 } as const;
