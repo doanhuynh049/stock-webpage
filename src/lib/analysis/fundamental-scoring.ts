@@ -9,6 +9,26 @@ export type FundamentalInputs = {
   debtToEquity?: number | null;
   netProfitMargin?: number | null;
   grossProfitMargin?: number | null;
+
+  // --- Enrichment fields -----------------------------------------------
+  // Stored in fundamental_snapshot but historically dropped at the mapper.
+  // `roic` and `currentRatio` are pure FALLBACKS — used only when their
+  // primary is absent, so they can only raise a category that would otherwise
+  // score zero.
+  //
+  // `epsGrowth3y` is the one exception: it is PREFERRED over `epsGrowth` when
+  // present, because a 3-year series is a genuinely better growth signal than
+  // one year and the YoY value was only ever a documented stand-in for it. So
+  // this field can move the score of a stock that already had full data — an
+  // intended correction, not a silent regression.
+  /** Real 3-year EPS growth. Preferred over the YoY `epsGrowth` proxy. */
+  epsGrowth3y?: number | null;
+  /** Return on invested capital. Quality fallback when `roe` is absent. */
+  roic?: number | null;
+  /** Stability fallback when `debtToEquity` is absent. */
+  currentRatio?: number | null;
+  /** Price/cash-flow. The closest stored stand-in for an FCF signal. */
+  pCashFlowRatio?: number | null;
 };
 
 function interpolate(
@@ -25,7 +45,11 @@ function interpolate(
 
 function qualityScore(f: FundamentalInputs): number {
   let score = 0;
-  const roe = f.roe != null ? f.roe / 100 : null;
+  // ROIC stands in for ROE only when ROE is absent. Both measure return on
+  // capital, so using ROIC as a fallback recovers a category that would
+  // otherwise score zero — but it never overrides a present ROE, so no stock
+  // with complete data changes score.
+  const roe = f.roe != null ? f.roe / 100 : f.roic != null ? f.roic / 100 : null;
   if (roe != null) {
     if (roe >= 0.2) score += 20;
     else if (roe >= 0.15) score += interpolate(roe, 0.15, 0.2, 16, 20);
@@ -61,7 +85,10 @@ function growthScore(f: FundamentalInputs): number {
     else if (profit >= 0.05) score += interpolate(profit, 0.05, 0.15, 5, 10);
     else if (profit >= 0) score += interpolate(profit, 0, 0.05, 2, 5);
   }
-  const eps = f.epsGrowth != null ? f.epsGrowth / 100 : null;
+  // Prefer the real 3-year series over the YoY proxy when it is stored — a
+  // single strong or weak year is a much noisier growth signal.
+  const epsSource = f.epsGrowth3y ?? f.epsGrowth;
+  const eps = epsSource != null ? epsSource / 100 : null;
   if (eps != null) {
     if (eps >= 0.15) score += 8;
     else if (eps >= 0.05) score += interpolate(eps, 0.05, 0.15, 4, 8);
@@ -86,7 +113,18 @@ function valuationScore(f: FundamentalInputs): number {
 }
 
 function stabilityScore(f: FundamentalInputs): number {
-  if (f.debtToEquity == null) return 5;
+  if (f.debtToEquity == null) {
+    // Fall back to liquidity when leverage is unknown. A current ratio only
+    // speaks to short-term solvency, not capital structure, so it is scored
+    // more conservatively than the D/E ladder below and never reaches 10.
+    if (f.currentRatio != null) {
+      if (f.currentRatio >= 2.0) return 8;
+      if (f.currentRatio >= 1.5) return 6;
+      if (f.currentRatio >= 1.0) return 4;
+      return 1;
+    }
+    return 5;
+  }
   const de = f.debtToEquity;
   if (de < 0.5) return 10;
   if (de < 0.7) return interpolate(de, 0.5, 0.7, 8, 6);
@@ -101,6 +139,32 @@ function penalties(f: FundamentalInputs): number {
   if (f.debtToEquity != null && f.debtToEquity > 1.5) p += 10;
   if (f.peRatio != null && f.peRatio > 40) p += 8;
   return Math.min(50, p);
+}
+
+/**
+ * Every input the fundamental score can read. Used to measure coverage: a
+ * missing field scores zero in its category rather than being excluded, so a
+ * stock with few inputs is structurally capped well below 100 and would
+ * otherwise be indistinguishable from a genuinely mediocre one.
+ */
+export const FUNDAMENTAL_INPUT_KEYS = [
+  "roe",
+  "roa",
+  "peRatio",
+  "pbRatio",
+  "revenueGrowth",
+  "profitGrowth",
+  "epsGrowth",
+  "debtToEquity",
+  "netProfitMargin",
+  "grossProfitMargin",
+] as const satisfies readonly (keyof FundamentalInputs)[];
+
+export const TOTAL_FUNDAMENTAL_INPUTS = FUNDAMENTAL_INPUT_KEYS.length;
+
+/** How many of the scoreable fundamental inputs are actually present. */
+export function countFundamentalInputs(f: FundamentalInputs): number {
+  return FUNDAMENTAL_INPUT_KEYS.filter((k) => f[k] != null).length;
 }
 
 export type FundamentalBreakdown = {

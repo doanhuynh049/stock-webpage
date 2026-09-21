@@ -106,16 +106,40 @@ function isFresh(cache: NewsCachePayload | null): boolean {
   return Date.now() - new Date(cache.syncedAt).getTime() < CACHE_TTL_MS;
 }
 
+/**
+ * Whether a VN ticker is mentioned as a standalone token.
+ *
+ * Deliberately case-SENSITIVE: Vietnamese articles write tickers in caps, and
+ * lowercasing first would make three-letter codes collide with ordinary words
+ * (e.g. "HPG" is safe, but a lowercased "bid"/"vic"/"gas" would match prose).
+ * The boundary check stops a ticker matching inside a longer code.
+ */
+function mentionsSymbol(text: string, sym: string): boolean {
+  return new RegExp(`(^|[^A-Z0-9])${sym}([^A-Z0-9]|$)`).test(text);
+}
+
 async function fetchSymbolNews(symbol: string): Promise<NewsItem[]> {
   const sym = symbol.toUpperCase();
-  const [yahoo, google] = await Promise.all([
+  // CafeF and VnExpress publish general finance feeds rather than per-ticker
+  // ones, so they are fetched whole and filtered by mention. They were
+  // previously skipped entirely for symbol queries, which meant the only
+  // VN-official sources never reached per-ticker news — and `inferTrustTier`
+  // could therefore almost never return "vn_official" for a VN company.
+  const [yahoo, google, cafef, vnexpress] = await Promise.all([
     fetchRss(yahooHeadlineRssUrl(sym)),
     fetchRss(googleSymbolNewsRssUrl(sym)),
+    fetchRss(cafeFRssUrl()),
+    fetchRss(vnExpressFinanceRssUrl()),
   ]);
+
+  const matchesSym = (r: RssItem) =>
+    mentionsSymbol(`${r.title ?? ""} ${r.summary ?? ""}`, sym);
 
   const items = [
     ...yahoo.map((r) => rssToNewsItem(r, [sym], "Yahoo Finance")),
     ...google.map((r) => rssToNewsItem(r, [sym], "Google News")),
+    ...cafef.filter(matchesSym).map((r) => rssToNewsItem(r, [sym], "CafeF")),
+    ...vnexpress.filter(matchesSym).map((r) => rssToNewsItem(r, [sym], "VnExpress")),
   ];
   return dedupeNews(items).slice(0, 15);
 }

@@ -40,6 +40,10 @@ export function mapCachedFundamental(row: CachedFundamentalRow): FundamentalInpu
     debtToEquity: row.debt_to_equity,
     netProfitMargin: row.net_profit_margin,
     grossProfitMargin: row.gross_profit_margin,
+    epsGrowth3y: row.eps_growth_3y != null ? row.eps_growth_3y * 100 : null,
+    roic: row.roic != null ? row.roic * 100 : null,
+    currentRatio: row.current_ratio,
+    pCashFlowRatio: row.p_cash_flow_ratio,
   };
 }
 
@@ -53,6 +57,8 @@ export function mapCachedTechnical(row: CachedTechnicalRow): TechnicalIndicators
     macdSignal: row.macd_signal,
     supportLevel: row.support_level,
     resistanceLevel: row.resistance_level,
+    adx14: row.adx14,
+    atr14: row.atr14,
     volume: row.volume,
     volumeMa: row.volume_ma,
   };
@@ -69,6 +75,10 @@ type FundRow = {
   debtToEquity?: number | null;
   netProfitMargin?: number | null;
   grossProfitMargin?: number | null;
+  epsGrowth3y?: number | null;
+  roic?: number | null;
+  currentRatio?: number | null;
+  pCashFlowRatio?: number | null;
 };
 
 type TechRow = {
@@ -83,6 +93,8 @@ type TechRow = {
   resistanceLevel?: number | null;
   volume?: number | null;
   volumeMa?: number | null;
+  adx14?: number | null;
+  atr14?: number | null;
 };
 
 export function mapPrismaFundamental(row: FundRow): FundamentalInputs {
@@ -97,6 +109,10 @@ export function mapPrismaFundamental(row: FundRow): FundamentalInputs {
     debtToEquity: row.debtToEquity,
     netProfitMargin: row.netProfitMargin,
     grossProfitMargin: row.grossProfitMargin,
+    epsGrowth3y: row.epsGrowth3y != null ? row.epsGrowth3y * 100 : null,
+    roic: row.roic != null ? row.roic * 100 : null,
+    currentRatio: row.currentRatio,
+    pCashFlowRatio: row.pCashFlowRatio,
   };
 }
 
@@ -110,6 +126,8 @@ export function mapPrismaTechnical(row: TechRow): TechnicalIndicators {
     macdSignal: row.macdSignal,
     supportLevel: row.supportLevel,
     resistanceLevel: row.resistanceLevel,
+    adx14: row.adx14,
+    atr14: row.atr14,
     volume: row.volume,
     volumeMa: row.volumeMa,
   };

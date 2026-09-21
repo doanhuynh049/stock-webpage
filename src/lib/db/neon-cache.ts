@@ -90,6 +90,8 @@ export type CachedTechnicalRow = {
   resistance_level?: number | null;
   volume?: number | null;
   volume_ma?: number | null;
+  adx14?: number | null;
+  atr14?: number | null;
 };
 
 export type CachedFundamentalRow = {
@@ -104,6 +106,10 @@ export type CachedFundamentalRow = {
   debt_to_equity?: number | null;
   net_profit_margin?: number | null;
   gross_profit_margin?: number | null;
+  eps_growth_3y?: number | null;
+  roic?: number | null;
+  current_ratio?: number | null;
+  p_cash_flow_ratio?: number | null;
 };
 
 export type CachedPriceDailyRow = {

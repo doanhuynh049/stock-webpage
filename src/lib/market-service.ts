@@ -620,9 +620,8 @@ export async function getTechnicalSignals(stock: Stock): Promise<TechnicalSignal
       Math.min(50, closes.length)
     : stock.price * 0.97;
 
-  const ma20 = Math.round(
-    closes.slice(-20).reduce((a, b) => a + b, 0) / Math.min(20, closes.length || 1),
-  );
+  const ma20 =
+    closes.slice(-20).reduce((a, b) => a + b, 0) / Math.min(20, closes.length || 1);
 
   // Volume ratio: today vs 20-day average (signals institutional activity)
   const vols = history.map((p) => p.volume ?? 0).filter((v) => v > 0);
@@ -643,8 +642,8 @@ export async function getTechnicalSignals(stock: Stock): Promise<TechnicalSignal
     },
     {
       indicator: "MA 20",
-      value: ma20,
-      signal: stock.price > ma50 ? "Bullish" : "Bearish",
+      value: Math.round(ma20),
+      signal: stock.price > ma20 ? "Bullish" : "Bearish",
     },
     {
       indicator: "Volume Ratio",

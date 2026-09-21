@@ -5,6 +5,7 @@
 import type { AnalystContext } from "@/lib/analyst/context";
 import { findSignal } from "@/lib/analyst/context";
 import type { AgentReport, Stance, ValuationDetail } from "@/lib/analyst/types";
+import { classifyNewsItemByRules } from "@/lib/analysis/news-classification";
 
 // ─── helpers ───────────────────────────────────────────────────────────────
 
@@ -229,17 +230,6 @@ export function technicalAgent(ctx: AnalystContext): AgentReport {
 // ─── 4. News agent ───────────────────────────────────────────────────────────
 // Keyword sentiment over recent symbol-tagged headlines.
 
-const BULLISH_KW = [
-  "surge", "jump", "rally", "record", "beat", "profit", "growth", "expand", "win",
-  "upgrade", "raise", "acquire", "dividend", "buyback", "approve", "positive",
-  "tăng", "lãi", "kỷ lục", "vượt", "khả quan", "mua",
-];
-const BEARISH_KW = [
-  "plunge", "fall", "drop", "loss", "miss", "cut", "downgrade", "lawsuit", "probe",
-  "fraud", "warning", "decline", "delay", "recall", "fine", "negative",
-  "giảm", "lỗ", "cảnh báo", "điều tra", "phạt", "bán tháo",
-];
-
 export function newsAgent(ctx: AnalystContext): AgentReport {
   const { news } = ctx;
   const recent = news.slice(0, 12);
@@ -248,13 +238,15 @@ export function newsAgent(ctx: AnalystContext): AgentReport {
   const highlights: string[] = [];
 
   for (const item of recent) {
-    const text = `${item.title} ${item.summary}`.toLowerCase();
-    const p = BULLISH_KW.filter((w) => text.includes(w)).length;
-    const n = BEARISH_KW.filter((w) => text.includes(w)).length;
-    pos += p;
-    neg += n;
-    if ((p > 0 || n > 0) && highlights.length < 3) {
-      highlights.push(`${p >= n ? "▲" : "▼"} ${item.title.slice(0, 90)}`);
+    // One article, one vote. The previous implementation summed keyword hits,
+    // so a single headline containing five bullish words outweighed five
+    // separately-bullish articles — a volume-of-adjectives measure, not a
+    // volume-of-news one.
+    const { sentiment } = classifyNewsItemByRules(item);
+    if (sentiment === "positive") pos += 1;
+    else if (sentiment === "negative") neg += 1;
+    if (sentiment !== "neutral" && highlights.length < 3) {
+      highlights.push(`${sentiment === "positive" ? "▲" : "▼"} ${item.title.slice(0, 90)}`);
     }
   }
 
@@ -268,7 +260,7 @@ export function newsAgent(ctx: AnalystContext): AgentReport {
   } else {
     const net = (pos - neg) / total; // −1..1
     score = clamp(50 + net * 45, 5, 95);
-    bullets.push(`${recent.length} recent headlines — sentiment ${pos >= neg ? "leans positive" : "leans negative"} (${pos}▲ / ${neg}▼).`);
+    bullets.push(`${recent.length} recent headlines, ${total} with a clear tone — ${pos >= neg ? "leans positive" : "leans negative"} (${pos}▲ / ${neg}▼).`);
     bullets.push(...highlights);
   }
 

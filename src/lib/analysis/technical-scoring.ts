@@ -6,6 +6,18 @@
  */
 export const TECHNICAL_TIMING_THRESHOLD = 45;
 
+/**
+ * Emitted instead of a real signal when there is nothing to base one on.
+ *
+ * `calculateTechnicalScore(null, …)` returns a neutral 50, and every
+ * context check in `getRecommendationFromScore` (nearSupport, supportBroken,
+ * nearResistance, belowMa50, rsiOverbought) silently defaults to false without
+ * a snapshot. A stock with zero data therefore used to fall through the score
+ * bands to a confident-looking HOLD, indistinguishable from a real one. Callers
+ * that need a verdict must treat this as "unknown", never as "neutral".
+ */
+export const NO_DATA_SIGNAL = "NO DATA";
+
 export type TechnicalIndicators = {
   rsi?: number | null;
   sma20?: number | null;
@@ -17,6 +29,13 @@ export type TechnicalIndicators = {
   resistanceLevel?: number | null;
   volume?: number | null;
   volumeMa?: number | null;
+
+  // --- Enrichment fields -----------------------------------------------
+  // Stored in technical_snapshot, previously dropped at the mapper.
+  /** Trend strength (not direction). Below ~20 conventionally means "no trend". */
+  adx14?: number | null;
+  /** Average true range — volatility, for range-aware stops. */
+  atr14?: number | null;
 };
 
 function macdBullish(tech: TechnicalIndicators): boolean {

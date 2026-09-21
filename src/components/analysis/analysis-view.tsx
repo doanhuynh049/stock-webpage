@@ -20,6 +20,8 @@ import type {
   UniverseAnalysisBundle,
 } from "@/lib/analysis/combined-analysis";
 import type { SectorAnalysisResult } from "@/lib/analysis/sector-analysis";
+import type { DataCoverage } from "@/lib/analysis/stock-analysis";
+import { NO_DATA_SIGNAL } from "@/lib/analysis/technical-scoring";
 import { SectorAnalysisView } from "@/components/analysis/sector-analysis-view";
 import { EtfAnalysisView } from "@/components/analysis/etf-analysis-view";
 import { FUNDAMENTAL_RULES, INDEX_RULES, TECHNICAL_RULES, COMBINED_RULES, AI_SCREENING_RULES, AI_NEWS_SENTIMENT_RULES, AI_PREDICTION_RULES } from "@/lib/analysis/scoring-rules";
@@ -30,6 +32,7 @@ import {
   PRINCIPLES_IN_APP,
 } from "@/lib/content/investment-principles";
 import { StockEvaluationPanel } from "@/components/analysis/stock-evaluation-panel";
+import { TrackRecordPanel } from "@/components/analysis/track-record-panel";
 import { AverageDownPanel } from "@/components/analysis/average-down-panel";
 import { ExitStrategyPanel } from "@/components/analysis/exit-strategy-panel";
 import { AiHoldingsPanel } from "@/components/analysis/ai-holdings-panel";
@@ -85,8 +88,40 @@ const SUB_TABS: { id: SubTab; label: string }[] = [
   { id: "swing", label: "Swing" },
 ];
 
+/**
+ * Renders next to a symbol whenever its scores were built from incomplete data.
+ *
+ * Without this, a stock with no snapshot scores a flat technical 50 and a
+ * fundamental capped around 52 (six of the ten inputs are null in the fallback)
+ * — landing at ~51 combined, mid-table, visually identical to a genuinely
+ * average stock. The ETF view already did this via `hasData`; the main tables
+ * never got it.
+ */
+function CoverageMark({ coverage }: { coverage?: DataCoverage }) {
+  if (!coverage || coverage.level === "full") return null;
+
+  const isNone = coverage.level === "none";
+  const title = isNone
+    ? "No technical snapshot — scores are defaults, not measurements. No signal is emitted."
+    : `Thin data — only ${coverage.fundamentalFields} of ${coverage.totalFundamentalFields} fundamental inputs are present, so the fundamental score is structurally capped.`;
+
+  return (
+    <span
+      title={title}
+      className={`shrink-0 rounded px-1 py-px text-[9px] font-semibold uppercase ring-1 ${
+        isNone
+          ? "text-[var(--danger)] ring-[var(--danger)]/30"
+          : "text-[var(--warning)] ring-[var(--warning)]/30"
+      }`}
+    >
+      {isNone ? "no data" : "thin"}
+    </span>
+  );
+}
+
 function recVariant(rec: string | undefined) {
   const u = (rec ?? "").toUpperCase();
+  if (u === NO_DATA_SIGNAL) return "default" as const;
   if (u.includes("ACCUMULATE") || u.includes("BUY")) return "success" as const;
   if (u.includes("SELL") || u.includes("AVOID")) return "danger" as const;
   if (u.includes("TRIM")) return "warning" as const;
@@ -340,7 +375,10 @@ function TechnicalTable({
           >
             <td className="px-2 py-1.5 text-subtle">{i + 1}</td>
             <td className="px-2 py-1.5">
-              <SymbolCell symbol={r.symbol} name={r.name} sector={r.sector} owned={owned} isEtf={r.isEtf} />
+              <div className="flex items-center gap-1.5">
+                <SymbolCell symbol={r.symbol} name={r.name} sector={r.sector} owned={owned} isEtf={r.isEtf} />
+                <CoverageMark coverage={r.coverage} />
+              </div>
             </td>
             <td className="px-2 py-1.5 text-right font-mono text-xs">{fmtPrice(r.currentPrice)}</td>
             <td className="px-2 py-1.5 text-center font-mono font-semibold">{r.technicalScore}</td>
@@ -420,7 +458,10 @@ function CombinedTable({
           >
             <td className="px-2 py-1.5 text-subtle">{i + 1}</td>
             <td className="px-2 py-1.5">
-              <SymbolCell symbol={r.symbol} name={r.name} sector={r.sector} owned={owned} isEtf={r.isEtf} />
+              <div className="flex items-center gap-1.5">
+                <SymbolCell symbol={r.symbol} name={r.name} sector={r.sector} owned={owned} isEtf={r.isEtf} />
+                <CoverageMark coverage={r.coverage} />
+              </div>
             </td>
             <td className="px-2 py-1.5 text-center font-mono">{r.technicalScore}</td>
             <td className="px-2 py-1.5 text-center font-mono text-subtle">
@@ -452,7 +493,9 @@ function Empty() {
 function RulesPanel() {
   return (
     <div className="space-y-6 text-sm">
-      <section>
+      <TrackRecordPanel />
+
+      <section className="border-t border-[var(--border)] pt-4">
         <h3 className="mb-2 font-semibold">{FUNDAMENTAL_RULES.title}</h3>
         <p className="mb-2 text-xs text-muted">{FUNDAMENTAL_RULES.formula}</p>
         {FUNDAMENTAL_RULES.categories.map((c) => (

@@ -72,6 +72,23 @@ const NEGATIVE_PATTERN = /giảm mạnh|thua lỗ|cắt giảm|hạ mục tiêu|
 
 const LONG_TERM_PATTERN = /chiến lược dài hạn|kế hoạch 5 năm|long-term|multi-year|capacity expansion|nhà máy mới|expansion plan/i;
 
+/**
+ * Deterministic bilingual (VN/EN) classification — no LLM, no network.
+ *
+ * Exported because the Analyst's `newsAgent` needs exactly this and used to
+ * carry its own parallel word-list implementation. One maintained classifier
+ * beats two that drift apart.
+ *
+ * Note for callers outside the LLM path: the patterns here require meaningful
+ * phrases ("tăng trưởng mạnh", "beats expectations") rather than bare tokens
+ * like "tăng", which appear in a large share of neutral headlines. That makes
+ * it quieter and less prone to false signals than naive keyword counting, so
+ * expect more `neutral` verdicts, not fewer.
+ */
+export function classifyNewsItemByRules(item: NewsItem): Omit<NewsClassification, "ticker" | "headline" | "source" | "timestamp" | "link" | "trust_tier"> {
+  return ruleBasedClassify(item);
+}
+
 function ruleBasedClassify(item: NewsItem): Omit<NewsClassification, "ticker" | "headline" | "source" | "timestamp" | "link" | "trust_tier"> {
   const text = `${item.title} ${item.summary}`;
   const category = CATEGORY_PATTERNS.find((c) => c.pattern.test(text))?.category ?? "other";

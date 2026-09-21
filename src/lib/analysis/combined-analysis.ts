@@ -5,6 +5,7 @@ import type { IndexStock } from "@/lib/analysis/index-universe";
 import { loadAnalysisSnapshotStore } from "@/lib/db/analysis-snapshots";
 import { getStock } from "@/lib/market-service";
 import { isEtfSymbol } from "@/lib/analysis/etf-utils";
+import type { DataCoverage } from "@/lib/analysis/stock-analysis";
 import type { Stock } from "@/types/stock";
 
 export type TechnicalAnalysisRow = {
@@ -19,6 +20,7 @@ export type TechnicalAnalysisRow = {
   supportResistance: string;
   source: string;
   isEtf?: boolean;
+  coverage: DataCoverage;
 };
 
 export type CombinedAnalysisRow = {
@@ -32,6 +34,7 @@ export type CombinedAnalysisRow = {
   recommendation: string;
   source: string;
   isEtf?: boolean;
+  coverage: DataCoverage;
 };
 
 type StockMeta = IndexStock | {
@@ -88,6 +91,7 @@ export async function analyzeTechnicalRow(
     supportResistance: a.supportResistance,
     source: a.source,
     isEtf: etf,
+    coverage: a.coverage,
   };
 }
 
@@ -111,6 +115,7 @@ export async function analyzeCombinedRow(
     recommendation: a.recommendation,
     source: a.source,
     isEtf: etf,
+    coverage: a.coverage,
   };
 }
 

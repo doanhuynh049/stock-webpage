@@ -127,15 +127,16 @@ export const AI_SCREENING_RULES = {
   title: "AI Screening — Level 2 (~500 stock universe → top ~20 shortlist)",
   note: "Universe is capped at VN100 (~73 symbols with tracked snapshots) — no broader ~500-symbol feed exists in this app today.",
   steps: [
-    "Step 1 — Hard filter (rule-based): reject ROE < 15%, Debt/Equity > 2.0, or liquidity (price × 20d avg volume) below threshold. FCF 2-year-negative check cannot run — FCF history isn't stored, so it's always marked \"data unavailable\", never used to reject.",
-    "Step 2 — Weighted score (rule-based): each metric min-max normalized 0–100 across the surviving set, then combined as 0.25×ROE + 0.20×RevenueGrowth + 0.20×EPSGrowth + 0.15×(inverse Debt/Equity) + 0.10×FCF(neutral 50) + 0.10×(inverse PEG). Weights are user-configurable and re-normalized to sum to 100%. Top ~20 by score kept.",
+    "Step 1 — Hard filter (rule-based): reject ROE < 15%, Debt/Equity > 2.0, or liquidity (price × 20d avg volume) below threshold. The FCF 2-year-negative check still cannot run — no multi-year FCF series is stored — so it is never used to reject.",
+    "Step 2 — Weighted score (rule-based): each metric min-max normalized 0–100 across the surviving set, then combined as 0.25×ROE + 0.20×RevenueGrowth + 0.20×EPSGrowth + 0.15×(inverse Debt/Equity) + 0.10×FCF + 0.10×(inverse PEG). Weights are user-configurable and re-normalized to sum to 100%. Top ~20 by score kept.",
+    "Step 2a — The FCF slot uses price/cash-flow (inverted — lower is better) when that figure is stored. When nothing in the surviving set has it, the 0.10 weight is redistributed proportionally across the other five metrics instead of scoring everyone a flat 50: a constant sub-score pulls every candidate toward the middle and compresses the spread between best and worst for no informational gain.",
     "Step 3 — AI explanation (LLM): given only the Step 2 numbers, the model writes a ≤15-word reason citing an actual metric value plus optional qualitative flags. It never receives or returns a score — ai_score/sub_scores are always the Step 2 output, copied through unchanged. A reason that doesn't cite a number is discarded for a deterministic rule-based one.",
   ],
   dataProxies: [
     "\"Revenue CAGR\" → YoY revenueGrowth (no multi-year revenue series stored)",
-    "\"EPS growth 3y\" → YoY epsGrowth (same reason)",
+    "\"EPS growth 3y\" → the real eps_growth_3y column when stored; falls back to YoY epsGrowth otherwise",
     "\"Liquidity\" → currentPrice × volumeMa (avg daily trading value isn't stored directly)",
-    "\"FCF\" → not stored at all; always neutral score + \"data unavailable\" flag",
+    "\"FCF\" → proxied by the stored p_cash_flow_ratio; when absent, flagged \"data unavailable\" and its weight is redistributed, not scored neutral",
   ],
 } as const;
 

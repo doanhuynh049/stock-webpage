@@ -70,11 +70,11 @@ function main() {
   );
 
   const technical = psqlJson<unknown[]>(
-    "SELECT COALESCE(json_agg(row_to_json(t)), '[]'::json) FROM (SELECT DISTINCT ON (symbol) symbol, price, rsi, sma_20, sma_50, sma_200, macd, macd_signal, support_level, resistance_level, volume, volume_ma FROM technical_snapshot ORDER BY symbol, captured_at DESC) t",
+    "SELECT COALESCE(json_agg(row_to_json(t)), '[]'::json) FROM (SELECT DISTINCT ON (symbol) symbol, price, rsi, sma_20, sma_50, sma_200, macd, macd_signal, support_level, resistance_level, volume, volume_ma, adx14, atr14 FROM technical_snapshot ORDER BY symbol, captured_at DESC) t",
   );
 
   const fundamental = psqlJson<unknown[]>(
-    "SELECT COALESCE(json_agg(row_to_json(t)), '[]'::json) FROM (SELECT DISTINCT ON (symbol) symbol, pe_ratio, pb_ratio, roe, roa, revenue_growth, profit_growth, eps_growth, debt_to_equity, net_profit_margin, gross_profit_margin FROM fundamental_snapshot ORDER BY symbol, captured_at DESC) t",
+    "SELECT COALESCE(json_agg(row_to_json(t)), '[]'::json) FROM (SELECT DISTINCT ON (symbol) symbol, pe_ratio, pb_ratio, roe, roa, revenue_growth, profit_growth, eps_growth, debt_to_equity, net_profit_margin, gross_profit_margin, eps_growth_3y, roic, current_ratio, p_cash_flow_ratio FROM fundamental_snapshot ORDER BY symbol, captured_at DESC) t",
   );
 
   const symbolList = [

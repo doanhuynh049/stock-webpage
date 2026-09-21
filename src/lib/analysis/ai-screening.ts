@@ -42,6 +42,12 @@ export type ScreeningMetrics = {
   peg: number | null;
   liquidityVnd: number | null;
   fcfNegative2y: null; // never computable today — see module doc comment
+  /**
+   * Price/cash-flow from `fundamental_snapshot`. Not free cash flow, but the
+   * only stored cash-generation figure, and enough to make the FCF weight
+   * carry real signal instead of a constant.
+   */
+  pCashFlowRatio: number | null;
 };
 
 export type HardFilterOutcome = {
@@ -94,6 +100,30 @@ function normalizeWeights(input?: Partial<ScreeningWeights>): ScreeningWeights {
   };
 }
 
+/**
+ * Spread the FCF weight across the five metrics that actually have data,
+ * in proportion to their existing weights.
+ *
+ * The alternative — leaving `fcf` at its configured weight against a constant
+ * 50 — pulls every candidate's score toward 50 by that fraction. With the
+ * default 0.10 that compresses the spread between the best and worst candidate
+ * by 10% for no informational gain, which is worse than simply not having the
+ * metric.
+ */
+function redistributeFcfWeight(w: ScreeningWeights): ScreeningWeights {
+  const remainder = w.roe + w.revenueCagr + w.epsGrowth3y + w.debtToEquity + w.peg;
+  if (!(remainder > 0)) return w;
+  const scale = 1 / remainder;
+  return {
+    roe: w.roe * scale,
+    revenueCagr: w.revenueCagr * scale,
+    epsGrowth3y: w.epsGrowth3y * scale,
+    debtToEquity: w.debtToEquity * scale,
+    fcf: 0,
+    peg: w.peg * scale,
+  };
+}
+
 function computePeg(peRatio: number | null | undefined, growthPct: number | null | undefined): number | null {
   if (peRatio == null || peRatio <= 0) return null;
   if (growthPct == null || growthPct <= 0) return null;
@@ -125,13 +155,23 @@ async function resolveMetrics(
 
   const roe = fund?.roe ?? null;
   const revenueCagr = fund?.revenueGrowth ?? null;
-  const epsGrowth3y = fund?.epsGrowth ?? null;
+  // The real 3-year series when stored; the YoY value remains the fallback.
+  const epsGrowth3y = fund?.epsGrowth3y ?? fund?.epsGrowth ?? null;
   const debtToEquity = fund?.debtToEquity ?? null;
   const peg = computePeg(fund?.peRatio, epsGrowth3y ?? fund?.profitGrowth);
   const liquidityVnd = price > 0 && volumeMa != null && volumeMa > 0 ? price * volumeMa : null;
 
   return {
-    metrics: { roe, revenueCagr, epsGrowth3y, debtToEquity, peg, liquidityVnd, fcfNegative2y: null },
+    metrics: {
+      roe,
+      revenueCagr,
+      epsGrowth3y,
+      debtToEquity,
+      peg,
+      liquidityVnd,
+      fcfNegative2y: null,
+      pCashFlowRatio: fund?.pCashFlowRatio ?? null,
+    },
     currentPrice: price,
     source,
   };
@@ -164,9 +204,13 @@ function evaluateHardFilter(
     );
   }
 
-  // FCF can never be evaluated — no multi-year FCF series is stored. Always
-  // "data unavailable", never a rejection reason (would require fabricating).
-  dataUnavailable.push("fcf");
+  // The 2-year-negative-FCF *rejection* still can't run — no multi-year FCF
+  // series is stored, and inventing one would be fabrication. But the scoring
+  // slot is no longer always blank: price/cash-flow now feeds it when stored,
+  // so only report it unavailable when there genuinely is no cash-flow figure.
+  if (metrics.pCashFlowRatio == null) {
+    dataUnavailable.push("fcf");
+  }
 
   return { passed: reasons.length === 0, reasons, dataUnavailable };
 }
@@ -214,6 +258,15 @@ export async function screenUniverse(
   const epsValues = passed.map((r) => r.metrics.epsGrowth3y).filter((v): v is number => v != null);
   const debtValues = passed.map((r) => r.metrics.debtToEquity).filter((v): v is number => v != null);
   const pegValues = passed.map((r) => r.metrics.peg).filter((v): v is number => v != null);
+  const pcfValues = passed.map((r) => r.metrics.pCashFlowRatio).filter((v): v is number => v != null);
+  // The FCF slot is only real if at least some of the surviving set has a
+  // cash-flow figure. With none, a flat 50 for everyone means the weight does
+  // nothing except dilute the five metrics that do carry signal — so it gets
+  // redistributed rather than silently wasted.
+  const hasCashFlowSignal = pcfValues.length > 0;
+  const effectiveWeights = hasCashFlowSignal
+    ? weights
+    : redistributeFcfWeight(weights);
 
   const candidates: ScreeningCandidate[] = passed.map((r) => {
     const subScores: ScreeningSubScores = {
@@ -221,16 +274,21 @@ export async function screenUniverse(
       cagr: normalizeMinMax(r.metrics.revenueCagr, cagrValues, false),
       epsGrowth: normalizeMinMax(r.metrics.epsGrowth3y, epsValues, false),
       debt: normalizeMinMax(r.metrics.debtToEquity, debtValues, true),
-      fcf: 50, // always neutral — FCF data unavailable, see module doc comment
+      // Price/cash-flow is the closest stored stand-in for a cash-generation
+      // signal. Lower is better, hence inverted. Falls back to the old flat
+      // neutral 50 when nothing in the set has the figure.
+      fcf: hasCashFlowSignal
+        ? normalizeMinMax(r.metrics.pCashFlowRatio, pcfValues, true)
+        : 50,
       peg: normalizeMinMax(r.metrics.peg, pegValues, true),
     };
     const quantScore = Math.round(
-      subScores.roe * weights.roe +
-        subScores.cagr * weights.revenueCagr +
-        subScores.epsGrowth * weights.epsGrowth3y +
-        subScores.debt * weights.debtToEquity +
-        subScores.fcf * weights.fcf +
-        subScores.peg * weights.peg,
+      subScores.roe * effectiveWeights.roe +
+        subScores.cagr * effectiveWeights.revenueCagr +
+        subScores.epsGrowth * effectiveWeights.epsGrowth3y +
+        subScores.debt * effectiveWeights.debtToEquity +
+        subScores.fcf * effectiveWeights.fcf +
+        subScores.peg * effectiveWeights.peg,
     );
 
     return {

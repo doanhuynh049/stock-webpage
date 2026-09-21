@@ -1,4 +1,5 @@
 import { fetchStocktwitsMessages, type StocktwitsMessage } from "@/lib/providers/stocktwits";
+import { lookupIndexStock } from "@/lib/stock-metadata";
 
 /**
  * AI News Reading & Sentiment Analysis — Social sentiment (Stocktwits only, see provider doc comment).
@@ -117,6 +118,30 @@ function estimateBuzzChange(messages: StocktwitsMessage[]): { pct: number | null
 }
 
 export async function fetchSocialSentiment(symbol: string): Promise<SocialSentimentSnapshot | null> {
+  // Known VN-listed tickers are skipped before the network call. Stocktwits
+  // carries no Vietnamese-exchange listings at all, so the only possible
+  // outcomes were an empty stream or a same-named foreign security that the
+  // provider's region guard then discarded. Spending a request per holding to
+  // reach a foregone conclusion is pure latency, and "we didn't check, because
+  // checking cannot work" is a more honest note than "0 posts found".
+  if (lookupIndexStock(symbol)) {
+    return {
+      ticker: symbol.toUpperCase(),
+      window: "24h",
+      source: "stocktwits",
+      bullish_pct: null,
+      bearish_pct: null,
+      post_volume: 0,
+      buzz_change_pct: null,
+      top_keywords: [],
+      sample_size_note:
+        "Not checked — Stocktwits has no Vietnamese-exchange listings, so a VN ticker can only resolve to an unrelated foreign security.",
+      insufficient_data: true,
+      filtered_out_count: 0,
+      methodology_note: "Stocktwits only; no Reddit/X integration (see module doc comment).",
+    };
+  }
+
   const raw = await fetchStocktwitsMessages(symbol);
   if (raw === null) return null; // fetch failed — caller must show "unavailable", not zero
 

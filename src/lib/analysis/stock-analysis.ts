@@ -1,9 +1,14 @@
-import type { FundamentalInputs } from "@/lib/analysis/fundamental-scoring";
+import {
+  countFundamentalInputs,
+  TOTAL_FUNDAMENTAL_INPUTS,
+  type FundamentalInputs,
+} from "@/lib/analysis/fundamental-scoring";
 import { calculateSectorFundamentalScore } from "@/lib/analysis/sector-fundamental-scoring";
 import {
   calculateTechnicalScore,
   combinedScore,
   getRecommendationFromScore,
+  NO_DATA_SIGNAL,
   scoreRating,
   type TechnicalIndicators,
 } from "@/lib/analysis/technical-scoring";
@@ -12,6 +17,27 @@ import {
   type AnalysisSnapshotStore,
 } from "@/lib/db/analysis-snapshots";
 import type { Stock } from "@/types/stock";
+
+/**
+ * How much real data a score was actually built from.
+ *
+ * `source` already told us where data came from, but nothing rendered it, so a
+ * snapshot-less stock scored 50/"Fair"/HOLD and looked identical to a genuinely
+ * average one. This makes the distinction explicit and renderable.
+ */
+export type DataCoverage = {
+  /** A technical snapshot exists. Without it the technical score is a flat 50. */
+  hasTechnical: boolean;
+  /** Non-null fundamental inputs, out of `TOTAL_FUNDAMENTAL_INPUTS`. */
+  fundamentalFields: number;
+  totalFundamentalFields: number;
+  /**
+   * `full`    — technical snapshot + most fundamentals; scores are meaningful.
+   * `partial` — enough to score, but at least one side is thin; treat as a hint.
+   * `none`    — no technical snapshot; no signal is emitted at all.
+   */
+  level: "full" | "partial" | "none";
+};
 
 export type StockAnalysisResult = {
   symbol: string;
@@ -26,16 +52,76 @@ export type StockAnalysisResult = {
   momentum: string;
   supportResistance: string;
   source: "neon" | "cache" | "computed";
+  coverage: DataCoverage;
 };
 
+/** Below this many fundamental inputs, the fundamental score is too thin to lean on. */
+const MIN_FUNDAMENTAL_FIELDS = 5;
+
+function assessCoverage(
+  tech: TechnicalIndicators | null,
+  fundamentalInputs: FundamentalInputs,
+): DataCoverage {
+  const fundamentalFields = countFundamentalInputs(fundamentalInputs);
+  const hasTechnical = tech != null;
+
+  // Technical is 60% of the combined score AND gates every context check in
+  // getRecommendationFromScore, so its absence alone drops us to "none".
+  const level: DataCoverage["level"] = !hasTechnical
+    ? "none"
+    : fundamentalFields >= MIN_FUNDAMENTAL_FIELDS
+      ? "full"
+      : "partial";
+
+  return {
+    hasTechnical,
+    fundamentalFields,
+    totalFundamentalFields: TOTAL_FUNDAMENTAL_INPUTS,
+    level,
+  };
+}
+
+/**
+ * Year-over-year growth from the most recent two entries of a financials
+ * series, as a percentage. Returns null unless both points are usable.
+ *
+ * `Financials.years` is chronological, so the last two entries are the most
+ * recent pair. A non-positive base makes the ratio meaningless (and a negative
+ * base inverts its sign), so those are rejected rather than reported.
+ */
+function yoyGrowthPct(series: number[] | undefined): number | null {
+  if (!series || series.length < 2) return null;
+  const prev = series[series.length - 2];
+  const latest = series[series.length - 1];
+  if (prev == null || latest == null || prev <= 0) return null;
+  return ((latest - prev) / prev) * 100;
+}
+
+/**
+ * Fallback inputs when no `fundamental_snapshot` exists for a symbol.
+ *
+ * This used to hardcode six of the ten inputs to null, which capped the
+ * reachable fundamental score near 52 no matter how good the company was —
+ * quality lost ROA and margins, growth lost profit and EPS, and stability
+ * (needing debtToEquity) scored a flat zero. `stock.financials` carries
+ * multi-year revenue, netProfit and totalDebt series that were simply never
+ * read, so profit growth at least can be derived rather than dropped.
+ *
+ * Still genuinely unavailable here: ROA, margins and debt/equity, all of which
+ * need balance-sheet totals (assets, equity) that `Financials` does not carry.
+ * `totalDebt` alone cannot produce a debt/equity ratio. Coverage stays partial,
+ * and `assessCoverage` still reports it as such.
+ */
 function stockToFundamentals(stock: Stock): FundamentalInputs {
+  const fin = stock.financials;
   return {
     roe: stock.roe,
     roa: null,
     peRatio: stock.pe > 0 ? stock.pe : null,
     pbRatio: stock.pb,
-    revenueGrowth: stock.revenueGrowth,
-    profitGrowth: null,
+    // Prefer the live field; fall back to deriving it from the revenue series.
+    revenueGrowth: stock.revenueGrowth || yoyGrowthPct(fin?.revenue),
+    profitGrowth: yoyGrowthPct(fin?.netProfit),
     epsGrowth: null,
     debtToEquity: null,
     netProfitMargin: null,
@@ -125,13 +211,20 @@ export async function analyzeStock(
   );
   const technicalScore = calculateTechnicalScore(tech, currentPriceK);
   const combined = combinedScore(technicalScore, fundamentalScore);
-  const recommendation = getRecommendationFromScore(
-    combined,
-    technicalScore,
-    fundamentalScore,
-    tech,
-    currentPriceK,
-  );
+  const coverage = assessCoverage(tech, fundamentalInputs);
+
+  // With no technical snapshot the score bands would still return a verdict
+  // (typically HOLD) built entirely on defaults. Say "unknown" instead.
+  const recommendation =
+    coverage.level === "none"
+      ? NO_DATA_SIGNAL
+      : getRecommendationFromScore(
+          combined,
+          technicalScore,
+          fundamentalScore,
+          tech,
+          currentPriceK,
+        );
 
   return {
     symbol: stock.symbol,
@@ -140,8 +233,10 @@ export async function analyzeStock(
     fundamentalScore,
     combinedScore: combined,
     recommendation,
-    technicalRating: scoreRating(technicalScore),
-    fundamentalRating: scoreRating(fundamentalScore),
+    technicalRating: coverage.hasTechnical ? scoreRating(technicalScore) : "No data",
+    fundamentalRating:
+      coverage.fundamentalFields > 0 ? scoreRating(fundamentalScore) : "No data",
+    coverage,
     maTrend: tech ? describeMaTrend(tech, currentPriceK) : "N/A",
     momentum: tech ? describeMomentum(tech) : "N/A",
     supportResistance: tech
